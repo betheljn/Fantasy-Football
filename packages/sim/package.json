@@ -1,0 +1,23 @@
+{
+  "name": "@dynasty/sim",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "demo:step1": "node scripts/step1-data-model.ts",
+    "demo:step2": "node scripts/step2-generate-teams.ts",
+    "demo:step3": "node scripts/step3-single-plays.ts",
+    "demo:step4": "node scripts/step4-drive.ts",
+    "demo:step5": "node scripts/step5-game.ts",
+    "game": "node scripts/play-game.ts",
+    "demo:step6": "node scripts/play-game.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
