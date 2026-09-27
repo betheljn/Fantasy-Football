@@ -40,7 +40,7 @@ export function formatPlayByPlay(game: GameResult, who: PlayerLookup): string {
     const e = p.event;
     const clock = formatClock(e.start.clock).padStart(5);
     const pre =
-      e.kind === "run" || e.kind === "pass" || e.kind === "kneel" || e.kind === "spike" || e.kind === "punt" || e.kind === "field_goal"
+      e.kind === "run" || e.kind === "pass" || e.kind === "kneel" || e.kind === "spike" || e.kind === "punt" || e.kind === "field_goal" || e.kind === "penalty"
         ? `${clock} ${formatDownDistance(e.start, e.offense, e.defense)}`
         : e.kind === "conversion"
           ? ""
@@ -101,7 +101,7 @@ export function formatBoxScore(game: GameResult, box: BoxScore, home: Team, away
   out.push(
     "",
     `TEAM STATS${"".padEnd(18)}${away.abbr.padStart(12)}${home.abbr.padStart(12)}`,
-    row("First downs", (t) => t.firstDowns),
+    row("First downs (by penalty)", (t) => `${t.firstDowns} (${t.firstDownsByPenalty})`),
     row("Total plays", (t) => t.plays),
     row("Total yards", (t) => t.totalYards),
     row("Yards per play", (t) => avg(t.totalYards, t.plays)),
@@ -112,6 +112,7 @@ export function formatBoxScore(game: GameResult, box: BoxScore, home: Team, away
     row("3rd down", (t) => `${t.thirdDownConv}-${t.thirdDownAtt}`),
     row("4th down", (t) => `${t.fourthDownConv}-${t.fourthDownAtt}`),
     row("Punts (num-avg)", (t) => `${t.punts}-${avg(t.puntYds, t.punts)}`),
+    row("Penalties (num-yds)", (t) => `${t.penalties}-${t.penaltyYds}`),
     row("Time of possession", (t) => formatClock(t.timeOfPossession)),
   );
 
@@ -186,6 +187,10 @@ export function formatBoxScore(game: GameResult, box: BoxScore, home: Team, away
       table("Fumbles", byTeam(abbr, (s) => s.fumbles > 0, (s) => s.fumbles), [
         ["FUM", 5, (s) => s.fumbles],
         ["LOST", 6, (s) => s.fumblesLost],
+      ], who),
+      table("Penalties", byTeam(abbr, (s) => s.penalties > 0, (s) => s.penaltyYds), [
+        ["NO", 4, (s) => s.penalties],
+        ["YDS", 6, (s) => s.penaltyYds],
       ], who),
     ];
     for (const sec of sections.filter((x) => x.length > 0)) out.push(...sec.map((l) => `  ${l}`), "");

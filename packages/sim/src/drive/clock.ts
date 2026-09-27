@@ -34,6 +34,8 @@ export function playStopsClock(e: PlayEvent, after: ClockState): boolean {
       return true;
     case "kneel":
       return false;
+    case "penalty":
+      return false; // pre-snap foul: the clock is left as it was (the drive doesn't advance it)
     default:
       if (e.stopReason === null) return false;
       if (e.stopReason === "out_of_bounds") return outOfBoundsStopsClock(after);

@@ -1,6 +1,7 @@
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { PlayContext } from "../play/common.ts";
+import { assessLiveBallPenalty, isNullified, rollPreSnapPenalty } from "../play/penalties.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import type { ConversionEvent, PlayEvent, Situation } from "../play/events.ts";
 import { fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from "../play/kicking.ts";
@@ -107,7 +108,10 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
   });
 
   const finish = (result: DriveResultType, next: NextPossession): DriveResult => {
-    const scrimmage = plays.filter((p) => SCRIMMAGE_KINDS.has(p.event.kind));
+    // Plays wiped out by an accepted penalty don't count as plays or yards.
+    const scrimmage = plays.filter(
+      (p) => SCRIMMAGE_KINDS.has(p.event.kind) && !((p.event.kind === "run" || p.event.kind === "pass") && isNullified(p.event)),
+    );
     const yards = scrimmage.reduce((s, p) => s + ("yardsGained" in p.event ? p.event.yardsGained : 0), 0);
     return {
       offense: off,
@@ -135,7 +139,20 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
   for (;;) {
     const cc = callContext();
     const call = callPlay(rng, cc);
-    const event = runCall(rng, call, { offense, defense, situation: cc.situation, homeField });
+    const ctx: PlayContext = { offense, defense, situation: cc.situation, homeField };
+
+    // Pre-snap foul: no play, walk it off, snap again. The clock is left alone.
+    if (call !== "kneel" && call !== "spike") {
+      const foul = rollPreSnapPenalty(rng, ctx);
+      if (foul) {
+        record(foul, clock);
+        ({ yardline, down, distance } = foul.penalty.result!);
+        continue;
+      }
+    }
+
+    let event = runCall(rng, call, ctx);
+    if (event.kind === "run" || event.kind === "pass") event = assessLiveBallPenalty(rng, ctx, event);
 
     const before = clock;
     const after = clockAfterPlay({ quarter, clock }, event);
@@ -164,7 +181,12 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
     }
 
     let firstDown = false;
-    if (event.kind === "kneel") {
+    let downDecided = false;
+    if ((event.kind === "run" || event.kind === "pass") && isNullified(event)) {
+      // No play: the penalty sets the down, distance and spot.
+      ({ yardline, down, distance } = event.penalty!.result!);
+      downDecided = true;
+    } else if (event.kind === "kneel") {
       yardline += event.yardsGained;
       distance -= event.yardsGained;
     } else if (event.kind === "run" || event.kind === "pass") {
@@ -185,9 +207,16 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
       yardline = event.endYardline;
       firstDown = event.firstDown;
       distance = firstDown ? Math.min(10, 100 - yardline) : Math.min(distance - event.yardsGained, 100 - yardline);
+      // Personal foul after the play: the play counts and the yards are added on.
+      if (event.penalty?.accepted) {
+        ({ yardline, down, distance } = event.penalty.result!);
+        downDecided = true;
+      }
     }
 
-    if (firstDown) {
+    if (downDecided) {
+      // already set by a penalty
+    } else if (firstDown) {
       down = 1;
     } else if (down === 4) {
       return finish("turnover_on_downs", { kind: "scrimmage", team: def, yardline: 100 - yardline });

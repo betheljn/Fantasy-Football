@@ -1,7 +1,8 @@
 // Turns structured play events into play-by-play text. The sim never produces
 // text itself; this is one consumer of the event data (the renderer is another).
 import { displayName, type Player, type PlayerId } from "../model/player.ts";
-import type { KickoffEvent, PlayEvent, PuntEvent, ScrimmagePlayEvent, Situation } from "../play/events.ts";
+import type { KickoffEvent, Penalty, PlayEvent, PuntEvent, ScrimmagePlayEvent, Situation } from "../play/events.ts";
+import { penaltyLabel } from "../play/penalties.ts";
 
 export type PlayerLookup = (id: PlayerId) => Player;
 
@@ -60,6 +61,8 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
     }
     case "kneel":
       return `${n(e.qb)} kneels.`;
+    case "penalty":
+      return `${penaltyText(e.penalty, e.start, e.offense, e.defense, n)} No play.`;
     case "spike":
       return `${n(e.qb)} spikes the ball to stop the clock.`;
     case "timeout":
@@ -123,15 +126,39 @@ function describeScrimmage(e: ScrimmagePlayEvent, who: PlayerLookup): string {
     else if (t.returnYards > 0) parts.push(`returned ${t.returnYards} yards`);
     if (t.touchdown) parts.push(`TOUCHDOWN ${e.defense}`);
   }
-  if (e.touchdown) parts.push(`TOUCHDOWN ${e.offense}`);
-  if (e.safety) parts.push(`SAFETY (${e.defense})`);
-  if (e.firstDown) parts.push("FIRST DOWN");
-
-  return parts.join(", ") + ".";
+  const nullified = !!e.penalty?.accepted && !e.penalty.playStands;
+  if (!nullified) {
+    if (e.touchdown) parts.push(`TOUCHDOWN ${e.offense}`);
+    if (e.safety) parts.push(`SAFETY (${e.defense})`);
+    if (e.firstDown) parts.push("FIRST DOWN");
+  }
+  const text = parts.join(", ") + ".";
+  if (!e.penalty) return text;
+  const flag = penaltyText(e.penalty, e.start, e.offense, e.defense, n);
+  return `${text} ${flag}${nullified ? " No play." : ""}`;
 }
 
 function deep(air: number): string {
   return air >= 20 ? "deep" : air <= 0 ? "behind the line" : "short";
+}
+
+/** "PENALTY on IN: Offensive holding (T. Stroud), 10 yards, enforced at IN 25." */
+export function penaltyText(
+  p: Penalty,
+  start: Situation,
+  offense: string,
+  defense: string,
+  n: (id: PlayerId | null) => string,
+): string {
+  const who = p.player ? ` (${n(p.player)})` : "";
+  const head = `PENALTY on ${p.team}: ${penaltyLabel(p.type)}${who}`;
+  if (!p.accepted) return `${head}, declined.`;
+  if (p.playStands) {
+    return `${head}, ${p.yards} yards added to the end of the play${p.result?.firstDown ? ", automatic first down" : ""}.`;
+  }
+  const yards = p.type === "defensive_pass_interference" ? `${p.yards} yards, spot foul` : `${p.yards} yard${p.yards === 1 ? "" : "s"}`;
+  const firstDown = p.result?.firstDown ? ", FIRST DOWN" : "";
+  return `${head}, ${yards}, enforced at ${formatSpot(start.yardline, offense, defense)}${firstDown}.`;
 }
 
 /** "returned 12 yards by X, tackled by Y, FUMBLE ..." for punt and kickoff returns. */

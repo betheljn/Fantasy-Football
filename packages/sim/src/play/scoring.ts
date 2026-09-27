@@ -8,6 +8,8 @@ export function pointsForEvent(e: PlayEvent): Record<string, number> {
   switch (e.kind) {
     case "run":
     case "pass":
+      // Wiped out by an accepted penalty: nothing counts.
+      if (e.penalty?.accepted && !e.penalty.playStands) return {};
       if (e.turnover?.touchdown) return { [e.defense]: 6 };
       if (e.touchdown) return { [e.offense]: 6 };
       if (e.safety) return { [e.defense]: 2 };

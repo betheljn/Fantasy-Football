@@ -2,7 +2,8 @@
 // for the console lives in feed/.
 import type { PlayerId } from "../model/player.ts";
 import type { GameResult } from "../game/game.ts";
-import type { PlayEvent } from "../play/events.ts";
+import type { Penalty, PlayEvent } from "../play/events.ts";
+import { isNullified } from "../play/penalties.ts";
 
 export const PLAYER_STAT_KEYS = [
   // passing
@@ -19,6 +20,8 @@ export const PLAYER_STAT_KEYS = [
   "kickRet", "kickRetYds", "kickRetTd", "puntRet", "puntRetYds", "puntRetTd",
   // ball security / misc
   "fumbles", "fumblesLost", "twoPtMade",
+  // penalties committed (accepted)
+  "penalties", "penaltyYds",
 ] as const;
 
 export type PlayerStatKey = (typeof PLAYER_STAT_KEYS)[number];
@@ -33,6 +36,8 @@ export const TEAM_STAT_KEYS = [
   "punts", "puntYds", "timeOfPossession",
   // scoring not visible in player lines: two-point conversions, and safeties earned by the defense
   "twoPtConv", "safeties", "defTwoPt",
+  // accepted penalties committed, and first downs gained by the other team's penalties
+  "penalties", "penaltyYds", "firstDownsByPenalty",
 ] as const;
 
 export type TeamStatKey = (typeof TEAM_STAT_KEYS)[number];
@@ -156,6 +161,8 @@ export function buildBoxScore(game: GameResult): BoxScore {
         }
         addReturnExtras(e);
         return;
+      case "penalty":
+        return addPenalty(e.penalty, e.offense, e.defense);
       case "timeout":
         return;
     }
@@ -177,12 +184,34 @@ export function buildBoxScore(game: GameResult): BoxScore {
     }
   }
 
+  /** Accepted penalty: charge the fouling team, credit a first down to the offense if it earned one. */
+  function addPenalty(pen: Penalty | null, off: string, def: string): void {
+    if (!pen?.accepted) return;
+    const t = teams[pen.team]!;
+    t.penalties++;
+    t.penaltyYds += pen.yards;
+    if (pen.player) {
+      const s = p(pen.player, pen.team);
+      s.penalties++;
+      s.penaltyYds += pen.yards;
+    }
+    if (pen.team === def && pen.result?.firstDown) {
+      teams[off]!.firstDowns++;
+      teams[off]!.firstDownsByPenalty++;
+    }
+  }
+
   function addScrimmage(e: Extract<PlayEvent, { kind: "run" | "pass" }>): void {
     const off = e.offense;
     const def = e.defense;
     const t = teams[off]!;
+    // A play wiped out by a penalty counts for nothing but the penalty.
+    if (isNullified(e)) return addPenalty(e.penalty, off, def);
+    // A personal foul after the play that earns the first down: count it once, as by penalty.
+    const penaltyFirstDown = !!e.penalty?.accepted && e.penalty.team === def && !!e.penalty.result?.firstDown;
+    addPenalty(e.penalty, off, def);
     t.plays++;
-    if (e.firstDown || e.touchdown) t.firstDowns++;
+    if ((e.firstDown || e.touchdown) && !penaltyFirstDown) t.firstDowns++;
     const converted = e.firstDown || e.touchdown;
     if (e.start.down === 3) {
       t.thirdDownAtt++;

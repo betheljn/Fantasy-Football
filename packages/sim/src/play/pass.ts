@@ -57,6 +57,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
     start: { ...sit },
     passer: qb.id,
     direction,
+    penalty: null,
   };
 
   // Protection vs pass rush decides sacks and pressure.

@@ -70,6 +70,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
     fumble,
     turnover,
     tackler: tackler?.id ?? null,
+    penalty: null,
     outOfBounds,
   };
 }

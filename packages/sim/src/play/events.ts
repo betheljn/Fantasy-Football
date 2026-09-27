@@ -15,6 +15,44 @@ export interface Situation {
 
 export type Direction = "left" | "middle" | "right";
 
+export type PenaltyType =
+  | "false_start"
+  | "delay_of_game"
+  | "offside"
+  | "offensive_holding"
+  | "defensive_holding"
+  | "offensive_pass_interference"
+  | "defensive_pass_interference"
+  | "roughing_the_passer"
+  | "face_mask"
+  | "unnecessary_roughness";
+
+/** Ball position and down after a penalty is enforced. */
+export interface PenaltyResult {
+  yardline: number;
+  down: 1 | 2 | 3 | 4;
+  distance: number;
+  firstDown: boolean;
+}
+
+export interface Penalty {
+  type: PenaltyType;
+  /** Team that committed the foul. */
+  team: string;
+  /** Player flagged (null for team fouls like delay of game). */
+  player: PlayerId | null;
+  accepted: boolean;
+  /** Yards actually walked off (after half-the-distance); 0 if declined. */
+  yards: number;
+  /**
+   * The play's result stands and the penalty is added after it (personal fouls after
+   * the play). Otherwise an accepted penalty wipes out the play ("no play").
+   */
+  playStands: boolean;
+  /** Where the ball ends up if accepted; null if declined. */
+  result: PenaltyResult | null;
+}
+
 export type StopReason = "incomplete" | "out_of_bounds" | "touchdown" | "turnover" | "safety";
 
 export interface Fumble {
@@ -53,6 +91,8 @@ interface PlayEventBase {
   fumble: Fumble | null;
   turnover: Turnover | null;
   tackler: PlayerId | null;
+  /** Live-ball foul on the play, if any (accepted or declined). */
+  penalty: Penalty | null;
 }
 
 export interface RunPlayEvent extends PlayEventBase {
@@ -158,6 +198,12 @@ export interface KickoffEvent extends SpecialEventBase {
   nextYardline: number;
 }
 
+/** Pre-snap foul: no play is run. */
+export interface PenaltyEvent extends SpecialEventBase {
+  kind: "penalty";
+  penalty: Penalty;
+}
+
 /** QB spikes the ball to stop the clock; costs a down. */
 export interface SpikeEvent extends SpecialEventBase {
   kind: "spike";
@@ -191,5 +237,6 @@ export type PlayEvent =
   | KickoffEvent
   | KneelEvent
   | SpikeEvent
+  | PenaltyEvent
   | TimeoutEvent
   | ConversionEvent;
