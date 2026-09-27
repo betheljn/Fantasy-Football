@@ -79,7 +79,9 @@ describe("simulateDrive", () => {
             expect(d.next.kind).toBe("scrimmage");
         }
         if (d.next.kind === "scrimmage") {
-          expect(d.next.team).toBe(AWAY.abbr);
+          // Only a muffed/fumbled punt recovered by the punting team keeps the ball with the offense.
+          const kept = d.plays.some((p) => p.event.kind === "punt" && p.event.recoveredByKickingTeam);
+          expect(d.next.team).toBe(kept ? HOME.abbr : AWAY.abbr);
           expect(d.next.yardline).toBeGreaterThan(0);
           expect(d.next.yardline).toBeLessThan(100);
         }

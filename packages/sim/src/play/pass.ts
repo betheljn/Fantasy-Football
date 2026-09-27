@@ -4,6 +4,7 @@ import {
   avg,
   buildTurnover,
   fumbleTurnover,
+  HOME_FIELD,
   clamp,
   edge,
   exponential,
@@ -63,7 +64,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const protect = avg(o.ol, (p) => p.ratings.passBlock) * 0.85 + rb1.ratings.passBlock * 0.15;
   const rush = avg(d.dl, (p) => p.ratings.passRush) * 0.8 + avg(d.lb, (p) => p.ratings.passRush) * 0.2;
   const line = (protect - rush) / 15;
-  const sackRate = clamp(0.065 - 0.025 * line - 0.012 * edge(q.awareness), 0.02, 0.16);
+  const home = ctx.homeField ?? 0;
+  const sackRate = clamp(0.065 - 0.025 * line - 0.012 * edge(q.awareness) - HOME_FIELD.sackRate * home, 0.02, 0.16);
 
   if (rng.chance(sackRate)) {
     const sacker = weightedPick(rng, [...d.dl, ...d.lb], (p) =>
@@ -118,7 +120,12 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const airYards = Math.min(spec.air(rng), sit.yardline >= 100 ? 0 : 100 - sit.yardline);
 
   const completion = clamp(
-    spec.completion + 0.07 * edge(q.throwAccuracy) + 0.05 * r.sep + 0.03 * edge(t.catching) - (pressured ? 0.12 : 0),
+    spec.completion +
+      0.07 * edge(q.throwAccuracy) +
+      0.05 * r.sep +
+      0.03 * edge(t.catching) -
+      (pressured ? 0.12 : 0) +
+      HOME_FIELD.completion * home,
     0.1,
     0.93,
   );

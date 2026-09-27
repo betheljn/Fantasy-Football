@@ -133,7 +133,8 @@ describe("simulateKickoff", () => {
       expect(k.nextYardline).toBeLessThanOrEqual(100);
       expect(k.touchdown).toBe(k.nextYardline === 100);
       if (k.touchback) expect(k.nextYardline).toBe(30);
-      if (!onside) expect(k.recoveredByKickingTeam).toBe(false);
+      // Off a normal kick, the kicking team only keeps it on a lost return fumble.
+      if (!onside) expect(k.recoveredByKickingTeam).toBe(!!k.fumble?.lost);
       if (freeKick) expect(k.touchback).toBe(false);
     }
   });

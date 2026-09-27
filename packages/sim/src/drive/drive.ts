@@ -1,6 +1,7 @@
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { PlayContext } from "../play/common.ts";
+import { pointsForEvent } from "../play/scoring.ts";
 import type { ConversionEvent, PlayEvent, Situation } from "../play/events.ts";
 import { fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from "../play/kicking.ts";
 import { simulatePass } from "../play/pass.ts";
@@ -47,6 +48,8 @@ export interface DriveInput {
   score: Record<string, number>;
   /** Timeouts left this half, keyed by team abbr. */
   timeouts: Record<string, number>;
+  /** Home team abbr, for home-field advantage; omit at a neutral site. */
+  homeTeam?: string;
 }
 
 export interface DriveResult {
@@ -85,6 +88,14 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
   let distance = Math.min(10, 100 - yardline);
   let elapsed = 0;
 
+  const homeField = input.homeTeam === off ? 1 : input.homeTeam === def ? -1 : 0;
+
+  /** Add an event to the drive; points always come from the event itself. */
+  const record = (event: PlayEvent, clockAfter: number) => {
+    plays.push({ event, quarter, clockAfter });
+    for (const [team, pts] of Object.entries(pointsForEvent(event))) points[team]! += pts;
+  };
+
   const margin = () => input.score[off]! + points[off]! - (input.score[def]! + points[def]!);
   const callContext = (): CallContext => ({
     offense,
@@ -114,32 +125,28 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
     };
   };
 
-  /** Touchdown by `team` (offense or defense): six points plus the try. */
-  const touchdown = (team: Team, other: Team) => {
-    points[team.abbr]! += 6;
+  /** The try after a touchdown by `team` (offense or defense); the TD itself is already recorded. */
+  const conversion = (team: Team, other: Team) => {
     const marginAfterTd =
       input.score[team.abbr]! + points[team.abbr]! - (input.score[other.abbr]! + points[other.abbr]!);
-    const conv = simulateConversion(rng, team, other, quarter, clock, marginAfterTd);
-    if (conv.success) points[team.abbr]! += conv.method === "kick" ? 1 : 2;
-    plays.push({ event: conv, quarter, clockAfter: clock });
+    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd), clock);
   };
 
   for (;;) {
     const cc = callContext();
     const call = callPlay(rng, cc);
-    const event = runCall(rng, call, { offense, defense, situation: cc.situation });
+    const event = runCall(rng, call, { offense, defense, situation: cc.situation, homeField });
 
     const before = clock;
     const after = clockAfterPlay({ quarter, clock }, event);
     clock = after.clock;
     clockRunning = after.running;
     elapsed += before - clock;
-    plays.push({ event, quarter, clockAfter: clock });
+    record(event, clock);
 
     // --- resolve the play; return if the drive is over ---
     if (event.kind === "field_goal") {
       if (event.made) {
-        points[off]! += 3;
         return finish("field_goal", { kind: "kickoff", kickingTeam: off });
       }
       return finish("missed_field_goal", { kind: "scrimmage", team: def, yardline: event.nextYardline! });
@@ -147,10 +154,13 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
 
     if (event.kind === "punt") {
       if (event.touchdown) {
-        touchdown(defense, offense);
+        conversion(defense, offense);
         return finish("punt_return_touchdown", { kind: "kickoff", kickingTeam: def });
       }
-      return finish("punt", { kind: "scrimmage", team: def, yardline: event.nextYardline });
+      if (event.safety) return finish("safety", { kind: "free_kick", kickingTeam: off });
+      // A muff or return fumble recovered by the punting team: they keep it, new set of downs.
+      const team = event.recoveredByKickingTeam ? off : def;
+      return finish("punt", { kind: "scrimmage", team, yardline: event.nextYardline });
     }
 
     let firstDown = false;
@@ -160,17 +170,16 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
     } else if (event.kind === "run" || event.kind === "pass") {
       if (event.turnover) {
         if (event.turnover.touchdown) {
-          touchdown(defense, offense);
+          conversion(defense, offense);
           return finish("defensive_touchdown", { kind: "kickoff", kickingTeam: def });
         }
         return finish("turnover", { kind: "scrimmage", team: def, yardline: event.turnover.endYardline });
       }
       if (event.touchdown) {
-        touchdown(offense, defense);
+        conversion(offense, defense);
         return finish("touchdown", { kind: "kickoff", kickingTeam: off });
       }
       if (event.safety) {
-        points[def]! += 2;
         return finish("safety", { kind: "free_kick", kickingTeam: off });
       }
       yardline = event.endYardline;
@@ -194,11 +203,10 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
         const team = caller === "offense" ? off : def;
         timeouts[team]! -= 1;
         clockRunning = false;
-        plays.push({
-          event: { kind: "timeout", offense: off, defense: def, start: next.situation, duration: 0, team, remaining: timeouts[team]! },
-          quarter,
-          clockAfter: clock,
-        });
+        record(
+          { kind: "timeout", offense: off, defense: def, start: next.situation, duration: 0, team, remaining: timeouts[team]! },
+          clock,
+        );
       } else {
         const pace = call === "kneel" ? "milk" : paceFor(next);
         let seconds = runoffSeconds(rng, pace);
@@ -244,6 +252,9 @@ function runCall(rng: Rng, call: PlayCall, ctx: PlayContext): PlayEvent {
   }
 }
 
+/** Share of turnovers on a two-point try that are returned all the way. */
+export const DEFENSIVE_CONVERSION_RETURN_RATE = 0.25;
+
 /** Extra point or two-point try by `team` after its touchdown. */
 export function simulateConversion(
   rng: Rng,
@@ -258,10 +269,13 @@ export function simulateConversion(
     const start: Situation = { quarter, clock, down: 1, distance: 2, yardline: 98 };
     const ctx: PlayContext = { offense: team, defense: other, situation: start };
     const play = rng.chance(0.6) ? simulatePass(rng, ctx) : simulateRun(rng, ctx);
-    return { ...base, start, method: "two_point", success: play.touchdown, kicker: null, play };
+    // A turnover returned the length of the field scores two for the defense. With the
+    // offense bunched at the goal line, the field ahead of the defender is often open.
+    const defensiveReturn = !!play.turnover && (play.turnover.touchdown || rng.chance(DEFENSIVE_CONVERSION_RETURN_RATE));
+    return { ...base, start, method: "two_point", success: play.touchdown, kicker: null, play, defensiveReturn };
   }
   const kicker = kickerOf(team);
   const start: Situation = { quarter, clock, down: 1, distance: 15, yardline: 85 };
   const success = !rng.chance(0.01) && rng.chance(fieldGoalProbability(kicker, 33));
-  return { ...base, start, method: "kick", success, kicker: kicker.id, play: null };
+  return { ...base, start, method: "kick", success, kicker: kicker.id, play: null, defensiveReturn: false };
 }

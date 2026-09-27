@@ -1,4 +1,4 @@
-import type { PlayEvent } from "../play/events.ts";
+import type { PlayEvent } from "./events.ts";
 
 /**
  * Points a single event puts on the board, keyed by team abbr. The game score
@@ -15,11 +15,16 @@ export function pointsForEvent(e: PlayEvent): Record<string, number> {
     case "field_goal":
       return e.made ? { [e.offense]: 3 } : {};
     case "punt":
+      if (e.touchdown) return { [e.defense]: 6 };
+      if (e.safety) return { [e.defense]: 2 };
+      return {};
     case "kickoff":
       // Return touchdown by the receiving team.
       return e.touchdown ? { [e.defense]: 6 } : {};
     case "conversion":
-      return e.success ? { [e.team]: e.method === "kick" ? 1 : 2 } : {};
+      if (e.success) return { [e.team]: e.method === "kick" ? 1 : 2 };
+      if (e.defensiveReturn) return { [e.defense]: 2 };
+      return {};
     default:
       return {};
   }

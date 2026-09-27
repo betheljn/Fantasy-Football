@@ -12,7 +12,7 @@ export const PLAYER_STAT_KEYS = [
   // receiving
   "targets", "rec", "recYds", "recTd", "recLong",
   // defense
-  "tackles", "sacks", "defInt", "intRetYds", "passDefended", "forcedFumbles", "fumbleRecoveries", "defTd",
+  "tackles", "sacks", "defInt", "intRetYds", "passDefended", "forcedFumbles", "fumbleRecoveries", "defTd", "kicksBlocked",
   // kicking / punting
   "fgAtt", "fgMade", "fgLong", "xpAtt", "xpMade", "punts", "puntYds", "puntLong", "puntTouchbacks",
   // returns
@@ -32,7 +32,7 @@ export const TEAM_STAT_KEYS = [
   "thirdDownAtt", "thirdDownConv", "fourthDownAtt", "fourthDownConv",
   "punts", "puntYds", "timeOfPossession",
   // scoring not visible in player lines: two-point conversions, and safeties earned by the defense
-  "twoPtConv", "safeties",
+  "twoPtConv", "safeties", "defTwoPt",
 ] as const;
 
 export type TeamStatKey = (typeof TEAM_STAT_KEYS)[number];
@@ -112,6 +112,8 @@ export function buildBoxScore(game: GameResult): BoxScore {
           const k = p(e.kicker!, e.team);
           k.xpAtt++;
           if (e.success) k.xpMade++;
+        } else if (e.defensiveReturn) {
+          teams[e.defense]!.defTwoPt++;
         } else if (e.success && e.play) {
           teams[e.team]!.twoPtConv++;
           // Two-point tries don't count toward regular stats; credit the scorer.
@@ -130,12 +132,19 @@ export function buildBoxScore(game: GameResult): BoxScore {
         pu.puntYds += e.grossYards;
         long(pu, "puntLong", e.grossYards);
         if (e.touchback) pu.puntTouchbacks++;
-        if (e.returner && !e.fairCatch) {
+        if (e.blocked && e.blockedBy) {
+          const b = p(e.blockedBy, e.defense);
+          b.kicksBlocked++;
+          if (e.touchdown) b.defTd++; // simplification: the blocker scoops it
+        }
+        if (e.safety) teams[e.defense]!.safeties++;
+        if (e.returner && !e.fairCatch && !e.muffed) {
           const r = p(e.returner, e.defense);
           r.puntRet++;
           r.puntRetYds += e.returnYards;
           if (e.touchdown) r.puntRetTd++;
         }
+        addReturnExtras(e);
         return;
       }
       case "kickoff":
@@ -145,9 +154,26 @@ export function buildBoxScore(game: GameResult): BoxScore {
           r.kickRetYds += e.returnYards;
           if (e.touchdown) r.kickRetTd++;
         }
+        addReturnExtras(e);
         return;
       case "timeout":
         return;
+    }
+  }
+
+  /** Coverage tackles and returner fumbles/muffs on kicks; the kicking team is `offense`. */
+  function addReturnExtras(e: Extract<PlayEvent, { kind: "punt" | "kickoff" }>): void {
+    if (e.tackler) p(e.tackler, e.offense).tackles++;
+    if (!e.fumble) return;
+    const recv = teams[e.defense]!;
+    recv.fumbles++;
+    const r = p(e.fumble.by, e.defense);
+    r.fumbles++;
+    if (e.fumble.forcedBy) p(e.fumble.forcedBy, e.offense).forcedFumbles++;
+    if (e.fumble.lost) {
+      recv.fumblesLost++;
+      r.fumblesLost++;
+      p(e.fumble.recoveredBy, e.offense).fumbleRecoveries++;
     }
   }
 

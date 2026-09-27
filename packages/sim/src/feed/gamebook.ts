@@ -3,7 +3,7 @@
 import { displayName, type PlayerId } from "../model/player.ts";
 import { teamName, type Team } from "../model/team.ts";
 import type { GameResult } from "../game/game.ts";
-import { pointsForEvent } from "../game/scoring.ts";
+import { pointsForEvent } from "../play/scoring.ts";
 import type { BoxScore, PlayerStats } from "../stats/boxscore.ts";
 import { describePlay, formatClock, formatDownDistance, formatSpot, type PlayerLookup } from "./describe.ts";
 

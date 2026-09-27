@@ -15,7 +15,7 @@ export * from "./drive/clock.ts";
 export * from "./drive/playcall.ts";
 export * from "./drive/drive.ts";
 export * from "./play/kickoff.ts";
-export * from "./game/scoring.ts";
+export * from "./play/scoring.ts";
 export * from "./game/game.ts";
 export * from "./stats/boxscore.ts";
 export * from "./feed/gamebook.ts";

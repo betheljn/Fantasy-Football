@@ -1,7 +1,7 @@
 // Turns structured play events into play-by-play text. The sim never produces
 // text itself; this is one consumer of the event data (the renderer is another).
 import { displayName, type Player, type PlayerId } from "../model/player.ts";
-import type { PlayEvent, ScrimmagePlayEvent, Situation } from "../play/events.ts";
+import type { KickoffEvent, PlayEvent, PuntEvent, ScrimmagePlayEvent, Situation } from "../play/events.ts";
 
 export type PlayerLookup = (id: PlayerId) => Player;
 
@@ -40,16 +40,23 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
     case "field_goal":
       return `${n(e.kicker)} ${e.distance}-yard field goal ${e.made ? "is GOOD" : e.blocked ? "is BLOCKED" : "is NO GOOD"}.`;
     case "punt": {
+      if (e.blocked) {
+        const b = `${n(e.punter)} punt BLOCKED by ${n(e.blockedBy)}`;
+        if (e.safety) return `${b}, covered in the end zone by ${e.offense}, SAFETY (${e.defense}).`;
+        if (e.touchdown) return `${b}, recovered by ${e.defense}${e.returnYards > 0 ? ` and returned ${e.returnYards} yards` : " in the end zone"}, TOUCHDOWN ${e.defense}.`;
+        return `${b}, recovered by ${e.defense}${e.returnYards > 0 ? ` and returned ${e.returnYards} yards` : ""}.`;
+      }
       const lands = `${n(e.punter)} punts ${e.grossYards} yards`;
       if (e.touchback) return `${lands}, touchback.`;
+      if (e.muffed) return `${lands}, MUFFED by ${n(e.returner)}, recovered by ${e.recoveredByKickingTeam ? e.offense : e.defense}.`;
       if (e.fairCatch) return `${lands}, fair catch by ${n(e.returner)}.`;
-      return `${lands}, returned ${e.returnYards} yards by ${n(e.returner)}${e.touchdown ? `, TOUCHDOWN ${e.defense}` : ""}.`;
+      return `${lands}, ${returnText(e, n)}.`;
     }
     case "kickoff": {
       const kick = `${n(e.kicker)} ${e.onside ? "onside kick" : e.freeKick ? "free kick" : "kicks off"}`;
       if (e.onside) return `${kick}, recovered by ${e.recoveredByKickingTeam ? e.offense : e.defense}.`;
       if (e.touchback) return `${kick}, touchback.`;
-      return `${kick}, returned ${e.returnYards} yards by ${n(e.returner)}${e.touchdown ? `, TOUCHDOWN ${e.defense}` : ""}.`;
+      return `${kick}, ${returnText(e, n)}.`;
     }
     case "kneel":
       return `${n(e.qb)} kneels.`;
@@ -59,7 +66,10 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
       return `Timeout ${e.team} (${e.remaining} left).`;
     case "conversion":
       if (e.method === "kick") return `${n(e.kicker)} extra point ${e.success ? "is GOOD" : "is NO GOOD"}.`;
-      return `Two-point try: ${describeScrimmage(e.play!, who).replace(/, TOUCHDOWN \w+/, "").replace(/\.$/, "")} — ${e.success ? "GOOD" : "FAILS"}.`;
+      return (
+        `Two-point try: ${describeScrimmage(e.play!, who).replace(/, TOUCHDOWN \w+/, "").replace(/\.$/, "")} — ` +
+        (e.success ? "GOOD." : e.defensiveReturn ? `FAILS, returned for a DEFENSIVE TWO-POINT CONVERSION (${e.defense}).` : "FAILS.")
+      );
     default:
       return describeScrimmage(e, who);
   }
@@ -122,4 +132,15 @@ function describeScrimmage(e: ScrimmagePlayEvent, who: PlayerLookup): string {
 
 function deep(air: number): string {
   return air >= 20 ? "deep" : air <= 0 ? "behind the line" : "short";
+}
+
+/** "returned 12 yards by X, tackled by Y, FUMBLE ..." for punt and kickoff returns. */
+function returnText(e: PuntEvent | KickoffEvent, n: (id: PlayerId | null) => string): string {
+  let t = `returned ${e.returnYards} yards by ${n(e.returner)}`;
+  if (e.touchdown) return `${t}, TOUCHDOWN ${e.defense}`;
+  if (e.tackler) t += `, tackled by ${n(e.tackler)}`;
+  if (e.fumble) {
+    t += `, FUMBLE by ${n(e.fumble.by)}, recovered by ${n(e.fumble.recoveredBy)} (${e.fumble.lost ? e.offense : e.defense})`;
+  }
+  return t;
 }

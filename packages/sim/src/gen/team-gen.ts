@@ -89,7 +89,7 @@ export interface GenerateTeamOptions {
 }
 
 export function generateTeam(rng: Rng, identity: TeamIdentity, opts: GenerateTeamOptions = {}): Team {
-  const talentMean = opts.talentMean ?? rng.normal(60, 2.5);
+  const talentMean = opts.talentMean ?? rng.normal(60, 2);
   const usedJerseys = new Set<number>();
   const usedNames = new Set<string>();
   const roster: Player[] = [];
@@ -130,9 +130,12 @@ interface PlayerGenInput {
 
 export function generatePlayer(rng: Rng, input: PlayerGenInput): Player {
   const { position } = input;
-  const age = Math.min(36, 21 + Math.floor(Math.abs(rng.normal(0, 4))));
+  // Skewed toward young players but with a real veteran tail; specialists last longer.
+  const specialist = position === "K" || position === "P" || position === "LS";
+  const age = Math.min(specialist ? 40 : 36, 21 + Math.floor(Math.abs(rng.normal(0, specialist ? 7.5 : 6.5))));
   // Young players are still developing; veterans past 31 are fading.
-  const ageAdj = age < 24 ? -(24 - age) * 2 : age > 31 ? -(age - 31) * 2 : 0;
+  const peakEnd = specialist ? 35 : 31;
+  const ageAdj = age < 24 ? -(24 - age) * 2 : age > peakEnd ? -(age - peakEnd) * 2 : 0;
   const talent = Math.max(35, Math.min(95, rng.normal(input.talentMean, 9) + ageAdj));
 
   const weighted = OVERALL_WEIGHTS[position];

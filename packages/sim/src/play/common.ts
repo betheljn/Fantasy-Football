@@ -9,7 +9,15 @@ export interface PlayContext {
   offense: Team;
   defense: Team;
   situation: Situation;
+  /** +1 when the offense is at home, -1 when the defense is, 0 at a neutral site. */
+  homeField?: number;
 }
+
+/**
+ * Home-field advantage, applied from the offense's point of view (+1 home, -1 away).
+ * Tuned so the home team wins by ~1.5-2 points on average between equal teams.
+ */
+export const HOME_FIELD = { runLine: 0.07, completion: 0.008, sackRate: 0.003 };
 
 /** Rating of a typical starter; the baseline all edges are measured from. */
 export const AVG_STARTER = 65;

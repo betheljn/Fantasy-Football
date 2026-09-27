@@ -106,13 +106,27 @@ export interface FieldGoalEvent extends SpecialEventBase {
 export interface PuntEvent extends SpecialEventBase {
   kind: "punt";
   punter: PlayerId;
+  /** 0 on a blocked punt. */
   grossYards: number;
+  blocked: boolean;
+  blockedBy: PlayerId | null;
   returner: PlayerId | null;
   returnYards: number;
   fairCatch: boolean;
   touchback: boolean;
+  /** The returner muffed the catch (a fumble before possession). */
+  muffed: boolean;
+  /** A fumble by the returner after possession, on the return. */
+  fumble: Fumble | null;
+  /** Kicking team ends up with the ball (muff or return fumble recovery). */
+  recoveredByKickingTeam: boolean;
+  /** Touchdown by the receiving team (return, or blocked punt returned). */
   touchdown: boolean;
-  /** Where the receiving team takes over (their perspective); 100 on a return TD. */
+  /** Blocked punt recovered in the kicking team's own end zone. */
+  safety: boolean;
+  /** Coverage player who made the tackle on the return. */
+  tackler: PlayerId | null;
+  /** Where the team with the ball next starts, from THAT team's perspective (100 on a TD). */
   nextYardline: number;
 }
 
@@ -135,8 +149,11 @@ export interface KickoffEvent extends SpecialEventBase {
   returnYards: number;
   touchback: boolean;
   touchdown: boolean;
-  /** Onside kick recovered by the kicking team: they keep the ball. */
+  /** Fumble by the returner on the return. */
+  fumble: Fumble | null;
+  /** Kicking team keeps the ball: onside recovery or a lost return fumble. */
   recoveredByKickingTeam: boolean;
+  tackler: PlayerId | null;
   /** Where the team with the ball starts, from that team's perspective (100 on a return TD). */
   nextYardline: number;
 }
@@ -163,6 +180,8 @@ export interface ConversionEvent extends SpecialEventBase {
   kicker: PlayerId | null;
   /** The underlying run/pass on a two-point try. */
   play: ScrimmagePlayEvent | null;
+  /** Failed two-point try turned over and returned all the way: 2 points to the defense. */
+  defensiveReturn: boolean;
 }
 
 export type PlayEvent =

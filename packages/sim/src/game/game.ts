@@ -4,7 +4,7 @@ import type { PlayEvent } from "../play/events.ts";
 import { simulateKickoff } from "../play/kickoff.ts";
 import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
 import { simulateConversion, simulateDrive, type DriveResult, type NextPossession } from "../drive/drive.ts";
-import { pointsForEvent } from "./scoring.ts";
+import { pointsForEvent } from "../play/scoring.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
 export const OVERTIME_TIMEOUTS = 2;
@@ -45,7 +45,12 @@ export interface GameResult {
  * Simulate a full game. Deterministic: the same teams and seed always
  * produce the same GameResult.
  */
-export function simulateGame(home: Team, away: Team, seed: number | string): GameResult {
+export interface GameOptions {
+  /** No home-field advantage (e.g. a championship at a neutral venue). */
+  neutralSite?: boolean;
+}
+
+export function simulateGame(home: Team, away: Team, seed: number | string, options: GameOptions = {}): GameResult {
   const rng = new Rng(seed);
   const teams: Record<string, Team> = { [home.abbr]: home, [away.abbr]: away };
   const other = (abbr: string) => (abbr === home.abbr ? away : home);
@@ -152,6 +157,7 @@ export function simulateGame(home: Team, away: Team, seed: number | string): Gam
       yardline: pending.yardline,
       score: { ...score },
       timeouts,
+      ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
     });
     const from = plays.length;
     for (const p of drive.plays) record(p.event, p.quarter, p.clockAfter);

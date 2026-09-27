@@ -3,6 +3,7 @@ import type { Rng } from "../rng.ts";
 import {
   avg,
   fumbleTurnover,
+  HOME_FIELD,
   clamp,
   edge,
   exponential,
@@ -37,7 +38,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const stop =
     avg(d.dl, (p) => p.ratings.runStop) * 0.55 +
     avg(d.lb, (p) => (p.ratings.runStop + p.ratings.tackling) / 2) * 0.45;
-  const line = (block - stop) / 15;
+  const line = (block - stop) / 15 + HOME_FIELD.runLine * (ctx.homeField ?? 0);
   const r = rusher.ratings;
   const runner = edge((r.elusiveness + r.breakTackle + r.speed + r.awareness) / 4);
 

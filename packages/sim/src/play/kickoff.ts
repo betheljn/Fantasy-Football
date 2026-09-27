@@ -2,7 +2,7 @@ import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { clamp, edge, exponential } from "./common.ts";
 import type { KickoffEvent, Situation } from "./events.ts";
-import { kickerOf, returnerOf } from "./kicking.ts";
+import { coverageUnit, kickerOf, pickCoverageTackler, returnFumble, returnerOf } from "./kicking.ts";
 
 /** League rule: kickoffs are from the 35; a touchback puts the ball at the 30. */
 export const KICKOFF_SPOT = 35;
@@ -33,6 +33,8 @@ export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
     kicker: kicker.id,
     onside: !!o.onside,
     freeKick: !!o.freeKick,
+    fumble: null,
+    tackler: null,
   };
 
   if (o.onside) {
@@ -64,14 +66,21 @@ export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
   let returnYards = Math.max(0, Math.round(rng.normal(o.freeKick ? 10 : 24 + 3 * edge(r.speed), 7)));
   if (rng.chance(0.03 + 0.01 * edge(r.elusiveness))) returnYards += Math.round(10 + exponential(rng, 20));
   const end = Math.min(100, caught + returnYards);
+  const touchdown = end >= 100;
+  const coverage = coverageUnit(o.kicking);
+  const tackler = touchdown ? null : pickCoverageTackler(rng, coverage);
+  const fumble = touchdown ? null : returnFumble(rng, returner, tackler, coverage, 0.008);
   return {
     ...base,
     returner: returner.id,
     returnYards: end - caught,
     touchback: false,
-    touchdown: end >= 100,
-    recoveredByKickingTeam: false,
-    nextYardline: end,
+    touchdown,
+    fumble,
+    tackler: tackler?.id ?? null,
+    // A lost fumble gives the kicking team the ball where it came loose.
+    recoveredByKickingTeam: !!fumble?.lost,
+    nextYardline: fumble?.lost ? 100 - end : end,
     duration: Math.round(clamp(5 + returnYards / 8, 4, 15)),
   };
 }

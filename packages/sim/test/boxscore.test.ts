@@ -46,7 +46,7 @@ describe("buildBoxScore", () => {
         const t = box.teams[abbr]!;
         const ps = Object.values(box.players).filter((p) => p.team === abbr);
         const tds = sum(ps, "rushTd") + sum(ps, "recTd") + sum(ps, "defTd") + sum(ps, "kickRetTd") + sum(ps, "puntRetTd");
-        const pts = 6 * tds + 3 * sum(ps, "fgMade") + sum(ps, "xpMade") + 2 * t.twoPtConv + 2 * t.safeties;
+        const pts = 6 * tds + 3 * sum(ps, "fgMade") + sum(ps, "xpMade") + 2 * t.twoPtConv + 2 * t.safeties + 2 * t.defTwoPt;
         expect(pts).toBe(game.score[abbr]);
       }
     }
