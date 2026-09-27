@@ -13,7 +13,8 @@
     "demo:step4": "node scripts/step4-drive.ts",
     "demo:step5": "node scripts/step5-game.ts",
     "game": "node scripts/play-game.ts",
-    "demo:step6": "node scripts/play-game.ts"
+    "demo:step6": "node scripts/play-game.ts",
+    "anim": "node scripts/anim-preview.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

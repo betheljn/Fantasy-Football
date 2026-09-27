@@ -21,3 +21,6 @@ export * from "./stats/boxscore.ts";
 export * from "./feed/gamebook.ts";
 export * from "./play/penalties.ts";
 export * from "./drive/scheme.ts";
+export * from "./anim/field.ts";
+export * from "./anim/align.ts";
+export { choreograph } from "./anim/choreograph.ts";
