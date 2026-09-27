@@ -132,7 +132,8 @@ function describeScrimmage(e: ScrimmagePlayEvent, who: PlayerLookup): string {
     if (e.safety) parts.push(`SAFETY (${e.defense})`);
     if (e.firstDown) parts.push("FIRST DOWN");
   }
-  const text = parts.join(", ") + ".";
+  // Real gamebooks mark shotgun snaps.
+  const text = (e.formation.offense.set === "shotgun" ? "(Shotgun) " : "") + parts.join(", ") + ".";
   if (!e.penalty) return text;
   const flag = penaltyText(e.penalty, e.start, e.offense, e.defense, n);
   return `${text} ${flag}${nullified ? " No play." : ""}`;

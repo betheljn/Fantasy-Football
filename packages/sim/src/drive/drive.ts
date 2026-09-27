@@ -8,6 +8,7 @@ import { fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from 
 import { simulatePass } from "../play/pass.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
+import { chooseDefense, chooseOffense } from "./scheme.ts";
 import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
 export type DriveResultType =
@@ -137,9 +138,18 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
   };
 
   for (;;) {
-    const cc = callContext();
+    // Personnel comes first (it shapes the run/pass call); the defense answers what it sees.
+    const offenseFormation = chooseOffense(rng, offense, callContext());
+    const cc = { ...callContext(), personnel: offenseFormation.personnel, set: offenseFormation.set };
     const call = callPlay(rng, cc);
-    const ctx: PlayContext = { offense, defense, situation: cc.situation, homeField };
+    const scrimmageCall = call === "run" || call === "pass";
+    const ctx: PlayContext = {
+      offense,
+      defense,
+      situation: cc.situation,
+      homeField,
+      ...(scrimmageCall ? { formations: { offense: offenseFormation, defense: chooseDefense(rng, defense, cc, offenseFormation) } } : {}),
+    };
 
     // Pre-snap foul: no play, walk it off, snap again. The clock is left alone.
     if (call !== "kneel" && call !== "spike") {

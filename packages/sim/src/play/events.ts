@@ -1,4 +1,11 @@
 import type { PlayerId } from "../model/player.ts";
+import type { Coverage, DefensePackage, OffenseSet, Personnel } from "./formation.ts";
+
+/** Who was on the field and the defensive call, for the feed, renderer and replays. */
+export interface FormationInfo {
+  offense: { personnel: Personnel; set: OffenseSet; players: PlayerId[] };
+  defense: { package: DefensePackage; coverage: Coverage; rushers: PlayerId[]; blitzers: PlayerId[]; players: PlayerId[] };
+}
 
 /**
  * Pre-snap situation. `yardline` is yards from the offense's own goal line:
@@ -93,6 +100,7 @@ interface PlayEventBase {
   tackler: PlayerId | null;
   /** Live-ball foul on the play, if any (accepted or declined). */
   penalty: Penalty | null;
+  formation: FormationInfo;
 }
 
 export interface RunPlayEvent extends PlayEventBase {

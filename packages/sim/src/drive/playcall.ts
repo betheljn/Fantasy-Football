@@ -7,6 +7,7 @@ import { clamp } from "../play/common.ts";
 import type { Situation } from "../play/events.ts";
 import { fieldGoalDistance, fieldGoalProbability, kickerOf } from "../play/kicking.ts";
 import { hasTwoMinuteWarning, TWO_MINUTE_WARNING, type Pace } from "./clock.ts";
+import type { OffenseSet, Personnel } from "../play/formation.ts";
 
 export type PlayCall = "run" | "pass" | "punt" | "field_goal" | "kneel" | "spike";
 
@@ -19,12 +20,19 @@ export interface CallContext {
   clockRunning: boolean;
   offenseTimeouts: number;
   defenseTimeouts: number;
+  /** Personnel and alignment already chosen for this snap (shifts the run/pass mix). */
+  personnel?: Personnel;
+  set?: OffenseSet;
 }
 
 /** Seconds left in the current half (quarters 2 and 4 end a half). */
 export function halfSecondsLeft(s: Situation): number {
   return s.quarter === 1 || s.quarter === 3 ? s.clock + 900 : s.clock;
 }
+
+/** Heavier sets lean run, spread sets lean pass (added to the pass probability). */
+export const PERSONNEL_PASS_ADJ: Record<Personnel, number> = { "10": 0.15, "11": 0.04, "12": -0.08, "13": -0.25, "21": -0.12 };
+export const SET_PASS_ADJ: Record<OffenseSet, number> = { shotgun: 0.05, under_center: -0.1 };
 
 export function paceFor(c: Pick<CallContext, "situation" | "margin">): Pace {
   const s = c.situation;
@@ -57,6 +65,8 @@ export function passProbability(c: CallContext): number {
   const pace = paceFor(c);
   if (pace === "hurry") p += c.margin <= -9 ? 0.35 : 0.25;
   if (pace === "milk") p -= 0.3;
+  if (c.personnel) p += PERSONNEL_PASS_ADJ[c.personnel];
+  if (c.set) p += SET_PASS_ADJ[c.set];
   return clamp(p, 0.05, 0.95);
 }
 

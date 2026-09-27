@@ -8,7 +8,7 @@ import type { Player } from "../model/player.ts";
 import type { Rng } from "../rng.ts";
 import { avg, clamp, edge, weightedPick, type PlayContext } from "./common.ts";
 import type { Penalty, PenaltyEvent, PenaltyResult, PenaltyType, ScrimmagePlayEvent, Situation } from "./events.ts";
-import { defensePersonnel, offensePersonnel } from "./personnel.ts";
+import { formationsFor, receivers } from "./formation.ts";
 
 type Side = "offense" | "defense";
 
@@ -86,15 +86,14 @@ function lowRatingPick(rng: Rng, players: readonly Player[], rating: (p: Player)
 
 /** Roll for a pre-snap foul before a run/pass/kick. Null if the snap is clean. */
 export function rollPreSnapPenalty(rng: Rng, ctx: PlayContext): PenaltyEvent | null {
-  const o = offensePersonnel(ctx.offense);
-  const d = defensePersonnel(ctx.defense);
+  const { offense: o, defense: d } = formationsFor(ctx);
   const home = ctx.homeField ?? 0;
   const crowd = home > 0 ? FALSE_START_CROWD.home : home < 0 ? FALSE_START_CROWD.away : 1;
   const disciplineO = clamp(1 - 0.3 * edge(avg(o.ol, (p) => p.ratings.awareness)), 0.6, 1.5);
   const disciplineD = clamp(1 - 0.3 * edge(avg(d.dl, (p) => p.ratings.awareness)), 0.6, 1.5);
 
   const candidates: Array<[PenaltyType, number, () => Player | null]> = [
-    ["false_start", PENALTY_RATES.falseStart * crowd * disciplineO, () => lowRatingPick(rng, [...o.ol, o.te], (p) => p.ratings.awareness)],
+    ["false_start", PENALTY_RATES.falseStart * crowd * disciplineO, () => lowRatingPick(rng, [...o.ol, ...o.tes], (p) => p.ratings.awareness)],
     ["delay_of_game", PENALTY_RATES.delayOfGame, () => null],
     ["offside", PENALTY_RATES.offside * disciplineD, () => lowRatingPick(rng, [...d.dl, ...d.lb], (p) => p.ratings.awareness)],
   ];
@@ -126,8 +125,7 @@ export function rollPreSnapPenalty(rng: Rng, ctx: PlayContext): PenaltyEvent | n
  * whether it's accepted. Returns the event with `penalty` set (or unchanged).
  */
 export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePlayEvent): ScrimmagePlayEvent {
-  const o = offensePersonnel(ctx.offense);
-  const d = defensePersonnel(ctx.defense);
+  const { offense: o, defense: d } = formationsFor(ctx);
   const sit = ctx.situation;
   const candidates: Array<[PenaltyType, number, () => Player | null]> = [];
   const find = (id: string | null, pool: readonly Player[]) => pool.find((p) => p.id === id) ?? null;
@@ -138,7 +136,7 @@ export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePl
   candidates.push([
     "offensive_holding",
     PENALTY_RATES.offensiveHolding * clamp(1 - 0.4 * edge(block), 0.5, 1.6),
-    () => lowRatingPick(rng, [...o.ol, o.te], (p) => (isPass ? p.ratings.passBlock : p.ratings.runBlock)),
+    () => lowRatingPick(rng, [...o.ol, ...o.tes], (p) => (isPass ? p.ratings.passBlock : p.ratings.runBlock)),
   ]);
 
   if (e.kind === "pass") {
@@ -149,7 +147,7 @@ export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePl
       candidates.push(["defensive_pass_interference", PENALTY_RATES.defensivePassInterference * depth, () => cover]);
     }
     if (e.outcome === "complete" || e.outcome === "incomplete") {
-      const target = find(e.target, [...o.wrs, o.te, ...o.rbs]);
+      const target = find(e.target, receivers(o));
       if (target) candidates.push(["offensive_pass_interference", PENALTY_RATES.offensivePassInterference, () => target]);
     }
   }
@@ -160,7 +158,7 @@ export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePl
     candidates.push([
       "roughing_the_passer",
       PENALTY_RATES.roughingThePasser * (e.pressured ? 2 : 0.6),
-      () => weightedPick(rng, d.dl, (p) => p.ratings.passRush),
+      () => weightedPick(rng, d.rushers, (p) => p.ratings.passRush),
     ]);
   }
   const tackler = find(e.tackler, d.all);

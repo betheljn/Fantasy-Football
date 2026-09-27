@@ -2,7 +2,7 @@ import type { Player } from "../model/player.ts";
 import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { Direction, Fumble, Situation, StopReason, Turnover } from "./events.ts";
-import type { DefensePersonnel } from "./personnel.ts";
+import type { DefenseFormation, Formations } from "./formation.ts";
 
 /** Everything a single play needs. Plays never mutate this. */
 export interface PlayContext {
@@ -11,6 +11,8 @@ export interface PlayContext {
   situation: Situation;
   /** +1 when the offense is at home, -1 when the defense is, 0 at a neutral site. */
   homeField?: number;
+  /** Who's on the field and the defensive call; defaults to 11 personnel vs base Cover 3. */
+  formations?: Formations;
 }
 
 /**
@@ -73,7 +75,7 @@ export function spotBall(sit: Situation, rawYards: number) {
 }
 
 /** Defender credited with the tackle; who is likelier depends on how far the play went. */
-export function pickTackler(rng: Rng, d: DefensePersonnel, yards: number): Player {
+export function pickTackler(rng: Rng, d: DefenseFormation, yards: number): Player {
   const posWeight = (p: Player): number => {
     const byDepth =
       yards <= 3
@@ -94,7 +96,7 @@ export function rollFumble(
   rng: Rng,
   carrier: Player,
   forcedBy: Player | null,
-  defense: DefensePersonnel,
+  defense: DefenseFormation,
   baseRate: number,
 ): Fumble | null {
   const rate = baseRate * clamp(1 - 0.5 * edge(carrier.ratings.carrying), 0.4, 1.8);

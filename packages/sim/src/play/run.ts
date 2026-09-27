@@ -16,34 +16,45 @@ import {
   type PlayContext,
 } from "./common.ts";
 import type { RunPlayEvent } from "./events.ts";
-import { defensePersonnel, offensePersonnel } from "./personnel.ts";
+import { boxDefenders, formationInfo, formationsFor, runBlockers } from "./formation.ts";
 
-/** Share of designed runs by ball carrier. */
-const CARRY_SHARE = { rb1: 0.76, rb2: 0.2, qb: 0.04 };
+/** Rushing yards per extra blocker (or per extra defender in the box, if negative). */
+export const RUN_NUMBERS_EDGE = 0.3;
+/** Mean rushing yards before any matchup edges. */
+const RUN_BASE = 3.65;
 
 export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const { situation: sit } = ctx;
-  const o = offensePersonnel(ctx.offense);
-  const d = defensePersonnel(ctx.defense);
+  const f = formationsFor(ctx);
+  const o = f.offense;
+  const d = f.defense;
 
-  const [rb1, rb2] = o.rbs;
-  const carriers: Array<[Player, number]> = [[o.qb, CARRY_SHARE.qb]];
-  if (rb1) carriers.push([rb1, CARRY_SHARE.rb1]);
-  if (rb2) carriers.push([rb2, CARRY_SHARE.rb2]);
+  // Tailback, fullback (21 personnel), or a designed QB run (more for mobile QBs).
+  const qbShare = clamp(0.05 + 0.03 * edge(o.qb.ratings.speed), 0.02, 0.12);
+  const [tailback, fullback] = o.rbs;
+  const carriers: Array<[Player, number]> = [
+    [tailback!, fullback ? 0.82 : 1],
+    [o.qb, qbShare],
+  ];
+  if (fullback) carriers.push([fullback, 0.14]);
   const rusher = weightedPick(rng, carriers, ([, w]) => w)[0];
   const direction = pickDirection(rng);
 
-  // Line battle: blockers vs run stoppers, then the runner's own ability.
-  const block = avg(o.ol, (p) => p.ratings.runBlock) * 0.85 + o.te.ratings.runBlock * 0.15;
-  const stop =
-    avg(d.dl, (p) => p.ratings.runStop) * 0.55 +
-    avg(d.lb, (p) => (p.ratings.runStop + p.ratings.tackling) / 2) * 0.45;
-  const line = (block - stop) / 15 + HOME_FIELD.runLine * (ctx.homeField ?? 0);
+  // Line battle: the blockers vs the defenders in the box. Quality is the average of
+  // everyone involved; how many there are on each side is the separate numbers edge.
+  const blockers = runBlockers(o);
+  const box = boxDefenders(d);
+  const block = avg(blockers, (p) => p.ratings.runBlock);
+  const stop = avg(box, (p) => (p.position === "DL" ? p.ratings.runStop : (p.ratings.runStop + p.ratings.tackling) / 2));
+  const numbers = blockers.length - box.length;
+  const line = (block - stop) / 15 + RUN_NUMBERS_EDGE * numbers + HOME_FIELD.runLine * (ctx.homeField ?? 0);
   const r = rusher.ratings;
   const runner = edge((r.elusiveness + r.breakTackle + r.speed + r.awareness) / 4);
+  // A run blitz is boom-or-bust: more stuffs, but more runs that get to the second level untouched.
+  const runBlitz = d.blitzers.length > 0;
 
-  let yards = Math.max(-5, rng.normal(3.25 + 1.0 * line + 0.8 * runner, 3.2));
-  const breakaway = clamp(0.035 + 0.02 * edge(r.speed) + 0.015 * line, 0.01, 0.1);
+  let yards = Math.max(-5, rng.normal(RUN_BASE + 1.0 * line + 0.8 * runner - (runBlitz ? 0.3 : 0), runBlitz ? 3.8 : 3.2));
+  const breakaway = clamp(0.035 + 0.02 * edge(r.speed) + 0.015 * line + (runBlitz ? 0.015 : 0), 0.01, 0.12);
   if (rng.chance(breakaway)) yards += 10 + exponential(rng, 14);
 
   const spot = spotBall(sit, yards);
@@ -59,6 +70,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
     defense: ctx.defense.abbr,
     start: { ...sit },
     rusher: rusher.id,
+    formation: formationInfo(f),
     direction,
     yardsGained: spot.yardsGained,
     endYardline: spot.endYardline,
