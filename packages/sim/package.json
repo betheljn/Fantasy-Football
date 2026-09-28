@@ -24,7 +24,8 @@
     "develop": "node scripts/develop.ts",
     "retire": "node scripts/retire.ts",
     "draftclass": "node scripts/draftclass.ts",
-    "card": "node scripts/card.ts"
+    "card": "node scripts/card.ts",
+    "scout": "node scripts/scout.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
