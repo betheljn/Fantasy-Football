@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  BRACKET,
+  PLAYOFF_ROUNDS,
+  PLAYOFF_TEAMS,
+  computeRankings,
   divisionStandings,
   generateLeague,
-  seedConference,
+  selectPlayoffField,
   simulateGame,
   simulatePlayoffs,
   simulateSeason,
-  winPct,
   type League,
   type PlayoffResult,
   type SeasonResult,
@@ -18,83 +21,67 @@ const RUNS: Array<{ league: League; season: SeasonResult; playoffs: PlayoffResul
   return { league, season, playoffs: simulatePlayoffs(league, season) };
 });
 
-describe("seeding", () => {
-  it("seeds 5 division winners then 2 wild cards per conference", () => {
+describe("playoff field", () => {
+  it("has 16 teams: all 10 division winners plus the 6 best-ranked others", () => {
     for (const { league, season, playoffs } of RUNS) {
       const winners = new Set(divisionStandings(league, season.results).map((d) => d.teams[0]!.team));
-      for (const c of league.conferences) {
-        const seeds = playoffs.seeds[c.abbr]!;
-        expect(seeds.map((s) => s.seed)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-        expect(seeds.slice(0, 5).every((s) => s.divisionWinner && winners.has(s.team))).toBe(true);
-        expect(seeds.slice(5).every((s) => !s.divisionWinner && !winners.has(s.team))).toBe(true);
-        // Division winners are ordered by record.
-        for (let i = 1; i < 5; i++) expect(winPct(seeds[i - 1]!.record)).toBeGreaterThanOrEqual(winPct(seeds[i]!.record));
-        // No team left out has a better record than the last wild card.
-        const inField = new Set(seeds.map((s) => s.team));
-        const lastWildCard = winPct(seeds[6]!.record);
-        for (const d of c.divisions) {
-          for (const t of d.teams) {
-            if (inField.has(t)) continue;
-            const r = divisionStandings(league, season.results).flatMap((x) => x.teams).find((x) => x.team === t)!.record;
-            expect(winPct(r)).toBeLessThanOrEqual(lastWildCard);
-          }
-        }
+      expect(playoffs.seeds).toHaveLength(PLAYOFF_TEAMS);
+      expect(playoffs.seeds.filter((s) => s.bid === "division_winner").map((s) => s.team).sort()).toEqual([...winners].sort());
+      const atLarge = playoffs.seeds.filter((s) => s.bid === "at_large");
+      expect(atLarge).toHaveLength(6);
+      // No non-winner outside the field is ranked above any at-large team.
+      const worstAtLarge = Math.max(...atLarge.map((s) => s.rank));
+      const inField = new Set(playoffs.seeds.map((s) => s.team));
+      for (const e of playoffs.ranking) {
+        if (!inField.has(e.team) && !winners.has(e.team)) expect(e.rank).toBeGreaterThan(worstAtLarge);
       }
     }
   });
 
-  it("wild cards never jump a division rival that finished ahead of them", () => {
-    for (const { league, season } of RUNS) {
-      const standings = divisionStandings(league, season.results);
-      for (const c of league.conferences) {
-        const seeds = seedConference(league, season.results, c.abbr);
-        for (const wc of seeds.slice(5)) {
-          const div = standings.find((d) => d.teams.some((t) => t.team === wc.team))!;
-          const above = div.teams.slice(1, div.teams.findIndex((t) => t.team === wc.team)).map((t) => t.team);
-          for (const rival of above) expect(seeds.some((s) => s.team === rival)).toBe(true);
-        }
-      }
+  it("seeds 1-16 in ranking order", () => {
+    for (const { playoffs } of RUNS) {
+      expect(playoffs.seeds.map((s) => s.seed)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
+      for (let i = 1; i < 16; i++) expect(playoffs.seeds[i]!.rank).toBeGreaterThan(playoffs.seeds[i - 1]!.rank);
     }
+  });
+
+  it("selectPlayoffField matches the field the playoffs used", () => {
+    const { league, season, playoffs } = RUNS[0]!;
+    expect(selectPlayoffField(league, season.results)).toEqual(playoffs.seeds);
+    expect(computeRankings(league, season.results)).toEqual(playoffs.ranking);
   });
 });
 
 describe("bracket", () => {
-  it("plays 13 games: 6 wild card, 4 divisional, 2 conference, 1 championship", () => {
+  it("plays 15 games: 8, 4, 2, 1", () => {
     for (const { playoffs } of RUNS) {
-      const count = (r: string) => playoffs.games.filter((g) => g.round === r).length;
-      expect([count("wild_card"), count("divisional"), count("conference"), count("championship")]).toEqual([6, 4, 2, 1]);
+      expect(PLAYOFF_ROUNDS.map((r) => playoffs.games.filter((g) => g.round === r).length)).toEqual([8, 4, 2, 1]);
     }
   });
 
-  it("the 1 seed rests in the wild card round; higher seeds host; the final is neutral", () => {
+  it("uses the fixed bracket, higher seed hosts, and the final is neutral", () => {
     for (const { playoffs } of RUNS) {
+      const first = playoffs.games.filter((g) => g.round === "round_of_16").map((g) => [g.homeSeed, g.awaySeed]);
+      expect(first).toEqual(BRACKET.map(([a, b]) => [a, b]));
       for (const g of playoffs.games) {
-        if (g.round === "wild_card") expect([g.homeSeed, g.awaySeed]).not.toContain(1);
-        if (g.round === "championship") expect(g.neutralSite).toBe(true);
-        else expect(g.homeSeed).toBeLessThan(g.awaySeed);
-      }
-      // Divisional round: the 1 seed hosts the lowest seed left.
-      for (const conf of Object.keys(playoffs.seeds)) {
-        const div = playoffs.games.filter((g) => g.round === "divisional" && g.conference === conf);
-        const top = div.find((g) => g.homeSeed === 1)!;
-        const others = div.find((g) => g !== top)!;
-        expect(top.awaySeed).toBeGreaterThan(Math.max(others.homeSeed, others.awaySeed));
+        expect(g.homeSeed).toBeLessThan(g.awaySeed);
+        expect(g.neutralSite).toBe(g.round === "championship");
       }
     }
   });
 
-  it("no ties, winners advance, and the champion won the final", () => {
+  it("winners of adjacent games meet next; no ties; the champion won the final", () => {
     for (const { playoffs } of RUNS) {
-      const losers = new Set<string>();
-      for (const round of ["wild_card", "divisional", "conference", "championship"]) {
-        for (const g of playoffs.games.filter((x) => x.round === round)) {
-          const s = g.summary;
-          expect(s.winner).not.toBeNull();
-          expect(losers.has(s.home) || losers.has(s.away)).toBe(false);
-          losers.add(s.winner === s.home ? s.away : s.home);
-        }
+      for (let r = 1; r < PLAYOFF_ROUNDS.length; r++) {
+        const prev = playoffs.games.filter((g) => g.round === PLAYOFF_ROUNDS[r - 1]);
+        const cur = playoffs.games.filter((g) => g.round === PLAYOFF_ROUNDS[r]);
+        cur.forEach((g, i) => {
+          const feeders = [prev[2 * i]!.summary.winner, prev[2 * i + 1]!.summary.winner];
+          expect([g.summary.home, g.summary.away].sort()).toEqual([...feeders].sort());
+        });
       }
-      const final = playoffs.games.find((g) => g.round === "championship")!.summary;
+      for (const g of playoffs.games) expect(g.summary.winner).not.toBeNull();
+      const final = playoffs.games.at(-1)!.summary;
       expect(playoffs.champion).toBe(final.winner);
       expect(playoffs.runnerUp).toBe(final.winner === final.home ? final.away : final.home);
     }

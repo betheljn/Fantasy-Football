@@ -34,6 +34,12 @@ All players and teams are generated.
 - 50 teams in 2 conferences of 5 divisions (5 teams each)
 - 20-game regular season over 22 weeks: two byes per team, one in weeks 5-11
   and one in weeks 12-18
+- Weekly rankings 1-25 from a computed formula: 100 x win pct + 2 x strength
+  rating (capped scoring margin + strength of schedule); preseason prior from
+  roster strength fades over the first 5 games
+- 16-team playoff: the 10 division winners (automatic bids) + the 6 highest-ranked
+  other teams, all seeded 1-16 by final ranking. Fixed bracket (1v16, 8v9, ...),
+  higher seed hosts, neutral-site championship, no ties
 
 ## Milestones (build in this order, one step at a time)
 
@@ -53,12 +59,15 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 2. Build a season schedule
 3. Simulate a full regular season with standings and tiebreakers
 4. Season stats and league leaders
-5. Playoffs to a champion (7 per conference: 5 division winners + 2 wild cards,
-   top seed on a bye, neutral-site championship, no ties in the playoffs)
+5. Weekly rankings (1-25) and the playoffs to a champion
 
-### Milestone 3: dynasty offseason (next)
-Aging and development, retirements, draft class and draft, roster cuts to 72,
-multi-season loop.
+### Milestone 3: dynasty offseason (current)
+1. Player development and aging (potential, age curves by position)
+2. Retirements
+3. Draft class generation
+4. Draft order and the draft
+5. Roster cuts to 72 and depth charts
+6. Multi-season loop with league history
 
 ### Milestone 4: staff
 Coaches, GMs, and scouts with ratings that affect play calling, rosters, and drafting.

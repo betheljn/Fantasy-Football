@@ -31,3 +31,4 @@ export * from "./league/standings.ts";
 export * from "./league/season.ts";
 export * from "./league/seasonstats.ts";
 export * from "./league/playoffs.ts";
+export * from "./league/rankings.ts";

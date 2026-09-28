@@ -101,7 +101,7 @@ describe("simulateDrive", () => {
         expect(d.end.quarter).toBeGreaterThanOrEqual(d.start.quarter);
       }
     }
-  });
+  }, 30_000); // ~10,000 drives
 
   it("a drive in Q1 can roll over into Q2", () => {
     expect(drives(300, { quarter: 1, clock: 40 }).some((d) => d.end.quarter === 2)).toBe(true);

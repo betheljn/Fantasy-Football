@@ -19,7 +19,8 @@
     "schedule": "node scripts/schedule.ts",
     "season": "node scripts/season.ts",
     "leaders": "node scripts/leaders.ts",
-    "playoffs": "node scripts/playoffs.ts"
+    "playoffs": "node scripts/playoffs.ts",
+    "rankings": "node scripts/rankings.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
