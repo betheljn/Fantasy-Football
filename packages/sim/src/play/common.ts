@@ -83,7 +83,8 @@ export function pickTackler(rng: Rng, d: DefenseFormation, yards: number): Playe
         : yards <= 10
           ? { DL: 1, LB: 3, CB: 1.5, S: 1.5 }
           : { DL: 0.2, LB: 1, CB: 2, S: 3 };
-    return (byDepth[p.position as keyof typeof byDepth] ?? 0) * (p.ratings.tackling + p.ratings.speed) / 2;
+    // Sure tacklers who pursue well end up making the play.
+    return (byDepth[p.position as keyof typeof byDepth] ?? 0) * (p.ratings.tackle + p.ratings.pursuit + p.ratings.speed) / 3;
   };
   return weightedPick(rng, d.all, posWeight);
 }
@@ -99,7 +100,9 @@ export function rollFumble(
   defense: DefenseFormation,
   baseRate: number,
 ): Fumble | null {
-  const rate = baseRate * clamp(1 - 0.5 * edge(carrier.ratings.carrying), 0.4, 1.8);
+  // Ball security against the hitter: big hits jar the ball loose more often.
+  const hit = forcedBy ? clamp(1 + 0.3 * edge(forcedBy.ratings.hitPower), 0.7, 1.5) : 1;
+  const rate = baseRate * clamp(1 - 0.5 * edge(carrier.ratings.carrying), 0.4, 1.8) * hit;
   if (!rng.chance(rate)) return null;
   const lost = rng.chance(0.47);
   const recoveredBy = lost ? rng.pick(defense.all) : carrier;

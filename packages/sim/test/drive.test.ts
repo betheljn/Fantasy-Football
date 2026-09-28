@@ -133,7 +133,26 @@ describe("simulateDrive", () => {
   });
 
   it("drive results are in a realistic range", () => {
-    const ds = [...drives(3000, {}, 1), ...drives(3000, { offense: AWAY, defense: HOME }, 2)];
+    // Averaged over many matchups: a single pair can be two strong defenses.
+    const ds: DriveResult[] = [];
+    for (let k = 0; k < 30; k++) {
+      const [a, b] = generateTeams(new Rng(`drive-range-${k}`), 2) as [Team, Team];
+      const rng = new Rng(k);
+      for (let i = 0; i < 200; i++) {
+        const [o, d] = i % 2 ? [a, b] : [b, a];
+        ds.push(
+          simulateDrive(rng, {
+            offense: o,
+            defense: d,
+            quarter: 1,
+            clock: 900,
+            yardline: 25,
+            score: { [o.abbr]: 0, [d.abbr]: 0 },
+            timeouts: { [o.abbr]: 3, [d.abbr]: 3 },
+          }),
+        );
+      }
+    }
     const share = (r: string) => ds.filter((d) => d.result === r).length / ds.length;
     expect(share("touchdown")).toBeGreaterThan(0.12);
     expect(share("touchdown")).toBeLessThan(0.35);
@@ -142,7 +161,7 @@ describe("simulateDrive", () => {
     const plays = ds.reduce((s, d) => s + d.scrimmagePlays, 0) / ds.length;
     expect(plays).toBeGreaterThan(4.5);
     expect(plays).toBeLessThan(8);
-  });
+  }, 30_000);
 
   it("every drive event has feed text", () => {
     const who = (id: string) => (id.startsWith(HOME.abbr) ? getPlayer(HOME, id) : getPlayer(AWAY, id));

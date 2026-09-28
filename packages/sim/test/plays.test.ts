@@ -87,8 +87,8 @@ describe("single plays", () => {
   });
 
   it("better run blocking vs worse run defense produces more rushing yards", () => {
-    const strongOL = withRatings(HOME, "OL", { runBlock: 90 });
-    const weakDL = withRatings(AWAY, "DL", { runStop: 40 });
+    const strongOL = withRatings(HOME, "OL", { runBlockPower: 90, runBlockFinesse: 90 });
+    const weakDL = withRatings(AWAY, "DL", { blockShedding: 40, tackle: 40, playRecognition: 40 });
     const base = meanYards(sample(4000, simulateRun, ctx()));
     const boosted = meanYards(sample(4000, simulateRun, ctx(FIRST_AND_TEN, strongOL, weakDL)));
     expect(boosted).toBeGreaterThan(base + 1);
@@ -97,8 +97,8 @@ describe("single plays", () => {
   it("an elite pass rush against weak protection gets more sacks", () => {
     const sackRate = (o: Team, d: Team) =>
       sample(4000, simulatePass, ctx(FIRST_AND_TEN, o, d)).filter((e) => e.kind === "pass" && e.outcome === "sack").length / 4000;
-    const leaky = withRatings(HOME, "OL", { passBlock: 40 });
-    const rushers = withRatings(AWAY, "DL", { passRush: 92 });
+    const leaky = withRatings(HOME, "OL", { passBlockPower: 40, passBlockFinesse: 40 });
+    const rushers = withRatings(AWAY, "DL", { powerMoves: 92, finesseMoves: 92 });
     expect(sackRate(leaky, rushers)).toBeGreaterThan(sackRate(HOME, AWAY) * 1.5);
   });
 
@@ -107,8 +107,8 @@ describe("single plays", () => {
       const att = sample(4000, simulatePass, ctx(FIRST_AND_TEN, o)).filter((e) => e.kind === "pass" && e.outcome !== "sack");
       return att.filter((e) => e.kind === "pass" && e.outcome === "complete").length / att.length;
     };
-    expect(compRate(withRatings(HOME, "QB", { throwAccuracy: 95 }))).toBeGreaterThan(
-      compRate(withRatings(HOME, "QB", { throwAccuracy: 45 })) + 0.08,
+    expect(compRate(withRatings(HOME, "QB", { shortAccuracy: 95, mediumAccuracy: 95, deepAccuracy: 95 }))).toBeGreaterThan(
+      compRate(withRatings(HOME, "QB", { shortAccuracy: 45, mediumAccuracy: 45, deepAccuracy: 45 })) + 0.08,
     );
   });
 

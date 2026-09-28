@@ -1,4 +1,5 @@
 import type { Player } from "../model/player.ts";
+import { passRushing } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { clamp, edge, exponential, weightedPick, type PlayContext } from "./common.ts";
@@ -41,7 +42,7 @@ export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
   };
 }
 
-/** Best non-starter by speed among WR/CB/RB: the punt returner. */
+/** Best kick returner among the non-starting WRs, CBs and RBs. */
 export function returnerOf(team: Team): Player {
   const starterIds = new Set([
     ...starters(team, "WR").map((p) => p.id),
@@ -49,7 +50,7 @@ export function returnerOf(team: Team): Player {
     ...starters(team, "RB", 1).map((p) => p.id),
   ]);
   const pool = team.roster.filter((p) => ["WR", "CB", "RB"].includes(p.position) && !starterIds.has(p.id));
-  return pool.reduce((best, p) => (p.ratings.speed > best.ratings.speed ? p : best), pool[0] ?? starters(team, "WR")[0]!);
+  return pool.reduce((best, p) => (p.ratings.kickReturn > best.ratings.kickReturn ? p : best), pool[0] ?? starters(team, "WR")[0]!);
 }
 
 /**
@@ -66,7 +67,7 @@ export function coverageUnit(team: Team): Player[] {
 
 /** Coverage player who makes the tackle on a return: speed and tackling matter. */
 export function pickCoverageTackler(rng: Rng, unit: readonly Player[]): Player {
-  return weightedPick(rng, unit, (p) => (p.ratings.speed + p.ratings.tackling) / 2);
+  return weightedPick(rng, unit, (p) => (p.ratings.speed + p.ratings.tackle + p.ratings.pursuit) / 3);
 }
 
 /** Fumble by a returner after possession. Recovery is roughly a coin flip. */
@@ -112,7 +113,7 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
 
   // Blocked: the ball goes backwards and the receiving team takes over.
   if (rng.chance(PUNT_BLOCK_RATE)) {
-    const blocker = weightedPick(rng, [...starters(ctx.defense, "DL"), ...starters(ctx.defense, "LB")], (p) => p.ratings.passRush);
+    const blocker = weightedPick(rng, [...starters(ctx.defense, "DL"), ...starters(ctx.defense, "LB")], (p) => passRushing(p.ratings));
     const spot = sit.yardline - rng.int(5, 12); // kicking team's perspective
     if (spot <= 0) {
       // Loose in the end zone: defense falls on it for a TD, or the punt team covers it for a safety.
@@ -159,8 +160,8 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
     return { ...base, grossYards: gross, returner: returner.id, fairCatch: true, nextYardline: catchSpot, duration: 6 };
   }
 
-  let returnYards = Math.max(0, Math.round(rng.normal(8 + 3 * edge(returner.ratings.speed), 6)));
-  if (rng.chance(0.03 + 0.01 * edge(returner.ratings.elusiveness))) returnYards += Math.round(15 + exponential(rng, 20));
+  let returnYards = Math.max(0, Math.round(rng.normal(8 + 3 * edge(returner.ratings.kickReturn), 6)));
+  if (rng.chance(0.03 + 0.01 * edge((returner.ratings.kickReturn + returner.ratings.elusiveness) / 2))) returnYards += Math.round(15 + exponential(rng, 20));
   const end = Math.min(100, catchSpot + returnYards);
   const touchdown = end >= 100;
   const tackler = touchdown ? null : pickCoverageTackler(rng, coverage);

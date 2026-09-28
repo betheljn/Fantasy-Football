@@ -29,7 +29,7 @@ describe("ratings", () => {
   });
 
   it("overall depends on position-relevant ratings only", () => {
-    const cannon = makeRatings({ throwPower: 99, throwAccuracy: 99, awareness: 99 });
+    const cannon = makeRatings({ throwPower: 99, shortAccuracy: 99, mediumAccuracy: 99, deepAccuracy: 99, awareness: 99, throwUnderPressure: 99 });
     expect(overall("QB", cannon)).toBeGreaterThan(80);
     expect(overall("OL", cannon)).toBeLessThan(60);
     expect(overall("K", cannon)).toBe(overall("K", makeRatings({ awareness: 99 })));

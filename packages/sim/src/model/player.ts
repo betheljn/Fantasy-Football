@@ -11,6 +11,13 @@ export interface Player {
   readonly age: number;
   readonly jersey: number;
   readonly ratings: Ratings;
+  /**
+   * Hidden ceiling for development: the overall a player can grow toward.
+   * Never shown to the user directly (scouts will estimate it).
+   */
+  readonly potential: number;
+  /** What kind of player he is at his position (e.g. "Scrambler", "Power Back"). */
+  readonly archetype: string;
 }
 
 export interface PlayerInit {
@@ -21,10 +28,14 @@ export interface PlayerInit {
   age?: number;
   jersey?: number;
   ratings?: Partial<Ratings>;
+  /** Defaults to the player's current overall (no room to grow). */
+  potential?: number;
+  archetype?: string;
 }
 
 /** Build a player; any rating not supplied defaults to 50. */
 export function createPlayer(init: PlayerInit): Player {
+  const ratings = makeRatings(init.ratings);
   return {
     id: init.id,
     firstName: init.firstName,
@@ -32,7 +43,9 @@ export function createPlayer(init: PlayerInit): Player {
     position: init.position,
     age: init.age ?? 22,
     jersey: init.jersey ?? 0,
-    ratings: makeRatings(init.ratings),
+    ratings,
+    potential: init.potential ?? overall(init.position, ratings),
+    archetype: init.archetype ?? "",
   };
 }
 

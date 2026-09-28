@@ -72,7 +72,7 @@ describe("kickoff return fumbles", () => {
 describe("defensive two-point conversion", () => {
   it("a failed try returned the length of the field scores two for the defense", () => {
     // A hopeless QB throws plenty of interceptions, so a return shows up quickly.
-    const roster = HOME.roster.map((p) => (p.position === "QB" ? { ...p, ratings: { ...p.ratings, throwAccuracy: 1, awareness: 1 } } : p));
+    const roster = HOME.roster.map((p) => (p.position === "QB" ? { ...p, ratings: { ...p.ratings, shortAccuracy: 1, mediumAccuracy: 1, deepAccuracy: 1, awareness: 1 } } : p));
     const bad: Team = { ...HOME, roster, depthChart: buildDepthChart(roster) };
     const rng = new Rng(3);
     let found = false;

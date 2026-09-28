@@ -18,6 +18,7 @@ import {
 } from "./common.ts";
 import type { IncompleteReason, PassPlayEvent } from "./events.ts";
 import { assignCoverage, COVERAGES, formationInfo, formationsFor, type Coverage } from "./formation.ts";
+import { coverageSkill, passBlocking, passRushing, routeRunning } from "../model/ratings.ts";
 
 type Band = "screen" | "short" | "intermediate" | "deep";
 const BAND_NAMES: Band[] = ["screen", "short", "intermediate", "deep"];
@@ -60,6 +61,13 @@ const COVERAGE_DEPTH: Record<Coverage, Record<Band, number>> = {
 /** Base target share by role (WR1, WR2, ...; TE1, TE2, ...; RB1, RB2). */
 const TARGET_SHARE = { WR: [0.22, 0.19, 0.15, 0.1], TE: [0.18, 0.08, 0.05], RB: [0.14, 0.06] };
 
+/**
+ * Typical winning margin of a rusher's better move over the matching blocking
+ * skill when rusher and blockers are evenly rated (the better of two moves
+ * usually beats the average blocker by a few points).
+ */
+const RUSH_WIN_BASELINE = 4;
+
 /** Separation for a receiver nobody picked up (the defense sent more rushers than it could cover). */
 const OPEN_SEPARATION = 1.5;
 
@@ -93,25 +101,33 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
     formation: formationInfo(f),
   };
 
-  // Protection vs the actual rushers. Extra rushers beyond four raise sacks and
-  // pressure; an aware QB beats the blitz with quick throws.
-  const protect = avg(o.ol, (p) => p.ratings.passBlock) * 0.85 + avg(o.rbs, (p) => p.ratings.passBlock) * 0.15;
-  const rush = avg(d.dl, (p) => p.ratings.passRush) * 0.85 + (d.blitzers.length ? avg(d.blitzers, (p) => p.ratings.passRush) : avg(d.dl, (p) => p.ratings.passRush)) * 0.15;
-  const line = (protect - rush) / 15;
+  // Protection vs the actual rushers: each rusher attacks with his better move
+  // (power or finesse) against the line's matching pass-block skill; backs help.
+  // Extra rushers beyond four raise sacks and pressure; an aware QB beats the
+  // blitz with quick throws.
+  const olPower = avg(o.ol, (p) => p.ratings.passBlockPower);
+  const olFinesse = avg(o.ol, (p) => p.ratings.passBlockFinesse);
+  const rushWin = (p: Player) => Math.max(p.ratings.powerMoves - olPower, p.ratings.finesseMoves - olFinesse);
+  const rushEdge = avg(d.dl, rushWin) * 0.85 + (d.blitzers.length ? avg(d.blitzers, rushWin) : avg(d.dl, rushWin)) * 0.15;
+  const backs = edge(avg(o.rbs, (p) => passBlocking(p.ratings)));
+  const line = -(rushEdge - RUSH_WIN_BASELINE) / 15 + 0.1 * backs;
   const extraRushers = d.rushers.length - 4;
   const hot = edge(q.awareness);
   const blitzBite = extraRushers * clamp(1 - 0.35 * hot, 0.4, 1.6);
   const extraBlockers = Math.max(0, o.tes.length - 1) + (o.rbs.length - 1);
   const home = ctx.homeField ?? 0;
+  // Play action from under center on early downs freezes the second level.
+  const playAction = f.offense.set === "under_center" && sit.down <= 2 ? edge(q.playAction) : null;
   const sackRate = clamp(
-    0.062 - 0.025 * line - 0.012 * hot - HOME_FIELD.sackRate * home + 0.018 * blitzBite - 0.006 * extraBlockers,
-    0.02,
+    (0.062 - 0.025 * line - 0.012 * hot - HOME_FIELD.sackRate * home + 0.018 * blitzBite - 0.006 * extraBlockers + (playAction !== null ? 0.004 : 0)) *
+      clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5), // slippery QBs escape
+    0.015,
     0.2,
   );
 
   if (rng.chance(sackRate)) {
     // Unblocked blitzers get home more often than their pass-rush rating suggests.
-    const sacker = weightedPick(rng, d.rushers, (p) => p.ratings.passRush * (p.position === "DL" ? 1 : 1.3));
+    const sacker = weightedPick(rng, d.rushers, (p) => passRushing(p.ratings) * (p.position === "DL" ? 1 : 1.3));
     const spot = spotBall(sit, -Math.max(1, Math.round(rng.normal(6.5, 2.2))));
     const fumble = spot.safety ? null : rollFumble(rng, qb, sacker, d, 0.12);
     const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
@@ -158,22 +174,39 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const spec = BANDS[band];
   const airYards = Math.min(spec.air(rng), sit.yardline >= 100 ? 0 : 100 - sit.yardline);
 
+  // The throw: accuracy for this depth (arm strength matters deep); pressure hurts
+  // less for QBs who can throw under pressure and on the run.
+  const acc = edge(band === "deep" ? q.deepAccuracy : band === "intermediate" ? q.mediumAccuracy : q.shortAccuracy);
+  const arm = band === "deep" ? 0.03 * edge(q.throwPower) : 0;
+  const pressurePenalty = pressured ? 0.12 * clamp(1 - 0.4 * edge(q.throwUnderPressure * 0.7 + q.throwOnTheRun * 0.3), 0.5, 1.5) : 0;
+  const paBoost = playAction !== null && (band === "intermediate" || band === "deep") ? 0.02 + 0.02 * playAction : 0;
+  // The catch point: separation on this route depth; contested balls go to the
+  // receiver's hands in traffic, or his leaping ability deep.
+  const sep = separation(r, band, shell.man);
+  const contested =
+    sep >= 0 ? 0 : band === "deep" ? 0.03 * edge((t.spectacularCatch + t.jumping - (r.cover?.ratings.jumping ?? 50) + 50) / 2) : 0.03 * edge(t.catchInTraffic);
+
   const completion = clamp(
     spec.completion +
       COVERAGE_COMPLETION[d.coverage][band] +
-      0.07 * edge(q.throwAccuracy) +
-      0.05 * r.sep +
-      0.03 * edge(t.catching) -
-      (pressured ? 0.12 : 0) +
+      0.07 * acc +
+      arm +
+      0.05 * sep +
+      0.03 * edge(t.catching) +
+      contested -
+      pressurePenalty +
+      paBoost +
       HOME_FIELD.completion * home,
     0.1,
     0.93,
   );
-  // Deep safeties make deep balls riskier; zone defenders jump intermediate routes.
+  // Deep safeties make deep balls riskier; zone defenders jump intermediate routes;
+  // defenders with ball skills catch more of them.
   const helpFactor = band === "deep" ? 1 + 0.25 * shell.deepSafeties : 1;
   const zoneFactor = !shell.man && band === "intermediate" ? 1.15 : 1;
+  const ballSkills = clamp(1 + 0.25 * edge((nearest.ratings.catching + nearest.ratings.playRecognition) / 2), 0.6, 1.4);
   const interception = clamp(
-    spec.interception * (1 - 0.35 * edge(q.throwAccuracy)) * (1 - 0.2 * r.sep) * (pressured ? 1.5 : 1) * helpFactor * zoneFactor,
+    spec.interception * (1 - 0.35 * acc) * (1 - 0.2 * sep) * (pressured ? 1.5 : 1) * helpFactor * zoneFactor * ballSkills,
     0.002,
     0.12,
   );
@@ -237,7 +270,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   // No deep help (Cover 0) or an uncovered receiver means more room to run.
   let yac = band === "screen" ? Math.max(0, rng.normal(5, 3)) : Math.max(0, rng.normal(3, 2));
   const openField = (shell.deepSafeties === 0 ? 0.04 : 0) + (r.cover ? 0 : 0.04) - 0.01 * shell.deepSafeties;
-  const breakRate = clamp(0.045 + 0.03 * edge((t.elusiveness + t.speed) / 2) + 0.02 * r.sep + openField, 0.02, 0.2);
+  const moves = edge((t.elusiveness + t.speed + t.jukeMove + t.breakTackle) / 4);
+  const breakRate = clamp(0.045 + 0.03 * moves + 0.02 * sep + openField - 0.015 * edge(nearest.ratings.tackle), 0.02, 0.2);
   if (rng.chance(breakRate)) yac += 6 + exponential(rng, 10);
 
   const spot = spotBall(sit, airYards + yac);
@@ -273,15 +307,27 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
 }
 
 /**
- * Man coverage magnifies individual matchups; zone flattens them (and leaves
- * soft spots underneath). An uncovered receiver is wide open.
+ * Separation on a route: route running for the depth (deep routes lean on
+ * speed) against man or zone coverage. Man magnifies the matchup (and release
+ * matters against press); zone flattens it and leaves soft spots underneath.
+ * An uncovered receiver is wide open.
  */
-function route(receiver: Player, cover: Player | null, share: number, man: boolean): Route {
-  if (!cover) return { receiver, cover, share, sep: OPEN_SEPARATION };
+function separation(rt: Pick<Route, "receiver" | "cover">, band: Band | "any", man: boolean): number {
+  const { receiver, cover } = rt;
+  if (!cover) return OPEN_SEPARATION;
   const rr = receiver.ratings;
   const cr = cover.ratings;
-  const raw = (rr.routeRunning * 0.6 + rr.speed * 0.4 - (cr.coverage * 0.6 + cr.speed * 0.4)) / 15;
-  return { receiver, cover, share, sep: man ? raw * 1.15 : raw * 0.7 + 0.1 };
+  const skill =
+    band === "deep" ? rr.deepRouteRunning : band === "intermediate" ? rr.mediumRouteRunning : band === "any" ? routeRunning(rr) : rr.shortRouteRunning;
+  const speedShare = band === "deep" ? 0.5 : 0.35;
+  const raw = (skill * (1 - speedShare) + rr.speed * speedShare - (coverageSkill(cr, man) * (1 - speedShare) + cr.speed * speedShare)) / 15;
+  if (!man) return raw * 0.7 + 0.1;
+  const pressBattle = cover.position === "CB" ? (rr.release - cr.press) / 40 : 0;
+  return raw * 1.15 + pressBattle;
+}
+
+function route(receiver: Player, cover: Player | null, share: number, man: boolean): Route {
+  return { receiver, cover, share, sep: separation({ receiver, cover }, "any", man) };
 }
 
 function pickBand(rng: Rng, receiver: Player, armEdge: number, coverage: Coverage, blitz: boolean): Band {

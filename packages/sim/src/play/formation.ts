@@ -2,6 +2,7 @@
 // defense covers, and who rushes the passer.
 import type { Player, PlayerId } from "../model/player.ts";
 import type { Position } from "../model/positions.ts";
+import { coverageSkill, passRushing, routeRunning } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { FormationInfo } from "./events.ts";
@@ -110,7 +111,7 @@ export function pickBlitzers(rng: Rng, d: DefenseFormation, count: number): Play
   const pool = [...d.lb, ...d.s.slice(d.coverage === "cover_0" ? 0 : 1), ...d.cb.slice(2)];
   const chosen: Player[] = [];
   for (let i = 0; i < count && pool.length > 0; i++) {
-    const weights = pool.map((p) => p.ratings.passRush * (p.position === "LB" ? 3 : 1));
+    const weights = pool.map((p) => passRushing(p.ratings) * (p.position === "LB" ? 3 : 1));
     let roll = rng.next() * weights.reduce((a, b) => a + b, 0);
     let idx = 0;
     while (roll >= weights[idx]! && idx < pool.length - 1) roll -= weights[idx++]!;
@@ -146,17 +147,18 @@ export function assignCoverage(o: OffenseFormation, d: DefenseFormation): Map<Pl
   const available = d.all.filter((p) => !rushing.has(p.id) && p.position !== "DL");
   // Deep safeties stay over the top instead of taking a man.
   const deep = COVERAGES[d.coverage].deepSafeties;
-  const safeties = available.filter((p) => p.position === "S").sort((a, b) => b.ratings.coverage - a.ratings.coverage);
+  const safeties = available.filter((p) => p.position === "S").sort((a, b) => b.ratings.zoneCoverage - a.ratings.zoneCoverage);
   const reserved = new Set(safeties.slice(0, Math.min(deep, Math.max(0, available.length - receivers(o).length))).map((p) => p.id));
   const pool = available.filter((p) => !reserved.has(p.id));
 
-  const threat = (p: Player) => (p.ratings.routeRunning + p.ratings.speed + p.ratings.catching) / 3;
+  const man = COVERAGES[d.coverage].man;
+  const threat = (p: Player) => (routeRunning(p.ratings) + p.ratings.speed + p.ratings.catching) / 3;
   const out = new Map<PlayerId, Player | null>();
   for (const r of receivers(o).sort((a, b) => threat(b) - threat(a))) {
     let best = -1;
     let bestScore = -Infinity;
     for (const [i, dfd] of pool.entries()) {
-      const score = dfd.ratings.coverage + (COVER_FIT[dfd.position]?.[r.position] ?? 0);
+      const score = coverageSkill(dfd.ratings, man) + (COVER_FIT[dfd.position]?.[r.position] ?? 0);
       if (score > bestScore) {
         bestScore = score;
         best = i;

@@ -1,6 +1,7 @@
 // Coaching decisions before the snap: which personnel the offense sends in,
 // and how the defense answers (package, coverage shell, blitz).
 import { playerOverall } from "../model/player.ts";
+import { passRushing } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { avg, clamp, edge, weightedPick } from "../play/common.ts";
@@ -55,7 +56,10 @@ export function chooseOffense(rng: Rng, team: Team, c: Situational): OffenseForm
   if (pace === "hurry" || isLongYardage(c)) shotgun = Math.max(shotgun, 0.95);
   if (isShortYardage(c)) shotgun *= 0.5;
   const set = rng.chance(shotgun) ? "shotgun" : "under_center";
-  return buildOffense(team, personnel, set, rng.chance(RB_ROTATION));
+  // RB2 spells RB1 on some snaps; a lead back with less stamina needs more breathers.
+  const rb1 = starters(team, "RB", 1)[0];
+  const rotation = RB_ROTATION * (rb1 ? clamp(1 - 0.3 * edge(rb1.ratings.stamina), 0.75, 1.4) : 1);
+  return buildOffense(team, personnel, set, rng.chance(rotation));
 }
 
 /** Prevent defense: protecting a lead late, give up anything underneath but nothing deep. */
@@ -78,9 +82,10 @@ export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: Off
   else if (offense.personnel === "12") pkg = rng.chance(0.6) ? "base" : "nickel";
   else pkg = rng.chance(0.9) ? "base" : "nickel";
 
-  // Coverage mix by situation; teams with good corners play more man.
+  // Coverage mix by situation; corners who are better in man than in zone mean more man.
   const corners = starters(team, "CB", 2);
-  const manLean = clamp(1 + 0.3 * edge(avg(corners, (p) => p.ratings.coverage)), 0.7, 1.4);
+  const manEdge = avg(corners, (p) => p.ratings.manCoverage) - avg(corners, (p) => p.ratings.zoneCoverage);
+  const manLean = clamp(1 + 0.03 * manEdge + 0.15 * edge(avg(corners, (p) => p.ratings.manCoverage)), 0.7, 1.5);
   let w: Record<Coverage, number>;
   if (isPrevent(c)) w = { cover_0: 0, cover_1: 0, cover_2: 0.3, cover_3: 0.1, cover_4: 0.6 };
   else if (pkg === "goal_line") w = { cover_0: 0.35, cover_1: 0.45, cover_2: 0, cover_3: 0.2, cover_4: 0 };
@@ -92,7 +97,7 @@ export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: Off
 
   // Blitz: Cover 0 sends two; man and zone blitzes send one. A strong front four blitzes less.
   const front = buildDefense(team, pkg, coverage);
-  const aggression = clamp(1 - 0.3 * edge(avg(front.dl, (p) => p.ratings.passRush)), 0.6, 1.4) * (long ? 1.3 : 1);
+  const aggression = clamp(1 - 0.3 * edge(avg(front.dl, (p) => passRushing(p.ratings))), 0.6, 1.4) * (long ? 1.3 : 1);
   let count = 0;
   if (isPrevent(c)) count = 0;
   else if (coverage === "cover_0") count = 2;

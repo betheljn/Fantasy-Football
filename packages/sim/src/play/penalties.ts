@@ -5,6 +5,7 @@
 // declines. An accepted live-ball foul either wipes out the play ("no play")
 // or, for personal fouls after the play, is added on to its result.
 import type { Player } from "../model/player.ts";
+import { passBlocking, passRushing, runBlocking } from "../model/ratings.ts";
 import type { Rng } from "../rng.ts";
 import { avg, clamp, edge, weightedPick, type PlayContext } from "./common.ts";
 import type { Penalty, PenaltyEvent, PenaltyResult, PenaltyType, ScrimmagePlayEvent, Situation } from "./events.ts";
@@ -132,11 +133,11 @@ export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePl
 
   // Offensive holding: more likely behind a weak line.
   const isPass = e.kind === "pass";
-  const block = avg(o.ol, (p) => (isPass ? p.ratings.passBlock : p.ratings.runBlock));
+  const block = avg(o.ol, (p) => (isPass ? passBlocking(p.ratings) : runBlocking(p.ratings)));
   candidates.push([
     "offensive_holding",
     PENALTY_RATES.offensiveHolding * clamp(1 - 0.4 * edge(block), 0.5, 1.6),
-    () => lowRatingPick(rng, [...o.ol, ...o.tes], (p) => (isPass ? p.ratings.passBlock : p.ratings.runBlock)),
+    () => lowRatingPick(rng, [...o.ol, ...o.tes], (p) => (isPass ? passBlocking(p.ratings) : runBlocking(p.ratings))),
   ]);
 
   if (e.kind === "pass") {
@@ -158,7 +159,7 @@ export function assessLiveBallPenalty(rng: Rng, ctx: PlayContext, e: ScrimmagePl
     candidates.push([
       "roughing_the_passer",
       PENALTY_RATES.roughingThePasser * (e.pressured ? 2 : 0.6),
-      () => weightedPick(rng, d.rushers, (p) => p.ratings.passRush),
+      () => weightedPick(rng, d.rushers, (p) => passRushing(p.ratings)),
     ]);
   }
   const tackler = find(e.tackler, d.all);

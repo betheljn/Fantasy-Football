@@ -63,8 +63,8 @@ export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
   // Where the returner fields it, receiving team's perspective.
   const kickLength = o.freeKick ? rng.normal(52 + 3 * edge(k.kickPower), 6) : rng.normal(62 + 2 * edge(k.kickPower), 4);
   const caught = Math.round(clamp(100 - from - kickLength, 0, 40));
-  let returnYards = Math.max(0, Math.round(rng.normal(o.freeKick ? 10 : 24 + 3 * edge(r.speed), 7)));
-  if (rng.chance(0.03 + 0.01 * edge(r.elusiveness))) returnYards += Math.round(10 + exponential(rng, 20));
+  let returnYards = Math.max(0, Math.round(rng.normal(o.freeKick ? 10 : 24 + 3 * edge(r.kickReturn), 7)));
+  if (rng.chance(0.03 + 0.01 * edge((r.kickReturn + r.elusiveness) / 2))) returnYards += Math.round(10 + exponential(rng, 20));
   const end = Math.min(100, caught + returnYards);
   const touchdown = end >= 100;
   const coverage = coverageUnit(o.kicking);

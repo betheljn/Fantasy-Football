@@ -65,7 +65,11 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 1. Player development and aging (potential, age curves by position)
 2. Retirements
 3. Draft class generation
-4. Draft order and the draft
+   3a. Detailed attributes (~50, Madden-style) for every player, used by the sim
+   3b. Hidden development traits (Normal / Impact / Star / Elite), revealed over time
+   3c. Scouting: each team's view of prospects sharpens over the season
+       (automatic + weekly scouting points; the combine reveals physicals)
+4. Draft order and the draft (teams draft from their own scouting view)
 5. Roster cuts to 72 and depth charts
 6. Multi-season loop with league history
 
