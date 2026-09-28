@@ -216,7 +216,7 @@ function pickName(rng: Rng, used?: Set<string>): [string, string] {
   }
 }
 
-function pickJersey(rng: Rng, pos: Position, used: Set<number>): number {
+export function pickJersey(rng: Rng, pos: Position, used: Set<number>): number {
   for (const [lo, hi] of JERSEY_RANGES[pos]) {
     const free = [];
     for (let n = lo; n <= hi; n++) if (!used.has(n)) free.push(n);
