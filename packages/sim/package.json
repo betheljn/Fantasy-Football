@@ -26,7 +26,8 @@
     "draftclass": "node scripts/draftclass.ts",
     "card": "node scripts/card.ts",
     "scout": "node scripts/scout.ts",
-    "draft": "node scripts/draft.ts"
+    "draft": "node scripts/draft.ts",
+    "offseason": "node scripts/offseason.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
