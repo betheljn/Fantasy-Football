@@ -7,6 +7,7 @@ import { POSITIONS, type Position } from "../model/positions.ts";
 import { playerOverall, type Player } from "../model/player.ts";
 import { Rng } from "../rng.ts";
 import { ROSTER_TEMPLATE, generatePlayer } from "../gen/team-gen.ts";
+import { DEV_TRAIT_CEILING, rollDevTrait } from "../gen/devtrait.ts";
 import type { League } from "../league/league.ts";
 
 export const DRAFT_CLASS_SIZE = 450;
@@ -99,7 +100,9 @@ export function generateDraftClass(league: League, season = league.season + 1, s
         age,
         jersey: 0, // assigned when drafted
       });
-      players.push({ ...p, potential: Math.max(potential, playerOverall(p)) });
+      const devTrait = rollDevTrait(rng, potential);
+      const ceiling = Math.min(99, potential + DEV_TRAIT_CEILING[devTrait]);
+      players.push({ ...p, potential: Math.max(ceiling, playerOverall(p)), devTrait, devTraitRevealed: false });
     }
   }
 

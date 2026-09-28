@@ -4,6 +4,7 @@ import { OVERALL_WEIGHTS, RATING_KEYS, clampRating, type RatingKey, type Ratings
 import { ROSTER_MAX, buildDepthChart, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { ARCHETYPES, type Archetype } from "./archetypes.ts";
+import { DEV_TRAIT_CEILING, rollDevTrait } from "./devtrait.ts";
 import { FIRST_NAMES, LAST_NAMES, NICKNAMES, STATES } from "./names.ts";
 
 /** How many players of each position a generated 72-man roster carries. */
@@ -132,13 +133,17 @@ export function generateTeam(rng: Rng, identity: TeamIdentity, opts: GenerateTea
 }
 
 /**
- * Give a player a development ceiling. Young players have the most room to
- * grow; by the late 20s potential is close to what the player already is.
+ * Give a player a development trait and ceiling. Young players have the most
+ * room to grow; by the late 20s potential is close to what the player already
+ * is. Better traits come with a higher ceiling. Players 22 and younger haven't
+ * finished a pro season, so their trait isn't known yet.
  */
 export function rollPotential(rng: Rng, player: Player): Player {
   const ovr = playerOverall(player);
   const room = Math.max(0, rng.normal(Math.max(0, 26 - player.age) * 2.8 + 3, 4));
-  return { ...player, potential: Math.min(99, Math.round(ovr + room)) };
+  const devTrait = rollDevTrait(rng, ovr + room);
+  const potential = Math.min(99, Math.round(ovr + room + DEV_TRAIT_CEILING[devTrait]));
+  return { ...player, potential, devTrait, devTraitRevealed: player.age >= 23 };
 }
 
 interface PlayerGenInput {

@@ -1,6 +1,6 @@
 // A Madden-style player card as console text: identity, overall, the
 // attributes that matter most for his position, then every attribute by group.
-import { playerOverall, type Player } from "../model/player.ts";
+import { DEV_TRAIT_NAMES, playerOverall, type Player } from "../model/player.ts";
 import { OVERALL_WEIGHTS, RATING_INFO, RATING_KEYS, type RatingGroup, type RatingKey } from "../model/ratings.ts";
 
 const GROUP_ORDER: RatingGroup[] = ["Physical", "Mental", "Passing", "Ball Carrier", "Receiving", "Blocking", "Defense", "Special Teams"];
@@ -19,7 +19,8 @@ export function formatPlayerCard(player: Player, teamLabel = ""): string {
   const lines: string[] = [];
   lines.push(
     `#${player.jersey} ${player.firstName} ${player.lastName}  ${player.position}${player.archetype ? ` (${player.archetype})` : ""}` +
-      `  age ${player.age}${teamLabel ? `  ${teamLabel}` : ""}  OVR ${playerOverall(player)}`,
+      `  age ${player.age}${teamLabel ? `  ${teamLabel}` : ""}  OVR ${playerOverall(player)}` +
+      `  Dev: ${player.devTraitRevealed ? DEV_TRAIT_NAMES[player.devTrait] : "?"}`,
   );
   lines.push(`  Key:  ${keyAttributes(player).map(cell).join("  ")}`);
   for (const group of GROUP_ORDER) {

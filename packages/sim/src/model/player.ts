@@ -3,6 +3,11 @@ import { makeRatings, overall, type Ratings } from "./ratings.ts";
 
 export type PlayerId = string;
 
+/** How fast a player develops (Madden-style). Hidden until revealed. */
+export type DevTrait = "normal" | "impact" | "star" | "elite";
+export const DEV_TRAITS: readonly DevTrait[] = ["normal", "impact", "star", "elite"];
+export const DEV_TRAIT_NAMES: Record<DevTrait, string> = { normal: "Normal", impact: "Impact", star: "Star", elite: "Elite" };
+
 export interface Player {
   readonly id: PlayerId;
   readonly firstName: string;
@@ -18,6 +23,10 @@ export interface Player {
   readonly potential: number;
   /** What kind of player he is at his position (e.g. "Scrambler", "Power Back"). */
   readonly archetype: string;
+  /** Development speed. Always true for the sim; whether anyone can SEE it is devTraitRevealed. */
+  readonly devTrait: DevTrait;
+  /** Known to the league: after a pro season, or through scouting. */
+  readonly devTraitRevealed: boolean;
 }
 
 export interface PlayerInit {
@@ -31,6 +40,8 @@ export interface PlayerInit {
   /** Defaults to the player's current overall (no room to grow). */
   potential?: number;
   archetype?: string;
+  devTrait?: DevTrait;
+  devTraitRevealed?: boolean;
 }
 
 /** Build a player; any rating not supplied defaults to 50. */
@@ -46,6 +57,8 @@ export function createPlayer(init: PlayerInit): Player {
     ratings,
     potential: init.potential ?? overall(init.position, ratings),
     archetype: init.archetype ?? "",
+    devTrait: init.devTrait ?? "normal",
+    devTraitRevealed: init.devTraitRevealed ?? true,
   };
 }
 

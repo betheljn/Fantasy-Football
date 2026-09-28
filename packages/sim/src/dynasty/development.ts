@@ -5,7 +5,7 @@
 // it they decline, a little more each year. Physical ratings fade from about
 // 28 on, while awareness and play recognition keep growing into the early 30s.
 import type { Position } from "../model/positions.ts";
-import { playerOverall, type Player } from "../model/player.ts";
+import { playerOverall, type DevTrait, type Player } from "../model/player.ts";
 import { OVERALL_WEIGHTS, RATING_KEYS, clampRating, type RatingKey, type Ratings } from "../model/ratings.ts";
 import { buildDepthChart, type Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
@@ -29,6 +29,17 @@ export const PEAK_AGES: Record<Position, readonly [number, number]> = {
 
 const PHYSICAL: ReadonlySet<RatingKey> = new Set(["speed", "acceleration", "agility", "stamina", "jumping"]);
 const MENTAL: ReadonlySet<RatingKey> = new Set(["awareness", "playRecognition"]);
+/**
+ * What a development trait does: growth before the peak is multiplied; Star and
+ * Elite keep improving a little at their peak; better traits decline more slowly.
+ */
+export const DEV_TRAIT_EFFECTS: Record<DevTrait, { growth: number; peakDrift: number; decline: number }> = {
+  normal: { growth: 1.0, peakDrift: 0, decline: 1.0 },
+  impact: { growth: 1.25, peakDrift: 0.3, decline: 0.92 },
+  star: { growth: 1.5, peakDrift: 0.6, decline: 0.85 },
+  elite: { growth: 1.8, peakDrift: 1.0, decline: 0.75 },
+};
+
 /** Physical ratings start to fade after this age. */
 export const PHYSICAL_DECLINE_AGE = 28;
 /** Awareness keeps growing through this age. */
@@ -39,11 +50,12 @@ export const AWARENESS_GROWTH_UNTIL = 32;
  * Young: a share of the gap to potential. Peak: small drift toward potential.
  * Past peak: a decline that steepens each year.
  */
-export function expectedGrowth(position: Position, age: number, overall: number, potential: number): number {
+export function expectedGrowth(position: Position, age: number, overall: number, potential: number, trait: DevTrait = "normal"): number {
   const [start, end] = PEAK_AGES[position];
-  if (age < start) return Math.min(8, Math.max(0, potential - overall) * (0.28 + 0.04 * (start - age)));
-  if (age <= end) return Math.max(-1, Math.min(3, (potential - overall) * 0.2));
-  return -(1.2 + 0.7 * (age - end));
+  const fx = DEV_TRAIT_EFFECTS[trait];
+  if (age < start) return Math.min(10, Math.max(0, potential - overall) * (0.28 + 0.04 * (start - age)) * fx.growth);
+  if (age <= end) return Math.max(-1, Math.min(3, (potential - overall) * 0.2 + fx.peakDrift));
+  return -(1.2 + 0.7 * (age - end)) * fx.decline;
 }
 
 /** Round to an integer, up with probability equal to the fraction (so small changes aren't lost). */
@@ -57,7 +69,7 @@ export function developPlayer(rng: Rng, player: Player): Player {
   const age = player.age + 1;
   const ovr = playerOverall(player);
   // A player-level swing (a great offseason or a lost one) on top of the curve.
-  const growth = expectedGrowth(player.position, age, ovr, player.potential) + rng.normal(0, 1.5);
+  const growth = expectedGrowth(player.position, age, ovr, player.potential, player.devTrait) + rng.normal(0, 1.5);
   const weighted = OVERALL_WEIGHTS[player.position];
 
   const ratings = {} as Ratings;
@@ -67,7 +79,8 @@ export function developPlayer(rng: Rng, player: Player): Player {
     if (MENTAL.has(key) && age <= AWARENESS_GROWTH_UNTIL) delta += 0.8;
     ratings[key] = clampRating(player.ratings[key] + stochasticRound(rng, delta));
   }
-  return { ...player, age, ratings };
+  // A season in the league shows everyone what kind of developer he is.
+  return { ...player, age, ratings, devTraitRevealed: true };
 }
 
 /** Develop every player on a team and rebuild the depth chart. */

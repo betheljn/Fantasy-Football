@@ -37,3 +37,4 @@ export * from "./dynasty/retirement.ts";
 export * from "./dynasty/draftclass.ts";
 export * from "./gen/archetypes.ts";
 export * from "./feed/playercard.ts";
+export * from "./gen/devtrait.ts";
