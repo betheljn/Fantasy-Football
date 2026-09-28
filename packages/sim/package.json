@@ -14,7 +14,12 @@
     "demo:step5": "node scripts/step5-game.ts",
     "game": "node scripts/play-game.ts",
     "demo:step6": "node scripts/play-game.ts",
-    "anim": "node scripts/anim-preview.ts"
+    "anim": "node scripts/anim-preview.ts",
+    "league": "node scripts/league-overview.ts",
+    "schedule": "node scripts/schedule.ts",
+    "season": "node scripts/season.ts",
+    "leaders": "node scripts/leaders.ts",
+    "playoffs": "node scripts/playoffs.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

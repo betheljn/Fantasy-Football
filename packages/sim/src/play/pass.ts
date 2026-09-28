@@ -58,7 +58,7 @@ const COVERAGE_DEPTH: Record<Coverage, Record<Band, number>> = {
 };
 
 /** Base target share by role (WR1, WR2, ...; TE1, TE2, ...; RB1, RB2). */
-const TARGET_SHARE = { WR: [0.25, 0.2, 0.14, 0.09], TE: [0.18, 0.08, 0.05], RB: [0.13, 0.05] };
+const TARGET_SHARE = { WR: [0.22, 0.19, 0.15, 0.1], TE: [0.18, 0.08, 0.05], RB: [0.14, 0.06] };
 
 /** Separation for a receiver nobody picked up (the defense sent more rushers than it could cover). */
 const OPEN_SEPARATION = 1.5;
@@ -149,7 +149,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
     ...o.tes.map((p, i) => route(p, assignments.get(p.id) ?? null, TARGET_SHARE.TE[i] ?? 0.04, shell.man)),
     ...o.rbs.map((p, i) => route(p, assignments.get(p.id) ?? null, TARGET_SHARE.RB[i] ?? 0.04, shell.man)),
   ];
-  const r = weightedPick(rng, routes, (rt) => rt.share * Math.exp(0.35 * rt.sep) * (rt.cover ? 1 : 1 + clamp(1 + hot, 0.3, 2)));
+  const r = weightedPick(rng, routes, (rt) => rt.share * Math.exp(0.3 * rt.sep) * (rt.cover ? 1 : 1 + clamp(1 + hot, 0.3, 2)));
   const t = r.receiver.ratings;
   // Uncovered receivers are still tackled by someone: the nearest underneath defender.
   const nearest = r.cover ?? pickTackler(rng, d, 5);

@@ -10,6 +10,10 @@ export const FIRST_NAMES = [
   "Logan", "Lucas", "Malik", "Marcus", "Mason", "Micah", "Miles", "Nate", "Nolan", "Omar",
   "Owen", "Parker", "Quentin", "Reggie", "Rhett", "Riley", "Roman", "Ryan", "Santiago", "Seth",
   "Shane", "Silas", "Terrell", "Theo", "Trent", "Trey", "Tristan", "Tyler", "Wade", "Xavier",
+  "Abel", "Amari", "Beau", "Bennett", "Bryce", "Cedric", "Clay", "Cyrus", "Damian", "Desmond",
+  "Eli", "Emeka", "Felix", "Gabe", "Gideon", "Harrison", "Hollis", "Ignacio", "Jabari", "Jericho",
+  "Kareem", "Keegan", "Lorenzo", "Luca", "Marco", "Mateo", "Nico", "Oscar", "Pierce", "Rashad",
+  "Reid", "Rocco", "Rowan", "Sawyer", "Tate", "Tobias", "Ulysses", "Vaughn", "Wesley", "Zane",
 ];
 
 export const LAST_NAMES = [
@@ -20,6 +24,12 @@ export const LAST_NAMES = [
   "Oldham", "Pace", "Pendleton", "Quarles", "Radley", "Renfro", "Rourke", "Salcedo", "Sayers", "Shelton",
   "Stroud", "Talbot", "Tatum", "Thorne", "Underhill", "Vance", "Varner", "Waddell", "Whitlock", "Winslow",
   "Yardley", "Yates", "Zeller", "Achebe", "Brannigan", "Colfax", "Draper", "Eckert", "Faulk", "Galloway",
+  "Ainsworth", "Baptiste", "Blackwood", "Brisco", "Castaneda", "Coppola", "Crandall", "Dockery", "Duvall", "Eberly",
+  "Fairweather", "Fontaine", "Gaskins", "Gorski", "Greer", "Hawthorne", "Hendrix", "Holloway", "Ingram", "Jaramillo",
+  "Kaminski", "Keel", "Kowalczyk", "Larkin", "Lomax", "Mbeki", "McAlister", "Mercado", "Nwosu", "Oduya",
+  "Ortega", "Pellegrino", "Pruitt", "Quintero", "Rasmussen", "Redd", "Rosales", "Sandoval", "Serrano", "Shepherd",
+  "Silveira", "Stallworth", "Strickland", "Sutherland", "Tillman", "Toussaint", "Truitt", "Upshaw", "Valdez", "Vickers",
+  "Wainwright", "Weatherby", "Whitaker", "Wolcott", "Woodard", "Yamamoto", "Yoder", "Zamora", "Ziegler", "Zubiri",
 ];
 
 /** The 50 US states with postal abbreviations; one team per state. */
@@ -40,4 +50,8 @@ export const NICKNAMES = [
   "Ironclads", "Anvils", "Riveters", "Foxhounds", "Ridgebacks", "Thunderheads", "Quarrymen", "Harriers",
   "Stormcrows", "Copperheads", "Kestrels", "Blacksmiths", "Drovers", "Surveyors", "Lanterns", "Sawtooths",
   "Brawlers", "Prospectors", "Tumbleweeds", "Keelboats", "Wildfire", "Longshots", "Granite", "Bandogs",
+  "Lamplighters", "Millwrights", "Tinsmiths", "Hailstones", "Northwinds", "Bluestems", "Canalmen", "Pathfinders",
+  "Wolfhounds", "Ferrymen", "Stonecutters", "Rainmakers", "Coalers", "Tidecallers", "Ropewalkers", "Sandpipers",
+  "Headwinds", "Fieldhands", "Ironwoods", "Cragsmen", "Brakemen", "Signalmen", "Duststorms", "Timberjacks",
+  "Graystones", "Switchmen",
 ];

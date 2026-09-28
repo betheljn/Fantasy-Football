@@ -48,6 +48,8 @@ export interface GameResult {
 export interface GameOptions {
   /** No home-field advantage (e.g. a championship at a neutral venue). */
   neutralSite?: boolean;
+  /** Playoff rules: no ties; a tied overtime continues into another period. */
+  playoff?: boolean;
 }
 
 export function simulateGame(home: Team, away: Team, seed: number | string, options: GameOptions = {}): GameResult {
@@ -99,13 +101,17 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
         clock = QUARTER_SECONDS;
         timeouts = { [home.abbr]: TIMEOUTS_PER_HALF, [away.abbr]: TIMEOUTS_PER_HALF };
         pending = { kind: "kickoff", kickingTeam: openingReceiver };
-      } else if (quarter === 4 && score[home.abbr] === score[away.abbr]) {
-        quarter = 5;
+      } else if (score[home.abbr] === score[away.abbr] && (quarter === 4 || (quarter >= 5 && options.playoff))) {
+        // Overtime; in the playoffs, another period after a tied one.
+        const firstPeriod = quarter === 4;
+        quarter++;
         clock = OVERTIME_SECONDS;
         timeouts = { [home.abbr]: OVERTIME_TIMEOUTS, [away.abbr]: OVERTIME_TIMEOUTS };
         periodScores[home.abbr]!.push(0);
         periodScores[away.abbr]!.push(0);
-        const receiver = rng.chance(0.5) ? home.abbr : away.abbr;
+        // A team still owed its overtime possession receives; otherwise a coin toss.
+        const owed = [home.abbr, away.abbr].filter((t) => !otPossessed.has(t));
+        const receiver = !firstPeriod && owed.length === 1 ? owed[0]! : rng.chance(0.5) ? home.abbr : away.abbr;
         pending = { kind: "kickoff", kickingTeam: other(receiver).abbr };
       } else {
         break; // end of regulation with a winner, or end of overtime

@@ -106,7 +106,7 @@ describe("home-field advantage", () => {
     const edge = (home - neutral) / (2 * n);
     expect(edge).toBeGreaterThan(0.5);
     expect(edge).toBeLessThan(4);
-  });
+  }, 30_000); // 1,600 games
 });
 
 describe("roster ages", () => {

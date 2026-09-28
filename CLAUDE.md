@@ -31,14 +31,41 @@ All players and teams are generated.
 - Positions: QB, RB, WR, TE, OL, DL, LB, CB, S, K, P, LS
 - Standard football rules: 4 downs, 10 yards, 4 quarters, touchdowns,
   field goals, punts, turnovers
+- 50 teams in 2 conferences of 5 divisions (5 teams each)
+- 20-game regular season over 22 weeks: two byes per team, one in weeks 5-11
+  and one in weeks 12-18
 
-## Current milestone (build in this order, one step at a time)
+## Milestones (build in this order, one step at a time)
+
+### Milestone 1: single-game sim (done)
 1. Data model: player (position, ratings), team (roster, depth chart)
 2. Generate two random teams
 3. Simulate a single run play and a single pass play
 4. Simulate a full drive
 5. Simulate a full game
 6. Print play-by-play and a box score to the console
+
+Follow-ups also done: home field, special-teams mishaps, penalties,
+formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
+
+### Milestone 2: league and season (done)
+1. Generate the 50-team league: conferences, divisions, team identities
+2. Build a season schedule
+3. Simulate a full regular season with standings and tiebreakers
+4. Season stats and league leaders
+5. Playoffs to a champion (7 per conference: 5 division winners + 2 wild cards,
+   top seed on a bye, neutral-site championship, no ties in the playoffs)
+
+### Milestone 3: dynasty offseason (next)
+Aging and development, retirements, draft class and draft, roster cuts to 72,
+multi-season loop.
+
+### Milestone 4: staff
+Coaches, GMs, and scouts with ratings that affect play calling, rosters, and drafting.
+
+### Milestone 5: mobile app (apps/mobile)
+Expo + React Native + Skia 2D field and play-by-play, driven by the event log
+and animation data.
 
 After each step: run it, show sample output, and stop for review.
 

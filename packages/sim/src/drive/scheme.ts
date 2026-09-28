@@ -23,7 +23,7 @@ const COVERAGE_LIST: Coverage[] = ["cover_0", "cover_1", "cover_2", "cover_3", "
 const SHOTGUN_RATE: Record<Personnel, number> = { "10": 0.95, "11": 0.78, "12": 0.45, "13": 0.1, "21": 0.12 };
 
 /** How often RB2 spells RB1 in one-back sets. */
-export const RB_ROTATION = 0.22;
+export const RB_ROTATION = 0.32;
 
 type Situational = Pick<CallContext, "situation" | "margin">;
 
