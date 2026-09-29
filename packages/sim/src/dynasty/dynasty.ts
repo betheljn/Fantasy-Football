@@ -18,6 +18,7 @@ import { generateDraftClass } from "./draftclass.ts";
 import { draftOrder, runDraft } from "./draft.ts";
 import { processRetirements } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
+import { assignContracts } from "../gen/contract-gen.ts";
 import { createScouting, runCombine, scoutSeason } from "./scouting.ts";
 import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange } from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
@@ -95,6 +96,8 @@ export function startDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS)
   const generated = generateLeague(seed);
   let league: League = { ...generated, season: generated.season - burnIn };
   for (let i = 0; i < burnIn; i++) league = quietOffseason(league);
+  // Fresh contracts for the settled league (burn-in rookies arrived without deals).
+  league = assignContracts(league);
   return { league, history: [], careers: new Map(), staffPool: [], staffCareers: new Map() };
 }
 

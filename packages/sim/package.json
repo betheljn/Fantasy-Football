@@ -29,7 +29,8 @@
     "draft": "node scripts/draft.ts",
     "offseason": "node scripts/offseason.ts",
     "dynasty": "node scripts/dynasty.ts",
-    "staff": "node scripts/staff.ts"
+    "staff": "node scripts/staff.ts",
+    "demo:cap": "node scripts/cap.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

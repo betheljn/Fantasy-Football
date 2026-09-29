@@ -1,6 +1,7 @@
 // A Madden-style player card as console text: identity, overall, the
 // attributes that matter most for his position, then every attribute by group.
 import { DEV_TRAIT_NAMES, playerOverall, type Player } from "../model/player.ts";
+import { formatContract } from "./capsheet.ts";
 import type { RangeEstimate, ScoutingReport } from "../dynasty/scouting.ts";
 import { OVERALL_WEIGHTS, RATING_INFO, RATING_KEYS, type RatingGroup, type RatingKey } from "../model/ratings.ts";
 
@@ -23,6 +24,7 @@ export function formatPlayerCard(player: Player, teamLabel = ""): string {
       `  age ${player.age}${teamLabel ? `  ${teamLabel}` : ""}  OVR ${playerOverall(player)}` +
       `  Dev: ${player.devTraitRevealed ? DEV_TRAIT_NAMES[player.devTrait] : "?"}`,
   );
+  if (player.contract) lines.push(`  Contract: ${formatContract(player.contract)}`);
   lines.push(`  Key:  ${keyAttributes(player).map(cell).join("  ")}`);
   for (const group of GROUP_ORDER) {
     const keys = RATING_KEYS.filter((k) => RATING_INFO[k].group === group);

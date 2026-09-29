@@ -89,7 +89,31 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
    sets scouting quality, head coach affects player development
 4. Staff careers: aging, firings and hirings, Coach of the Year, staff history
 
-### Milestone 5: mobile app (apps/mobile)
+### Milestone 5: contracts and salary cap (current)
+Our own cap system (all money fictional, stored in $ thousands):
+- Hard cap, starting at $300M in 2031 and growing 3-6% a year with league revenue;
+  teams must spend at least 85% of it (cap floor)
+- Contracts: yearly salary, signing bonus prorated over the deal, guaranteed years;
+  cutting a player leaves dead money on the cap
+- Homegrown credit: a player re-signed by the team that drafted him counts only
+  80% against the cap, rewarding drafting and development
+- Cap rollover: up to 10% of unused cap carries into next season
+- Performance escalators: incentives for awards and playoff runs, charged to the
+  next season's cap
+- Rookie scale: slotted 4-year deals by pick; first-rounders carry a 5th-year option
+- Player mood: home state, money, winning, playing time and the head coach all sway
+  where a free agent signs (hometown discount)
+- Staff contracts: years and salary from a separate staff budget; firing someone
+  pays out the rest of the deal
+Steps:
+1. Contract model, cap rules and market value; every player in a new league
+   starts on a contract that fits the hard cap
+2. Contract lifecycle: rookie scale for draft picks, expiring deals, re-signings
+   and extensions, escalators, cap-driven cuts with dead money, rollover
+3. Player mood and free agency: home states, preferences, bidding, hometown discount
+4. Staff contracts and the staff budget
+
+### Milestone 6: mobile app (apps/mobile)
 Expo + React Native + Skia 2D field and play-by-play, driven by the event log
 and animation data.
 

@@ -18,6 +18,15 @@ export interface Team {
   depthChart: DepthChart;
   /** Coaches and front office. Optional: without staff, the team plays with neutral, average-staff behavior. */
   staff?: TeamStaff;
+  /** Cap bookkeeping for the current season (absent = nothing carried over). */
+  cap?: TeamCap;
+}
+
+export interface TeamCap {
+  /** Unused cap carried in from last season, $K. */
+  readonly rollover: number;
+  /** Dead money charged this season from players no longer on the roster, $K. */
+  readonly deadMoney: number;
 }
 
 export function teamName(team: Team): string {

@@ -1,5 +1,6 @@
 import type { Position } from "./positions.ts";
 import { makeRatings, overall, type Ratings } from "./ratings.ts";
+import type { Contract } from "./contract.ts";
 
 export type PlayerId = string;
 
@@ -27,6 +28,8 @@ export interface Player {
   readonly devTrait: DevTrait;
   /** Known to the league: after a pro season, or through scouting. */
   readonly devTraitRevealed: boolean;
+  /** Current deal. Absent for players outside the cap system (tests, prospects). */
+  readonly contract?: Contract;
 }
 
 export interface PlayerInit {

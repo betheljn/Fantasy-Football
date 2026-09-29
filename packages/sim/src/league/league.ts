@@ -1,3 +1,4 @@
+import { assignContracts } from "../gen/contract-gen.ts";
 // The league: 50 teams, one per state, in two conferences of five
 // geographic divisions each.
 import { POSITION_UNIT, POSITIONS, BASE_STARTERS } from "../model/positions.ts";
@@ -83,7 +84,8 @@ export function generateLeague(seed: number | string, season = FIRST_SEASON): Le
       return { name: d.name, teams: [...d.states] };
     }),
   }));
-  return { seed: String(seed), season, conferences, teams };
+  // Contracts come last, from their own streams, so rosters and staff never depend on them.
+  return assignContracts({ seed: String(seed), season, conferences, teams });
 }
 
 export function allTeams(league: League): Team[] {
