@@ -7,6 +7,7 @@ import { generatePlayer, pickJersey } from "../gen/team-gen.ts";
 import type { League } from "../league/league.ts";
 import type { Prospect } from "./draftclass.ts";
 import { quickEstimate, type ScoutingState } from "./scouting.ts";
+import { NEUTRAL_KEEP_STYLE, evaluationError, evaluationInsight, keepStyle, type KeepStyle } from "./frontoffice.ts";
 
 /** Fewest players a team keeps at each position (enough to field a game-day 53). */
 export const ROSTER_MIN: Record<Position, number> = {
@@ -41,7 +42,7 @@ export interface RosterMovesResult {
  * expects. Veterans: from age and (if known) development trait. Rookies whose
  * ceiling is still hidden: from the team's scouting estimate of his potential.
  */
-export function keepValue(player: Player, potentialEstimate?: number): number {
+export function keepValue(player: Player, potentialEstimate?: number, style: KeepStyle = NEUTRAL_KEEP_STYLE, judgmentError = 0): number {
   const ovr = playerOverall(player);
   let growth: number;
   if (potentialEstimate !== undefined) {
@@ -52,7 +53,8 @@ export function keepValue(player: Player, potentialEstimate?: number): number {
   }
   // Teams discount declining veterans: a year past 29 costs as much as 2.5 points of overall.
   const aging = Math.max(0, player.age - 29) * 2.5;
-  return ovr + growth - aging;
+  // The GM's philosophy tilts youth vs experience; his eye adds his own misjudgment.
+  return ovr + growth * style.growth - aging * style.aging + judgmentError;
 }
 
 export interface RosterMoveOptions {
@@ -88,9 +90,11 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
   const value = (team: string, p: Player) => {
     if (opts.scouting && (draftedRookies.has(p.id) || prospectIds.has(p.id))) {
       const est = quickEstimate(opts.scouting, team, { player: p, projection: { overall: 0, potential: 0, value: 0 }, boardRank: 0 });
-      return keepValue(p, est.potential);
+      const t = league.teams[team];
+      const seenPotential = est.potential + evaluationInsight(t) * (p.potential - est.potential);
+      return keepValue(p, seenPotential, keepStyle(t), evaluationError(t, p.id));
     }
-    return keepValue(p);
+    return keepValue(p, undefined, keepStyle(league.teams[team]), evaluationError(league.teams[team], p.id));
   };
   const count = (roster: Player[], pos: Position) => roster.filter((p) => p.position === pos).length;
 
@@ -126,8 +130,11 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
   // 2. Cut down to the roster maximum.
   for (const team of order) {
     const roster = rosters.get(team)!;
-    while (roster.length > ROSTER_MAX) {
+    // Cut to 72, and trim any position over its maximum even on a short roster
+    // (the top-up below refills the spot at another position).
+    for (;;) {
       const over = POSITIONS.filter((pos) => count(roster, pos) > ROSTER_POSITION_MAX[pos]);
+      if (roster.length <= ROSTER_MAX && over.length === 0) break;
       const cuttable = roster.filter((p) =>
         over.length > 0 ? over.includes(p.position) : count(roster, p.position) > ROSTER_MIN[p.position],
       );

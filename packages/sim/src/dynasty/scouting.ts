@@ -15,6 +15,7 @@ import { Rng } from "../rng.ts";
 import type { League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { draftValue, type DraftClass, type Prospect } from "./draftclass.ts";
+import { scoutingQuality } from "./frontoffice.ts";
 
 export const SCOUTING = {
   pointsPerWeek: 12,
@@ -74,7 +75,8 @@ export function createScouting(league: League, draftClass: DraftClass): Scouting
     week: 0,
     combineDone: false,
     focus: Object.fromEntries(teams.map((t) => [t, {}])),
-    quality: Object.fromEntries(teams.map((t) => [t, 1])),
+    // The scouting director sets how much each point teaches the department.
+    quality: Object.fromEntries(teams.map((t) => [t, scoutingQuality(league.teams[t])])),
   };
 }
 

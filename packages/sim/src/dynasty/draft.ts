@@ -1,12 +1,13 @@
 // The draft: 7 rounds, every team picking from its own scouting board.
 import type { Position } from "../model/positions.ts";
-import type { Player, PlayerId } from "../model/player.ts";
+import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { buildDepthChart, type Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import { pickJersey } from "../gen/team-gen.ts";
 import type { League } from "../league/league.ts";
 import { PLAYOFF_ROUNDS, type PlayoffResult } from "../league/playoffs.ts";
-import type { Prospect, DraftClass } from "./draftclass.ts";
+import { POSITION_VALUE, type Prospect, type DraftClass } from "./draftclass.ts";
+import { draftStyle, evaluationError, evaluationInsight } from "./frontoffice.ts";
 import { positionNeeds, teamBoard, type BoardEntry, type ScoutingState } from "./scouting.ts";
 
 export const DRAFT_ROUNDS = 7;
@@ -104,16 +105,27 @@ export function runDraft(league: League, draftClass: DraftClass, scouting: Scout
         const needs = positionNeeds({ roster });
         const already = drafted.get(team)!;
         const has = (pos: Position) => roster.some((p) => p.position === pos);
+        // The GM's philosophy weights need and now-vs-later; his eye adds his own misjudgments.
+        const teamObj = league.teams[team];
+        const style = draftStyle(teamObj);
+        const insight = evaluationInsight(teamObj);
         const fit = (e: BoardEntry) => {
           const pos = e.prospect.player.position;
           const need = Math.max(0, needs[pos] - ROOKIE_FILLS_NEED * (already.get(pos) ?? 0));
-          const boost = (has(pos) ? 1 + NEED_WEIGHT * need : EMPTY_POSITION_BOOST) * (1 - REPEAT_POSITION_PENALTY * (already.get(pos) ?? 0));
-          return e.value * boost * (1 + rng.normal(0, 0.02));
+          const boost =
+            (has(pos) ? 1 + NEED_WEIGHT * style.needWeight * need : EMPTY_POSITION_BOOST) * (1 - REPEAT_POSITION_PENALTY * (already.get(pos) ?? 0));
+          const truth = e.prospect.player;
+          const seenOverall = e.overall + insight * (playerOverall(truth) - e.overall);
+          const seenPotential = e.potential + insight * (truth.potential - e.potential);
+          const judged = style.overallShare * seenOverall + (1 - style.overallShare) * seenPotential + evaluationError(teamObj, truth.id);
+          return judged * POSITION_VALUE[pos] * boost * (1 + rng.normal(0, 0.02));
         };
         // Consider the top of the board, plus the best player at any empty position.
+        // Each candidate is scored once, so the random variety can't contradict itself.
         const pool = board.slice(0, DRAFT_CONSIDER);
         for (const e of board) if (!has(e.prospect.player.position) && !pool.includes(e)) pool.push(e);
-        chosen = pool.reduce((best, e) => (fit(e) > fit(best) ? e : best));
+        const scored = pool.map((e) => ({ e, score: fit(e) }));
+        chosen = scored.reduce((best, x) => (x.score > best.score ? x : best)).e;
       }
 
       const p = chosen.prospect;

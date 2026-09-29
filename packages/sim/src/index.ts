@@ -47,3 +47,4 @@ export * from "./model/staff.ts";
 export * from "./gen/staff-gen.ts";
 export * from "./feed/staff.ts";
 export * from "./play/coaching.ts";
+export * from "./dynasty/frontoffice.ts";

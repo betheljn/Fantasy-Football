@@ -11,6 +11,7 @@ import { buildDepthChart, type Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import { MENTAL_GROWTH_PER_YEAR } from "../gen/team-gen.ts";
 import type { League } from "../league/league.ts";
+import { developmentFactor, type DevelopmentFactor } from "./frontoffice.ts";
 
 /** Ages (inclusive) when a player at each position is at his best. */
 export const PEAK_AGES: Record<Position, readonly [number, number]> = {
@@ -66,11 +67,13 @@ function stochasticRound(rng: Rng, x: number): number {
 }
 
 /** One offseason for one player: a year older, ratings moved. */
-export function developPlayer(rng: Rng, player: Player): Player {
+export function developPlayer(rng: Rng, player: Player, coaching: DevelopmentFactor = { growth: 1, decline: 1 }): Player {
   const age = player.age + 1;
   const ovr = playerOverall(player);
   // A player-level swing (a great offseason or a lost one) on top of the curve.
-  const growth = expectedGrowth(player.position, age, ovr, player.potential, player.devTrait) + rng.normal(0, 1.5);
+  // The head coach speeds growth and slows decline (or the opposite).
+  const expected = expectedGrowth(player.position, age, ovr, player.potential, player.devTrait);
+  const growth = expected * (expected > 0 ? coaching.growth : coaching.decline) + rng.normal(0, 1.5);
   const weighted = OVERALL_WEIGHTS[player.position];
 
   const ratings = {} as Ratings;
@@ -86,7 +89,8 @@ export function developPlayer(rng: Rng, player: Player): Player {
 
 /** Develop every player on a team and rebuild the depth chart. */
 export function developTeam(team: Team, seedPrefix: string): Team {
-  const roster = team.roster.map((p) => developPlayer(new Rng(`${seedPrefix}:develop:${p.id}`), p));
+  const coaching = developmentFactor(team);
+  const roster = team.roster.map((p) => developPlayer(new Rng(`${seedPrefix}:develop:${p.id}`), p, coaching));
   return { ...team, roster, depthChart: buildDepthChart(roster) };
 }
 
