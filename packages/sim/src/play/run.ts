@@ -22,7 +22,7 @@ import { runDefense } from "../model/ratings.ts";
 /** Rushing yards per extra blocker (or per extra defender in the box, if negative). */
 export const RUN_NUMBERS_EDGE = 0.3;
 /** Mean rushing yards before any matchup edges. */
-const RUN_BASE = 3.8;
+const RUN_BASE = 4.1;
 
 export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const { situation: sit } = ctx;

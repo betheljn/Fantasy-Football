@@ -9,6 +9,7 @@ import { playerOverall, type DevTrait, type Player } from "../model/player.ts";
 import { OVERALL_WEIGHTS, RATING_KEYS, clampRating, type RatingKey, type Ratings } from "../model/ratings.ts";
 import { buildDepthChart, type Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
+import { MENTAL_GROWTH_PER_YEAR } from "../gen/team-gen.ts";
 import type { League } from "../league/league.ts";
 
 /** Ages (inclusive) when a player at each position is at his best. */
@@ -76,7 +77,7 @@ export function developPlayer(rng: Rng, player: Player): Player {
   for (const key of RATING_KEYS) {
     let delta = key in weighted ? growth + rng.normal(0, 1.2) : 0.3 * growth + rng.normal(0, 0.8);
     if (PHYSICAL.has(key) && age > PHYSICAL_DECLINE_AGE) delta -= 0.5 * (age - PHYSICAL_DECLINE_AGE);
-    if (MENTAL.has(key) && age <= AWARENESS_GROWTH_UNTIL) delta += 0.8;
+    if (MENTAL.has(key) && age <= AWARENESS_GROWTH_UNTIL) delta += MENTAL_GROWTH_PER_YEAR;
     ratings[key] = clampRating(player.ratings[key] + stochasticRound(rng, delta));
   }
   // A season in the league shows everyone what kind of developer he is.

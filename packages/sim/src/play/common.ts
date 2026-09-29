@@ -24,9 +24,13 @@ export const HOME_FIELD = { runLine: 0.07, completion: 0.008, sackRate: 0.003 };
 /** Rating of a typical starter; the baseline all edges are measured from. */
 export const AVG_STARTER = 65;
 
-/** Rating edge: 0 at an average starter, +1 about 15 points better. */
+/**
+ * Rating edge: 0 at an average starter, +1 about 15 points better. Beyond
+ * +/-1 each extra point counts half, so a 99 is elite without being unstoppable.
+ */
 export function edge(rating: number): number {
-  return (rating - AVG_STARTER) / 15;
+  const e = (rating - AVG_STARTER) / 15;
+  return Math.abs(e) <= 1 ? e : Math.sign(e) * (1 + (Math.abs(e) - 1) * 0.5);
 }
 
 export function avg(players: readonly Player[], pick: (p: Player) => number): number {

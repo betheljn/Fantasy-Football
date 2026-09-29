@@ -16,7 +16,7 @@ export const MAX_AGE: Record<Position, number> = {
 };
 
 /** Logistic model coefficients (see retirementChance). */
-export const RETIREMENT_MODEL = { base: -3, perYearPastPeak: 0.55, perOverallPoint: 0.08, pivotOverall: 60 };
+export const RETIREMENT_MODEL = { base: -2.4, perYearPastPeak: 0.6, perOverallPoint: 0.08, pivotOverall: 60 };
 
 export interface Retiree {
   player: Player;
@@ -32,8 +32,8 @@ export interface RetirementResult {
 
 /**
  * Chance a player retires this offseason. At the end of his peak window a
- * 60-rated player retires about 5% of the time; three years later, about 21%
- * (an 80-rated one, about 5%).
+ * 60-rated player retires about 8% of the time; three years later, about 35%
+ * (an 80-rated one, about 10%).
  */
 export function retirementChance(player: Player): number {
   if (player.age >= MAX_AGE[player.position]) return 1;

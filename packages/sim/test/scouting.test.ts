@@ -100,9 +100,10 @@ describe("scouting reports", () => {
   });
 
   it("formats as a card with ranges", () => {
-    const text = formatScoutingReport(scoutingReport(SEASON, "TX", P));
+    const lineman = CLASS.prospects.find((p) => p.player.position === "OL")!;
+    const text = formatScoutingReport(scoutingReport(SEASON, "TX", lineman));
     expect(text).toMatch(/\d+-\d+/);
-    expect(text).toContain("STR"); // P is a lineman here; strength counts for his position
+    expect(text).toContain("STR"); // strength counts for linemen
     expect(text).toContain("*"); // combine-measured values
   });
 });

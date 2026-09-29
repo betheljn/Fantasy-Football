@@ -40,6 +40,13 @@ All players and teams are generated.
 - 16-team playoff: the 10 division winners (automatic bids) + the 6 highest-ranked
   other teams, all seeded 1-16 by final ranking. Fixed bracket (1v16, 8v9, ...),
   higher seed hosts, neutral-site championship, no ties
+- ~50 Madden-style attributes per player, position archetypes, hidden potential
+  and development traits (Normal / Impact / Star / Elite)
+- Offseason: retirements, development, 450-prospect draft class scouted by each
+  team over the season, 7-round draft, roster moves back to 72
+- Awards each season: MVP, Offensive/Defensive Player of the Year, Rookie of the Year
+- New dynasties start from a league settled by 15 quiet offseasons, so league
+  talent and ages stay steady over decades
 
 ## Milestones (build in this order, one step at a time)
 
@@ -61,7 +68,7 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 4. Season stats and league leaders
 5. Weekly rankings (1-25) and the playoffs to a champion
 
-### Milestone 3: dynasty offseason (current)
+### Milestone 3: dynasty offseason (done)
 1. Player development and aging (potential, age curves by position)
 2. Retirements
 3. Draft class generation
@@ -73,7 +80,7 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 5. Roster cuts to 72 and depth charts
 6. Multi-season loop with league history
 
-### Milestone 4: staff
+### Milestone 4: staff (next)
 Coaches, GMs, and scouts with ratings that affect play calling, rosters, and drafting.
 
 ### Milestone 5: mobile app (apps/mobile)

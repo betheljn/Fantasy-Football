@@ -106,6 +106,6 @@ describe("rollPotential", () => {
       young += y.potential - playerOverall(y);
       old += o.potential - playerOverall(o);
     }
-    expect(young).toBeGreaterThan(old * 3);
+    expect(young).toBeGreaterThan(old * 2);
   });
 });

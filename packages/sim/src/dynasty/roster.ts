@@ -50,7 +50,8 @@ export function keepValue(player: Player, potentialEstimate?: number): number {
     const trait = player.devTraitRevealed ? TRAIT_GROWTH_GUESS[player.devTrait] : 1.2;
     growth = Math.max(0, 25 - player.age) * 1.5 * trait;
   }
-  const aging = Math.max(0, player.age - 30) * 1.5;
+  // Teams discount declining veterans: a year past 29 costs as much as 2.5 points of overall.
+  const aging = Math.max(0, player.age - 29) * 2.5;
   return ovr + growth - aging;
 }
 

@@ -4,6 +4,9 @@ import { OVERALL_WEIGHTS, RATING_KEYS, clampRating, type RatingKey, type Ratings
 import { ROSTER_MAX, buildDepthChart, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { ARCHETYPES, type Archetype } from "./archetypes.ts";
+
+/** Awareness and play recognition gained per pro season (matches development). */
+export const MENTAL_GROWTH_PER_YEAR = 0.8;
 import { DEV_TRAIT_CEILING, rollDevTrait } from "./devtrait.ts";
 import { FIRST_NAMES, LAST_NAMES, NICKNAMES, STATES } from "./names.ts";
 
@@ -140,7 +143,7 @@ export function generateTeam(rng: Rng, identity: TeamIdentity, opts: GenerateTea
  */
 export function rollPotential(rng: Rng, player: Player): Player {
   const ovr = playerOverall(player);
-  const room = Math.max(0, rng.normal(Math.max(0, 26 - player.age) * 2.8 + 3, 4));
+  const room = Math.max(0, rng.normal(Math.max(0, 26 - player.age) * 1.6 + 2, 4));
   const devTrait = rollDevTrait(rng, ovr + room);
   const potential = Math.min(99, Math.round(ovr + room + DEV_TRAIT_CEILING[devTrait]));
   return { ...player, potential, devTrait, devTraitRevealed: player.age >= 23 };
@@ -180,6 +183,13 @@ export function generatePlayer(rng: Rng, input: PlayerGenInput): Player {
         ? clampRating(talent + (offsets[key] ?? 0) + rng.normal(0, 6))
         : clampRating((offRole[key] ?? 25) + (offsets[key] ?? 0) + (talent - 60) * 0.3 + rng.normal(0, 7));
   }
+
+  // Experience: awareness and play recognition grow each pro season through 32
+  // (the same growth development applies), so a generated veteran looks like
+  // one who came up through the league.
+  const experience = MENTAL_GROWTH_PER_YEAR * (Math.min(age, 32) - 22);
+  ratings.awareness = clampRating(ratings.awareness + experience);
+  ratings.playRecognition = clampRating(ratings.playRecognition + experience);
 
   const [firstName, lastName] = pickName(rng, input.usedNames);
   return createPlayer({

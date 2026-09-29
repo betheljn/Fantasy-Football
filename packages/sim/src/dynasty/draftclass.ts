@@ -17,13 +17,23 @@ export const MIN_SPECIALISTS = 6;
 /** Talent of a class. Tuned so the league neither improves nor declines over the decades. */
 export const DRAFT_TALENT = {
   /** Mean and spread of true potential. */
-  potentialMean: 62,
+  potentialMean: 57,
   potentialSd: 9,
   /** How far below potential a 21-year-old starts, on average. */
-  gapAt21: 12,
+  gapAt21: 11,
   gapSd: 4,
   /** Each extra year of age closes the gap by this much. */
   gapPerYear: 2,
+};
+
+/**
+ * Per-position shift to prospect potential, so each position's talent level in
+ * a settled league matches a freshly generated one (what the play sim is
+ * calibrated on). Long careers (QB, specialists) pile up talent, so their
+ * classes are a bit weaker; short careers (RB, CB) need stronger classes.
+ */
+export const POSITION_CLASS_ADJUST: Record<Position, number> = {
+  QB: -3.4, RB: 3.4, WR: 0, TE: 0, OL: -1.4, DL: -1.4, LB: 0, CB: 2.3, S: 0.2, K: -7.1, P: -9.1, LS: -3.4,
 };
 
 /** Scouting consensus noise (standard deviation) on overall and on potential. */
@@ -90,7 +100,7 @@ export function generateDraftClass(league: League, season = league.season + 1, s
     for (let i = 0; i < counts[pos]; i++) {
       n++;
       const age = rng.pick([21, 21, 22, 22, 22, 23]);
-      const potential = Math.round(Math.max(40, Math.min(95, rng.normal(t.potentialMean, t.potentialSd))));
+      const potential = Math.round(Math.max(40, Math.min(95, rng.normal(t.potentialMean + POSITION_CLASS_ADJUST[pos], t.potentialSd))));
       const gap = Math.max(2, rng.normal(t.gapAt21 - t.gapPerYear * (age - 21), t.gapSd));
       const p = generatePlayer(rng, {
         id: `D${season}-${String(n).padStart(3, "0")}`,

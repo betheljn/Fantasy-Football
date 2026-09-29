@@ -21,9 +21,9 @@ describe("retirementChance", () => {
     const end = PEAK_AGES.WR[1];
     const chances = [end - 4, end, end + 2, end + 4, end + 6].map((a) => retirementChance(player("WR", a, 60)));
     for (let i = 1; i < chances.length; i++) expect(chances[i]!).toBeGreaterThan(chances[i - 1]!);
-    expect(chances[0]!).toBeLessThan(0.02);
-    expect(chances[1]!).toBeGreaterThan(0.03);
-    expect(chances[1]!).toBeLessThan(0.08);
+    expect(chances[0]!).toBeLessThan(0.03);
+    expect(chances[1]!).toBeGreaterThan(0.05);
+    expect(chances[1]!).toBeLessThan(0.12);
   });
 
   it("good players keep playing longer than fringe ones", () => {
