@@ -6,6 +6,7 @@ import { starters, type Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import { NICKNAMES, STATES } from "../gen/names.ts";
 import { generateTeam } from "../gen/team-gen.ts";
+import { generateStaff } from "../gen/staff-gen.ts";
 
 export interface Division {
   name: string;
@@ -75,7 +76,9 @@ export function generateLeague(seed: number | string, season = FIRST_SEASON): Le
       for (const abbr of d.states) {
         const state = stateName.get(abbr);
         if (!state) throw new Error(`Unknown state ${abbr}`);
-        teams[abbr] = generateTeam(new Rng(`league:${seed}:team:${abbr}`), { state, abbr, nickname: nicknames[i++]! });
+        const team = generateTeam(new Rng(`league:${seed}:team:${abbr}`), { state, abbr, nickname: nicknames[i++]! });
+        // Staff from their own stream, so rosters don't depend on them.
+        teams[abbr] = { ...team, staff: generateStaff(new Rng(`league:${seed}:staff:${abbr}`), abbr) };
       }
       return { name: d.name, teams: [...d.states] };
     }),

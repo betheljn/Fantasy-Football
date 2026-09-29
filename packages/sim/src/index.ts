@@ -43,3 +43,6 @@ export * from "./dynasty/draft.ts";
 export * from "./dynasty/roster.ts";
 export * from "./dynasty/awards.ts";
 export * from "./dynasty/dynasty.ts";
+export * from "./model/staff.ts";
+export * from "./gen/staff-gen.ts";
+export * from "./feed/staff.ts";

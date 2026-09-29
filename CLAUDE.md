@@ -80,8 +80,14 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 5. Roster cuts to 72 and depth charts
 6. Multi-season loop with league history
 
-### Milestone 4: staff (next)
-Coaches, GMs, and scouts with ratings that affect play calling, rosters, and drafting.
+### Milestone 4: staff (current)
+1. Staff model and generation: head coach, offensive and defensive coordinators,
+   general manager, scouting director (ratings, schemes, tendencies)
+2. Coaching in games: schemes shape play calling; quality gives small edges;
+   head coach drives 4th-down aggression, clock management, discipline
+3. Front office and development: GM shapes drafting and cuts, scouting director
+   sets scouting quality, head coach affects player development
+4. Staff careers: aging, firings and hirings, Coach of the Year, staff history
 
 ### Milestone 5: mobile app (apps/mobile)
 Expo + React Native + Skia 2D field and play-by-play, driven by the event log

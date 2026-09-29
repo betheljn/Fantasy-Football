@@ -1,5 +1,6 @@
 import { BASE_STARTERS, POSITIONS, type Position } from "./positions.ts";
 import { playerOverall, type Player, type PlayerId } from "./player.ts";
+import type { TeamStaff } from "./staff.ts";
 
 export const ROSTER_MAX = 72;
 export const GAME_DAY_ACTIVES = 53;
@@ -15,6 +16,8 @@ export interface Team {
   readonly abbr: string;
   readonly roster: Player[];
   depthChart: DepthChart;
+  /** Coaches and front office. Optional: without staff, the team plays with neutral, average-staff behavior. */
+  staff?: TeamStaff;
 }
 
 export function teamName(team: Team): string {
