@@ -43,6 +43,8 @@ interface StaffBase {
   readonly age: number;
   /** Seasons in this role anywhere. */
   readonly experience: number;
+  /** Seasons with the current team. */
+  readonly tenure: number;
 }
 
 export interface HeadCoach extends StaffBase {

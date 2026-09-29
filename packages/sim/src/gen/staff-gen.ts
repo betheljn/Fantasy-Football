@@ -28,7 +28,8 @@ function base(rng: Rng, id: string, role: StaffRole) {
   const [lo, hi] = AGES[role];
   const age = rng.int(lo, hi);
   const experience = Math.max(0, Math.min(age - 30, Math.round(Math.abs(rng.normal(0, 6)))));
-  return { id, firstName: rng.pick(FIRST_NAMES), lastName: rng.pick(LAST_NAMES), age, experience };
+  const tenure = rng.int(0, Math.min(experience, 6));
+  return { id, firstName: rng.pick(FIRST_NAMES), lastName: rng.pick(LAST_NAMES), age, experience, tenure };
 }
 
 export function generateHeadCoach(rng: Rng, id: string): HeadCoach {

@@ -60,6 +60,15 @@ describe("advanceSeason", () => {
     expect(veteran.stats.passYds).toBeGreaterThan(ONE.careers.get(veteran.id)!.stats.passYds);
   });
 
+  it("carries staff careers, the unemployed pool and last season's records forward", () => {
+    expect(ONE.history[0]!.coachOfTheYear).not.toBeNull();
+    expect(ONE.lastWinPct!.size).toBe(50);
+    const hc = allTeams(TWO.league)[0]!.staff!.hc;
+    const career = TWO.staffCareers.get(hc.id);
+    if (hc.tenure >= 1) expect(career!.record.wins + career!.record.losses).toBeGreaterThan(0);
+    for (const m of TWO.staffPool) expect(TWO.staffCareers.get(m.id)!.status).toBe("unemployed");
+  });
+
   it("uses last season's division finish for the next schedule", () => {
     expect(Object.keys(ONE.slotOrder!)).toHaveLength(10);
     for (const teams of Object.values(ONE.slotOrder!)) expect(teams).toHaveLength(5);

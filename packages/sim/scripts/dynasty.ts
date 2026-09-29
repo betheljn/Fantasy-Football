@@ -18,6 +18,12 @@ const done: Dynasty = runDynasty(start, seasons, (d) => {
   console.log(`      MVP ${fmt("MVP")}: ${award("MVP")?.line ?? ""}`);
   console.log(`      DPOY ${fmt("Defensive Player of the Year")}   ROY ${fmt("Rookie of the Year")}`);
   console.log(`      #1 pick: ${h.topPicks[0]!.player} (${h.topPicks[0]!.position}) to ${h.topPicks[0]!.team}`);
+  const coty = h.coachOfTheYear;
+  if (coty) console.log(`      Coach of the Year: ${coty.name} (${coty.team}, ${coty.record}, ${coty.overExpected >= 0 ? "+" : ""}${coty.overExpected.toFixed(1)} wins over expected)`);
+  const hc = h.staffChanges.filter((c) => c.role === "HC");
+  const other = h.staffChanges.length - hc.length;
+  for (const c of hc) console.log(`      ${c.team} HC: ${c.out ?? "-"} (${c.reason}) -> ${c.in} (${c.from})`);
+  if (other) console.log(`      + ${other} coordinator/front office change${other === 1 ? "" : "s"}`);
 });
 const secs = (performance.now() - t0) / 1000;
 
@@ -38,6 +44,17 @@ leader("Receiving yards", "recYds");
 leader("Tackles", "tackles");
 leader("Sacks", "sacks");
 leader("Interceptions", "defInt");
+
+const coaches = [...done.staffCareers.values()].filter((c) => c.record.wins + c.record.losses >= 40);
+const pct = (c: (typeof coaches)[number]) => (c.record.wins + c.record.ties / 2) / (c.record.wins + c.record.losses + c.record.ties);
+console.log("\nWinningest head coaches (40+ games):");
+for (const c of coaches.sort((a, b) => pct(b) - pct(a)).slice(0, 5)) {
+  const teams = [...new Set(c.stints.filter((s) => s.role === "HC").map((s) => s.team))].join("/");
+  console.log(`  ${c.name.padEnd(20)} ${teams.padEnd(9)} ${c.record.wins}-${c.record.losses}  playoffs ${c.playoffTrips}  titles ${c.titles}  COY ${c.coachOfTheYear}  ${c.status}`);
+}
+const allChanges = done.history.flatMap((h) => h.staffChanges);
+const count = (f: (c: (typeof allChanges)[number]) => boolean) => allChanges.filter(f).length;
+console.log(`Staff turnover: ${count((c) => c.role === "HC")} head coach changes (${count((c) => c.role === "HC" && c.reason === "fired")} fired, ${count((c) => c.role === "HC" && c.from === "promoted coordinator")} coordinators promoted), ${allChanges.length} changes in all`);
 
 const end = talentSnapshot(done.league);
 console.log(`\nLeague talent: starters ${startTalent.starterOverall.toFixed(1)} -> ${end.starterOverall.toFixed(1)}, average age ${startTalent.averageAge.toFixed(1)} -> ${end.averageAge.toFixed(1)}, players 80+ ${startTalent.stars} -> ${end.stars}`);

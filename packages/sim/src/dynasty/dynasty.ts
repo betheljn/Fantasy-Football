@@ -19,6 +19,9 @@ import { draftOrder, runDraft } from "./draft.ts";
 import { processRetirements } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
 import { createScouting, runCombine, scoutSeason } from "./scouting.ts";
+import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange } from "./staffcareers.ts";
+import type { StaffMember } from "../model/staff.ts";
+import { computeRecords, winPct } from "../league/standings.ts";
 
 /** League-wide talent and age, recorded each season to watch for drift. */
 export interface TalentSnapshot {
@@ -46,6 +49,9 @@ export interface SeasonRecord {
   /** The five best players who retired after this season. */
   notableRetirements: Array<{ player: string; position: string; team: string; age: number; overall: number }>;
   talent: TalentSnapshot;
+  coachOfTheYear: CoachOfTheYear | null;
+  /** Firings, retirements and hires this offseason. */
+  staffChanges: StaffChange[];
 }
 
 export interface CareerLine {
@@ -66,6 +72,11 @@ export interface Dynasty {
   careers: Map<PlayerId, CareerLine>;
   /** Division slot order for the next schedule (last season's finish). */
   slotOrder?: Record<string, string[]>;
+  /** Coaches and executives out of work, available to hire. */
+  staffPool: StaffMember[];
+  staffCareers: Map<string, StaffCareer>;
+  /** Each team's win pct last season (for multi-year job reviews). */
+  lastWinPct?: Map<string, number>;
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -84,7 +95,7 @@ export function startDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS)
   const generated = generateLeague(seed);
   let league: League = { ...generated, season: generated.season - burnIn };
   for (let i = 0; i < burnIn; i++) league = quietOffseason(league);
-  return { league, history: [], careers: new Map() };
+  return { league, history: [], careers: new Map(), staffPool: [], staffCareers: new Map() };
 }
 
 /**
@@ -155,8 +166,11 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
   }
 
   // Offseason.
+  // Staff moves come first: a new GM runs the draft, a new head coach shapes development.
   const order = draftOrder(playoffs);
-  const retired = processRetirements(league);
+  const staff = runStaffOffseason(league, season.results, playoffs, order, dynasty.staffPool, dynasty.staffCareers, dynasty.lastWinPct);
+  const records = computeRecords(league, season.results);
+  const retired = processRetirements(staff.league);
   const developed = developLeague(retired.league);
   const draft = runDraft(developed, draftClass, scouting, order);
   const moves = makeRosterMoves(draft.league, { undrafted: draft.undrafted, scouting, order });
@@ -179,6 +193,8 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
       .slice(0, 5)
       .map((r) => ({ player: fullName(r.player), position: r.player.position, team: r.team, age: r.player.age, overall: r.overall })),
     talent: talentSnapshot(league),
+    coachOfTheYear: staff.coachOfTheYear,
+    staffChanges: staff.changes,
   };
 
   return {
@@ -186,6 +202,9 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
     history: [...dynasty.history, record],
     careers,
     slotOrder: Object.fromEntries(standings.map((d) => [d.division, d.teams.map((t) => t.team)])),
+    staffPool: staff.pool,
+    staffCareers: staff.careers,
+    lastWinPct: new Map([...records.values()].map((r) => [r.team, winPct(r)])),
   };
 }
 

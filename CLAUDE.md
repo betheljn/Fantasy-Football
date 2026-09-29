@@ -80,7 +80,7 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
 5. Roster cuts to 72 and depth charts
 6. Multi-season loop with league history
 
-### Milestone 4: staff (current)
+### Milestone 4: staff (done)
 1. Staff model and generation: head coach, offensive and defensive coordinators,
    general manager, scouting director (ratings, schemes, tendencies)
 2. Coaching in games: schemes shape play calling; quality gives small edges;
