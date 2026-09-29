@@ -8,6 +8,7 @@ import type { Situation } from "../play/events.ts";
 import { fieldGoalDistance, fieldGoalProbability, kickerOf } from "../play/kicking.ts";
 import { hasTwoMinuteWarning, TWO_MINUTE_WARNING, type Pace } from "./clock.ts";
 import type { OffenseSet, Personnel } from "../play/formation.ts";
+import { aggression, offenseProfile, playsUpTempo } from "../play/coaching.ts";
 
 export type PlayCall = "run" | "pass" | "punt" | "field_goal" | "kneel" | "spike";
 
@@ -34,7 +35,7 @@ export function halfSecondsLeft(s: Situation): number {
 export const PERSONNEL_PASS_ADJ: Record<Personnel, number> = { "10": 0.15, "11": 0.04, "12": -0.08, "13": -0.25, "21": -0.12 };
 export const SET_PASS_ADJ: Record<OffenseSet, number> = { shotgun: 0.05, under_center: -0.1 };
 
-export function paceFor(c: Pick<CallContext, "situation" | "margin">): Pace {
+export function paceFor(c: Pick<CallContext, "situation" | "margin"> & { offense?: Team }): Pace {
   const s = c.situation;
   const late = halfSecondsLeft(s);
   if (s.quarter >= 4 && c.margin > 0 && late <= 300) return "milk";
@@ -42,7 +43,7 @@ export function paceFor(c: Pick<CallContext, "situation" | "margin">): Pace {
   // Tied late: play to win rather than let the clock run out.
   if (s.quarter >= 4 && c.margin === 0 && late <= 120) return "hurry";
   if (s.quarter === 2 && late <= 120) return "hurry";
-  return "normal";
+  return playsUpTempo(c.offense) ? "tempo" : "normal";
 }
 
 /** Team pass tendency from personnel: a strong QB relative to the RB leans pass. */
@@ -67,6 +68,7 @@ export function passProbability(c: CallContext): number {
   if (pace === "milk") p -= 0.3;
   if (c.personnel) p += PERSONNEL_PASS_ADJ[c.personnel];
   if (c.set) p += SET_PASS_ADJ[c.set];
+  p += offenseProfile(c.offense).passLean;
   return clamp(p, 0.05, 0.95);
 }
 
@@ -135,7 +137,13 @@ export function callPlay(rng: Rng, c: CallContext): PlayCall {
       (s.distance <= 2 && s.yardline >= 55 && fgProb < 0.8) ||
       (s.distance <= 4 && s.yardline >= 60 && fgProb < 0.45) || // no-man's land
       (s.distance <= 2 && toGoal <= 5);
-    if (goForIt) return scrimmage(rng, c);
+    // The head coach's aggressiveness bends the conventional call either way.
+    const a = aggression(c.offense);
+    let go = goForIt;
+    if (!go && a > 0 && s.distance <= 2 && s.yardline >= 35) go = rng.chance(0.6 * a);
+    if (!go && a > 0 && s.distance <= 4 && s.yardline >= 50 && fgProb < 0.7) go = rng.chance(0.4 * a);
+    if (go && a < 0 && toGoal > 5) go = !rng.chance(-0.6 * a);
+    if (go) return scrimmage(rng, c);
     if (fgProb >= 0.45 && fgHelps) return "field_goal";
     return "punt";
   }
@@ -163,6 +171,10 @@ export function timeoutCaller(c: CallContext): "offense" | "defense" | null {
  * Go for two per a simplified late-game chart (margin after the TD, before the try);
  * otherwise kick.
  */
-export function goForTwo(quarter: number, marginAfterTd: number): boolean {
-  return quarter >= 4 && [-10, -5, -2, 1, 5, 12].includes(marginAfterTd);
+export function goForTwo(quarter: number, marginAfterTd: number, aggressiveness = 50): boolean {
+  const chart = [-10, -5, -2, 1, 5, 12];
+  // Aggressive coaches start chasing the chart in the third quarter; cautious ones only at the end.
+  const from = aggressiveness >= 70 ? 3 : 4;
+  if (aggressiveness <= 30) return quarter >= 4 && (marginAfterTd === -2 || marginAfterTd === 1);
+  return quarter >= from && chart.includes(marginAfterTd);
 }

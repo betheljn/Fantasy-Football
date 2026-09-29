@@ -9,6 +9,7 @@ import { simulatePass } from "../play/pass.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
 import { chooseDefense, chooseOffense } from "./scheme.ts";
+import { clockMistakeChance } from "../play/coaching.ts";
 import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
 export type DriveResultType =
@@ -237,7 +238,11 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
     // --- between plays: timeout, or the clock runs to the next snap ---
     if (clockRunning) {
       const next = callContext();
-      const caller = timeoutCaller(next);
+      let caller = timeoutCaller(next);
+      // A poor clock manager sometimes lets the moment pass.
+      const callerTeam = caller === "offense" ? offense : caller === "defense" ? defense : undefined;
+      const miss = clockMistakeChance(callerTeam);
+      if (caller && miss > 0 && rng.chance(miss)) caller = null;
       if (caller) {
         const team = caller === "offense" ? off : def;
         timeouts[team]! -= 1;
@@ -304,7 +309,7 @@ export function simulateConversion(
   marginAfterTd: number,
 ): ConversionEvent {
   const base = { kind: "conversion" as const, offense: team.abbr, defense: other.abbr, team: team.abbr, duration: 0 };
-  if (goForTwo(quarter, marginAfterTd)) {
+  if (goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness)) {
     const start: Situation = { quarter, clock, down: 1, distance: 2, yardline: 98 };
     const ctx: PlayContext = { offense: team, defense: other, situation: start };
     const play = rng.chance(0.6) ? simulatePass(rng, ctx) : simulateRun(rng, ctx);

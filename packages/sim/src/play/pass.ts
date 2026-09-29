@@ -19,6 +19,7 @@ import {
 import type { IncompleteReason, PassPlayEvent } from "./events.ts";
 import { assignCoverage, COVERAGES, formationInfo, formationsFor, type Coverage } from "./formation.ts";
 import { coverageSkill, passBlocking, passRushing, routeRunning } from "../model/ratings.ts";
+import { coachingEdges, offenseProfile } from "./coaching.ts";
 
 type Band = "screen" | "short" | "intermediate" | "deep";
 const BAND_NAMES: Band[] = ["screen", "short", "intermediate", "deep"];
@@ -170,7 +171,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   // Uncovered receivers are still tackled by someone: the nearest underneath defender.
   const nearest = r.cover ?? pickTackler(rng, d, 5);
 
-  const band = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0);
+  const band = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0, offenseProfile(ctx.offense).deep);
   const spec = BANDS[band];
   const airYards = Math.min(spec.air(rng), sit.yardline >= 100 ? 0 : 100 - sit.yardline);
 
@@ -196,7 +197,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
       contested -
       pressurePenalty +
       paBoost +
-      HOME_FIELD.completion * home,
+      HOME_FIELD.completion * home +
+      coachingEdges(ctx.offense, ctx.defense).completion,
     0.1,
     0.93,
   );
@@ -330,7 +332,7 @@ function route(receiver: Player, cover: Player | null, share: number, man: boole
   return { receiver, cover, share, sep: separation({ receiver, cover }, "any", man) };
 }
 
-function pickBand(rng: Rng, receiver: Player, armEdge: number, coverage: Coverage, blitz: boolean): Band {
+function pickBand(rng: Rng, receiver: Player, armEdge: number, coverage: Coverage, blitz: boolean, schemeDeep = 1): Band {
   const shape = COVERAGE_DEPTH[coverage];
   // Against the blitz the ball comes out quickly.
   const quick: Record<Band, number> = blitz ? { screen: 1.3, short: 1.15, intermediate: 0.95, deep: 0.8 } : { screen: 1, short: 1, intermediate: 1, deep: 1 };
@@ -338,7 +340,7 @@ function pickBand(rng: Rng, receiver: Player, armEdge: number, coverage: Coverag
   if (receiver.position === "RB") {
     weights = { screen: 0.45, short: 0.5, intermediate: 0.05, deep: 0 };
   } else {
-    const deep = clamp(0.12 + 0.03 * armEdge, 0.05, 0.2);
+    const deep = clamp((0.12 + 0.03 * armEdge) * schemeDeep, 0.05, 0.24);
     weights = { screen: 0.06, short: 0.54 - (deep - 0.12), intermediate: 0.28, deep };
   }
   return weightedPick(rng, BAND_NAMES, (b) => weights[b] * shape[b] * quick[b]);

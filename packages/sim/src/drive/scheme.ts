@@ -2,6 +2,7 @@
 // and how the defense answers (package, coverage shell, blitz).
 import { playerOverall } from "../model/player.ts";
 import { passRushing } from "../model/ratings.ts";
+import { defenseProfile, offenseProfile } from "../play/coaching.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { avg, clamp, edge, weightedPick } from "../play/common.ts";
@@ -50,11 +51,14 @@ export function chooseOffense(rng: Rng, team: Team, c: Situational): OffenseForm
   else if (pace === "hurry" || isLongYardage(c)) w = { "11": 0.72, "10": 0.2, "12": 0.08, "13": 0, "21": 0 };
   else if (pace === "milk") w = { "12": 0.35, "21": 0.2, "11": 0.4, "13": 0.05, "10": 0 };
   else w = { "11": 0.64 - (twoTe - 0.2), "12": twoTe, "21": 0.08, "13": 0.04, "10": 0.04 };
-  const personnel = weightedPick(rng, PERSONNEL_LIST, (p) => w[p]);
+  // The coordinator's scheme tilts the personnel mix.
+  const profile = offenseProfile(team);
+  const personnel = weightedPick(rng, PERSONNEL_LIST, (p) => w[p] * (profile.personnel[p] ?? 1));
 
   let shotgun = SHOTGUN_RATE[personnel];
   if (pace === "hurry" || isLongYardage(c)) shotgun = Math.max(shotgun, 0.95);
   if (isShortYardage(c)) shotgun *= 0.5;
+  shotgun = clamp(shotgun + profile.shotgun, 0.02, 0.98);
   const set = rng.chance(shotgun) ? "shotgun" : "under_center";
   // RB2 spells RB1 on some snaps; a lead back with less stamina needs more breathers.
   const rb1 = starters(team, "RB", 1)[0];
@@ -93,11 +97,14 @@ export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: Off
   else if (long) w = { cover_0: 0.05, cover_1: 0.25, cover_2: 0.25, cover_3: 0.2, cover_4: 0.25 };
   else if (s.down >= 3) w = { cover_0: 0.12, cover_1: 0.38, cover_2: 0.1, cover_3: 0.3, cover_4: 0.1 };
   else w = { cover_0: 0.04, cover_1: 0.28, cover_2: 0.15, cover_3: 0.35, cover_4: 0.18 };
-  const coverage = weightedPick(rng, COVERAGE_LIST, (k) => w[k] * (k === "cover_0" || k === "cover_1" ? manLean : 1));
+  // The coordinator's scheme tilts the coverage mix.
+  const scheme = defenseProfile(team);
+  const schemeWeight = (k: Coverage) => (k === "cover_0" || k === "cover_1" ? scheme.man : k === "cover_3" ? scheme.cover3 : scheme.twoHigh);
+  const coverage = weightedPick(rng, COVERAGE_LIST, (k) => w[k] * (k === "cover_0" || k === "cover_1" ? manLean : 1) * schemeWeight(k));
 
   // Blitz: Cover 0 sends two; man and zone blitzes send one. A strong front four blitzes less.
   const front = buildDefense(team, pkg, coverage);
-  const aggression = clamp(1 - 0.3 * edge(avg(front.dl, (p) => passRushing(p.ratings))), 0.6, 1.4) * (long ? 1.3 : 1);
+  const aggression = clamp(1 - 0.3 * edge(avg(front.dl, (p) => passRushing(p.ratings))), 0.6, 1.4) * (long ? 1.3 : 1) * scheme.blitz;
   let count = 0;
   if (isPrevent(c)) count = 0;
   else if (coverage === "cover_0") count = 2;

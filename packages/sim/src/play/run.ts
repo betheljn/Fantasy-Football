@@ -18,6 +18,7 @@ import {
 import type { RunPlayEvent } from "./events.ts";
 import { boxDefenders, formationInfo, formationsFor, runBlockers } from "./formation.ts";
 import { runDefense } from "../model/ratings.ts";
+import { coachingEdges, offenseProfile } from "./coaching.ts";
 
 /** Rushing yards per extra blocker (or per extra defender in the box, if negative). */
 export const RUN_NUMBERS_EDGE = 0.3;
@@ -31,7 +32,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const d = f.defense;
 
   // Tailback, fullback (21 personnel), or a designed QB run (more for mobile QBs).
-  const qbShare = clamp(0.05 + 0.03 * edge(o.qb.ratings.speed), 0.02, 0.12);
+  const qbShare = clamp(0.05 + 0.03 * edge(o.qb.ratings.speed), 0.02, 0.12) * offenseProfile(ctx.offense).qbRun;
   const [tailback, fullback] = o.rbs;
   const carriers: Array<[Player, number]> = [
     [tailback!, fullback ? 0.82 : 1],
@@ -53,7 +54,8 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const block = avg(blockers, blockQuality);
   const stop = avg(box, (p) => runDefense(p.ratings));
   const numbers = blockers.length - box.length;
-  const line = (block - stop) / 15 + RUN_NUMBERS_EDGE * numbers + HOME_FIELD.runLine * (ctx.homeField ?? 0);
+  const line =
+    (block - stop) / 15 + RUN_NUMBERS_EDGE * numbers + HOME_FIELD.runLine * (ctx.homeField ?? 0) + coachingEdges(ctx.offense, ctx.defense).run;
 
   // The runner: vision finds the hole, moves and power win yards after contact, burst breaks it open.
   const r = rusher.ratings;

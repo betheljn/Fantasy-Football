@@ -5,7 +5,7 @@ export const QUARTER_SECONDS = 15 * 60;
 export const TWO_MINUTE_WARNING = 120;
 export const TIMEOUTS_PER_HALF = 3;
 
-export type Pace = "normal" | "hurry" | "milk";
+export type Pace = "normal" | "tempo" | "hurry" | "milk";
 
 export interface ClockState {
   quarter: number;
@@ -50,6 +50,9 @@ export function runoffSeconds(rng: Rng, pace: Pace): number {
       return Math.round(Math.max(6, rng.normal(14, 3)));
     case "milk":
       return 39;
+    case "tempo":
+      // An up-tempo offense in a normal game situation.
+      return Math.round(Math.max(12, rng.normal(25, 3)));
     default:
       return Math.round(Math.max(18, rng.normal(34, 4)));
   }
