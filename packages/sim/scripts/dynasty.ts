@@ -1,6 +1,6 @@
 // Milestone 3, step 6: run a dynasty for several seasons and print league history.
 // Usage: node scripts/dynasty.ts [league-seed] [seasons]
-import { runDynasty, startDynasty, talentSnapshot, teamName, type Dynasty } from "../src/index.ts";
+import { allTeams, formatMoney, payroll, runDynasty, salaryCap, startDynasty, talentSnapshot, teamName, type Dynasty } from "../src/index.ts";
 
 const seed = process.argv[2] ?? "dynasty";
 const seasons = Number(process.argv[3] ?? 10);
@@ -24,6 +24,10 @@ const done: Dynasty = runDynasty(start, seasons, (d) => {
   const other = h.staffChanges.length - hc.length;
   for (const c of hc) console.log(`      ${c.team} HC: ${c.out ?? "-"} (${c.reason}) -> ${c.in} (${c.from})`);
   if (other) console.log(`      + ${other} coordinator/front office change${other === 1 ? "" : "s"}`);
+  const c = h.contracts;
+  const big = c.biggestDeals[0];
+  console.log(`      Contracts: ${c.counts["re-signed"]} re-signed, ${c.counts.extended} extended, ${c.counts.option} options, ${c.counts.signed} free agents signed, ${c.counts["cap cut"]} cap cuts; dead money ${formatMoney(c.deadMoney)}`);
+  if (big) console.log(`      Biggest deal: ${big.player} (${big.position}, ${big.team}) ${big.years} yrs/${formatMoney(big.total)} (${big.kind})`);
 });
 const secs = (performance.now() - t0) / 1000;
 
@@ -55,6 +59,10 @@ for (const c of coaches.sort((a, b) => pct(b) - pct(a)).slice(0, 5)) {
 const allChanges = done.history.flatMap((h) => h.staffChanges);
 const count = (f: (c: (typeof allChanges)[number]) => boolean) => allChanges.filter(f).length;
 console.log(`Staff turnover: ${count((c) => c.role === "HC")} head coach changes (${count((c) => c.role === "HC" && c.reason === "fired")} fired, ${count((c) => c.role === "HC" && c.from === "promoted coordinator")} coordinators promoted), ${allChanges.length} changes in all`);
+
+const capNow = salaryCap(done.league.seed, done.league.season);
+const shares = allTeams(done.league).map((t) => payroll(t, done.league.season) / capNow);
+console.log(`\nCap ${done.league.season}: ${formatMoney(capNow)}; payrolls ${(Math.min(...shares) * 100).toFixed(0)}-${(Math.max(...shares) * 100).toFixed(0)}% of the cap (average ${((shares.reduce((a, b) => a + b) / shares.length) * 100).toFixed(1)}%)`);
 
 const end = talentSnapshot(done.league);
 console.log(`\nLeague talent: starters ${startTalent.starterOverall.toFixed(1)} -> ${end.starterOverall.toFixed(1)}, average age ${startTalent.averageAge.toFixed(1)} -> ${end.averageAge.toFixed(1)}, players 80+ ${startTalent.stars} -> ${end.stars}`);

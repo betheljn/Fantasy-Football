@@ -19,6 +19,7 @@ import { draftOrder, runDraft } from "./draft.ts";
 import { processRetirements } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
+import { openContractYear, runFreeAgency, settleCap, signDraftPicks, summarizeContracts, type ContractSummary } from "../contracts/offseason.ts";
 import { createScouting, runCombine, scoutSeason } from "./scouting.ts";
 import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange } from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
@@ -53,6 +54,10 @@ export interface SeasonRecord {
   coachOfTheYear: CoachOfTheYear | null;
   /** Firings, retirements and hires this offseason. */
   staffChanges: StaffChange[];
+  /** Re-signings, extensions, free agency, cuts and dead money this offseason. */
+  contracts: ContractSummary;
+  /** Veteran price level this offseason (1 = base market curve). */
+  marketIndex: number;
 }
 
 export interface CareerLine {
@@ -175,9 +180,25 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
   const records = computeRecords(league, season.results);
   const retired = processRetirements(staff.league);
   const developed = developLeague(retired.league);
-  const draft = runDraft(developed, draftClass, scouting, order);
-  const moves = makeRosterMoves(draft.league, { undrafted: draft.undrafted, scouting, order });
-  const nextLeague: League = { ...moves.league, season: league.season + 1 };
+
+  // Contracts: expiring deals and extensions, the draft, free agency, then cuts and the cap.
+  const next = league.season + 1;
+  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)) };
+  const opened = openContractYear(league, developed, triggers, order);
+  const draft = runDraft(opened.league, draftClass, scouting, order);
+  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex);
+  const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });
+  let settled = settleCap(moves.league, moves.cuts, next);
+  const contractMoves = [...opened.moves, ...freeAgency.moves, ...settled.moves];
+  // Cap cuts leave holes; refill them from the undrafted players left (at the minimum).
+  let leftovers = moves.unsigned;
+  for (let pass = 0; pass < 3 && settled.moves.some((m) => m.kind === "cap cut"); pass++) {
+    const refill = makeRosterMoves(settled.league, { undrafted: leftovers, scouting, order });
+    leftovers = refill.unsigned;
+    settled = settleCap(refill.league, refill.cuts, next);
+    contractMoves.push(...settled.moves);
+  }
+  const nextLeague: League = { ...settled.league, season: next };
 
   const record: SeasonRecord = {
     season: league.season,
@@ -198,6 +219,8 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
     talent: talentSnapshot(league),
     coachOfTheYear: staff.coachOfTheYear,
     staffChanges: staff.changes,
+    contracts: summarizeContracts(nextLeague, contractMoves, next),
+    marketIndex: opened.marketIndex,
   };
 
   return {

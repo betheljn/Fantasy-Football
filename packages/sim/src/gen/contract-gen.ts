@@ -36,6 +36,8 @@ export interface ContractTerms {
   pick?: number;
   /** League minimum: no season of the deal pays less. */
   minimum?: number;
+  /** Incentives offered each year as a share of salary (not counted until earned). */
+  incentiveShare?: number;
 }
 
 /** Salary rises 5% a year (back-loaded); the bonus is spread evenly. */
@@ -48,12 +50,11 @@ export function buildContract(t: ContractTerms): Contract {
   const salaryTotal = total - bonus * t.years;
   const weights = Array.from({ length: t.years }, (_, i) => RAISE ** i);
   const wsum = weights.reduce((s, w) => s + w, 0);
-  const years: ContractYear[] = weights.map((w, i) => ({
-    season: t.signed + i,
-    salary: Math.max((t.minimum ?? 0) - bonus, Math.round((salaryTotal * w) / wsum / 10) * 10),
-    bonus,
-    guaranteed: i < t.guaranteedYears,
-  }));
+  const years: ContractYear[] = weights.map((w, i) => {
+    const salary = Math.max((t.minimum ?? 0) - bonus, Math.round((salaryTotal * w) / wsum / 10) * 10);
+    const year: ContractYear = { season: t.signed + i, salary, bonus, guaranteed: i < t.guaranteedYears };
+    return t.incentiveShare ? { ...year, incentive: Math.round((salary * t.incentiveShare) / 10) * 10 } : year;
+  });
   return {
     kind: t.kind,
     signed: t.signed,
@@ -107,30 +108,64 @@ function impliedPicks(league: League): Map<string, number> {
   return picks;
 }
 
+/** How long a veteran deal runs: longer for better, younger players. */
+export function contractLength(rng: Rng, p: Player): number {
+  const quality = contractQuality(p);
+  const maxYears = p.age >= 32 ? 2 : p.age >= 30 ? 3 : 5;
+  return Math.min(maxYears, 1 + Math.round(quality * 3 + rng.next() * 1.5));
+}
+
+/** 0 for a fringe player, 1 for a star; shapes bonus, guarantees and incentives. */
+const contractQuality = (p: Player) => Math.max(0, Math.min(1, (playerOverall(p) - 60) / 25));
+
+/** Share of salary offered as incentives (earned by a playoff trip or an award) on good players' deals. */
+export const INCENTIVE_SHARE = 0.1;
+
+/** A veteran deal (new signing, re-signing or extension) at `annual` a year. */
+export function veteranContract(
+  p: Player,
+  cap: number,
+  t: { kind: ContractKind; signed: number; years: number; annual: number; homegrown?: boolean; draftedBy?: string },
+): Contract {
+  const quality = contractQuality(p);
+  return buildContract({
+    kind: t.kind,
+    signed: t.signed,
+    years: t.years,
+    annual: Math.max(minimumSalary(cap), Math.round(t.annual)),
+    bonusShare: 0.1 + 0.3 * quality,
+    guaranteedYears: Math.ceil(t.years * (0.15 + 0.45 * quality)),
+    homegrown: t.homegrown ?? false,
+    ...(t.draftedBy ? { draftedBy: t.draftedBy } : {}),
+    minimum: minimumSalary(cap),
+    incentiveShare: quality >= 0.4 ? INCENTIVE_SHARE : 0,
+  });
+}
+
+/** A one-year (or longer) deal at the league minimum. */
+export function minimumContract(kind: ContractKind, signed: number, years: number, cap: number, draftedBy?: string): Contract {
+  return buildContract({ kind, signed, years, annual: minimumSalary(cap), bonusShare: 0, guaranteedYears: 0, minimum: minimumSalary(cap), ...(draftedBy ? { draftedBy } : {}) });
+}
+
 /** A contract for one existing player, as if signed some seasons ago. */
 function existingContract(rng: Rng, p: Player, team: string, season: number, cap: number, pick: number | undefined): Contract {
   const elapsedRookie = Math.max(0, Math.min(ROOKIE_YEARS - 1, p.age - 22));
   if (pick !== undefined && p.age <= 25) {
     const signed = season - elapsedRookie;
     if (pick <= DRAFT_PICKS) return rookieContract(pick, team, signed, cap);
-    return buildContract({ kind: "rookie", signed, years: 3, annual: minimumSalary(cap), bonusShare: 0, guaranteedYears: 0, draftedBy: team, minimum: minimumSalary(cap) });
+    return minimumContract("rookie", signed, 3, cap, team);
   }
   const value = marketValue(p, cap) * Math.exp(rng.normal(0, 0.15));
-  const quality = Math.max(0, Math.min(1, (playerOverall(p) - 60) / 25));
-  const maxYears = p.age >= 32 ? 2 : p.age >= 30 ? 3 : 5;
-  const years = Math.min(maxYears, 1 + Math.round(quality * 3 + rng.next() * 1.5));
+  const years = contractLength(rng, p);
   const elapsed = rng.int(0, years - 1);
   const homegrown = rng.chance(0.35);
-  return buildContract({
+  return veteranContract(p, cap, {
     kind: homegrown ? "extension" : "veteran",
     signed: season - elapsed,
     years,
-    annual: Math.max(minimumSalary(cap), Math.round(value)),
-    bonusShare: 0.1 + 0.3 * quality,
-    guaranteedYears: Math.ceil(years * (0.15 + 0.45 * quality)),
+    annual: value,
     homegrown,
     ...(homegrown ? { draftedBy: team } : {}),
-    minimum: minimumSalary(cap),
   });
 }
 

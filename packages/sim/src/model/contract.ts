@@ -9,6 +9,13 @@ export interface ContractYear {
   readonly bonus: number;
   /** Salary owed even if the player is cut. */
   readonly guaranteed: boolean;
+  /**
+   * Escalator paid if he wins an award or his team makes the playoffs. Not on
+   * the cap until earned; then it is charged to the next season's cap.
+   */
+  readonly incentive?: number;
+  /** A first-rounder's fifth-year option year. */
+  readonly option?: boolean;
 }
 
 export interface Contract {

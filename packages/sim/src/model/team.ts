@@ -27,6 +27,10 @@ export interface TeamCap {
   readonly rollover: number;
   /** Dead money charged this season from players no longer on the roster, $K. */
   readonly deadMoney: number;
+  /** Incentives earned last season, charged to this season's cap, $K. */
+  readonly incentives?: number;
+  /** Shortfall below the cap floor, paid out to the roster and charged to the cap, $K. */
+  readonly floorPayment?: number;
 }
 
 export function teamName(team: Team): string {
