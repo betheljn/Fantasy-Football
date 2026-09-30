@@ -6,20 +6,20 @@ import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
-import { generateSchedule } from "../league/schedule.ts";
-import { simulateSeason } from "../league/season.ts";
-import { simulatePlayoffs } from "../league/playoffs.ts";
+import { generateSchedule, type Schedule } from "../league/schedule.ts";
+import { simulateSeason, type SeasonResult } from "../league/season.ts";
+import { simulatePlayoffs, type PlayoffResult } from "../league/playoffs.ts";
 import { divisionStandings } from "../league/standings.ts";
 import { PLAYER_STAT_KEYS, type PlayerStatKey } from "../stats/boxscore.ts";
-import { addGameToSeason, createSeasonStats } from "../league/seasonstats.ts";
+import { addGameToSeason, createSeasonStats, type SeasonStats } from "../league/seasonstats.ts";
 import { computeAwards, type Award } from "./awards.ts";
 import { developLeague } from "./development.ts";
 import { generateDraftClass } from "./draftclass.ts";
-import { draftOrder, runDraft } from "./draft.ts";
-import { processRetirements } from "./retirement.ts";
+import { draftOrder, runDraft, type DraftPick } from "./draft.ts";
+import { processRetirements, type Retiree } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
-import { openContractYear, runFreeAgency, settleCap, signDraftPicks, summarizeContracts, type ContractSummary } from "../contracts/offseason.ts";
+import { openContractYear, runFreeAgency, settleCap, signDraftPicks, summarizeContracts, type ContractMove, type ContractSummary } from "../contracts/offseason.ts";
 import { createScouting, runCombine, scoutSeason } from "./scouting.ts";
 import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange } from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
@@ -96,11 +96,26 @@ export const BURN_IN_OFFSEASONS = 15;
  * settled league with realistic ages and career stages.
  */
 export function startDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS): Dynasty {
+  const steps = buildDynasty(seed, burnIn);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * startDynasty one offseason at a time: yields progress (0-1) after each quiet
+ * offseason so an app can stay responsive and show it; returns the dynasty.
+ */
+export function* buildDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS): Generator<number, Dynasty, void> {
   // The quiet offseasons are the years before the first season, so their
   // draft classes (and player ids) never collide with the real ones.
   const generated = generateLeague(seed);
   let league: League = { ...generated, season: generated.season - burnIn };
-  for (let i = 0; i < burnIn; i++) league = quietOffseason(league);
+  for (let i = 0; i < burnIn; i++) {
+    league = quietOffseason(league);
+    yield (i + 1) / (burnIn + 1);
+  }
   // Fresh contracts for the settled league (burn-in rookies arrived without deals).
   league = assignContracts(league);
   return { league, history: [], careers: new Map(), staffPool: [], staffCareers: new Map() };
@@ -142,16 +157,49 @@ const fullName = (p: Player) => `${p.firstName} ${p.lastName}`;
 
 /** Play one season and its offseason. Returns the dynasty ready for the next season. */
 export function advanceSeason(dynasty: Dynasty): Dynasty {
-  const league = dynasty.league;
+  return finishSeason(dynasty, playSeason(dynasty)).dynasty;
+}
 
-  // The class entering next season is scouted while this season is played.
+/** This season's schedule (division slots come from last season's finish). */
+export function seasonSchedule(dynasty: Dynasty): Schedule {
+  return generateSchedule(dynasty.league, dynasty.slotOrder ? { slotOrder: dynasty.slotOrder } : {});
+}
+
+/** A season as played: every regular-season result, the season's stats, and the playoffs. */
+export interface PlayedSeason {
+  season: SeasonResult;
+  stats: SeasonStats;
+  playoffs: PlayoffResult;
+}
+
+/** Play the whole season at once. An app can instead play it week by week (same games, same seeds). */
+export function playSeason(dynasty: Dynasty): PlayedSeason {
+  const stats = createSeasonStats();
+  const season = simulateSeason(dynasty.league, { schedule: seasonSchedule(dynasty), onGame: (g) => addGameToSeason(stats, g) });
+  return { season, stats, playoffs: simulatePlayoffs(dynasty.league, season) };
+}
+
+/** Everything the offseason did, in full (history keeps only the highlights). */
+export interface OffseasonLog {
+  retirees: Retiree[];
+  draft: DraftPick[];
+  contractMoves: ContractMove[];
+  staffChanges: StaffChange[];
+}
+
+/**
+ * Close out a played season: awards, careers, then the offseason (staff,
+ * retirements, development, contracts, the draft, free agency, roster moves).
+ * Returns the dynasty ready for next season and a full log of the offseason.
+ */
+export function finishSeason(dynasty: Dynasty, played: PlayedSeason): { dynasty: Dynasty; log: OffseasonLog } {
+  const league = dynasty.league;
+  const { season, stats, playoffs } = played;
+
+  // The class entering next season was scouted while this season was played.
   const draftClass = generateDraftClass(league);
   const scouting = scoutSeason(league, draftClass);
 
-  const stats = createSeasonStats();
-  const schedule = generateSchedule(league, dynasty.slotOrder ? { slotOrder: dynasty.slotOrder } : {});
-  const season = simulateSeason(league, { schedule, onGame: (g) => addGameToSeason(stats, g) });
-  const playoffs = simulatePlayoffs(league, season);
   const awards = computeAwards(league, stats, season.results);
   const standings = divisionStandings(league, season.results);
 
@@ -225,13 +273,16 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
   };
 
   return {
-    league: nextLeague,
-    history: [...dynasty.history, record],
-    careers,
-    slotOrder: Object.fromEntries(standings.map((d) => [d.division, d.teams.map((t) => t.team)])),
-    staffPool: staff.pool,
-    staffCareers: staff.careers,
-    lastWinPct: new Map([...records.values()].map((r) => [r.team, winPct(r)])),
+    dynasty: {
+      league: nextLeague,
+      history: [...dynasty.history, record],
+      careers,
+      slotOrder: Object.fromEntries(standings.map((d) => [d.division, d.teams.map((t) => t.team)])),
+      staffPool: staff.pool,
+      staffCareers: staff.careers,
+      lastWinPct: new Map([...records.values()].map((r) => [r.team, winPct(r)])),
+    },
+    log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };
 }
 

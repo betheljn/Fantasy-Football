@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  addGameToSeason,
   advanceSeason,
   allTeams,
+  buildDynasty,
+  createSeasonStats,
+  divisionStandings,
+  finishSeason,
+  playGame,
+  seasonSchedule,
   simulateGame,
+  simulatePlayoffs,
   startDynasty,
   talentSnapshot,
   validateTeam,
@@ -92,3 +100,37 @@ describe("advanceSeason", () => {
     expect(Math.abs(a.averageAge - b.averageAge)).toBeLessThan(1);
   });
 }, 60_000);
+
+describe("playing a season week by week", () => {
+  it("gives exactly the same dynasty as advanceSeason, plus a full offseason log", () => {
+    const schedule = seasonSchedule(START);
+    const stats = createSeasonStats();
+    const results = [];
+    for (let week = 1; week <= schedule.weeks; week++) {
+      for (const g of schedule.games.filter((x) => x.week === week)) {
+        const { summary, result } = playGame(START.league, g);
+        addGameToSeason(stats, result);
+        results.push(summary);
+      }
+    }
+    const season = { season: schedule.season, schedule, results, standings: divisionStandings(START.league, results) };
+    const { dynasty, log } = finishSeason(START, { season, stats, playoffs: simulatePlayoffs(START.league, season) });
+    expect(dynasty.history).toEqual(ONE.history);
+    expect(dynasty.league).toEqual(ONE.league);
+    expect(log.draft).toHaveLength(350);
+    expect(log.retirees.length).toBeGreaterThan(0);
+    expect(log.contractMoves.length).toBeGreaterThan(100);
+  }, 60_000);
+
+  it("builds a dynasty step by step, reporting progress", () => {
+    const steps = buildDynasty("dynasty-test", 4);
+    const progress: number[] = [];
+    let r = steps.next();
+    while (!r.done) {
+      progress.push(r.value);
+      r = steps.next();
+    }
+    expect(progress).toEqual([0.2, 0.4, 0.6, 0.8]);
+    expect(r.value.league).toEqual(START.league);
+  }, 60_000);
+});

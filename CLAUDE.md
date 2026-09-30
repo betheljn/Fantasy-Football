@@ -113,7 +113,7 @@ Steps:
 3. Player mood and free agency: home states, preferences, bidding, hometown discount
 4. Staff contracts and the staff budget
 
-### Milestone 6: mobile app (apps/mobile) (current)
+### Milestone 6: mobile app (apps/mobile) (done)
 Expo + React Native + Skia 2D field and play-by-play, driven by the event log
 and animation data. The app only calls the sim; it never decides outcomes.
 1. App scaffold in the workspace: simulate a game on the phone and show the
@@ -124,6 +124,17 @@ and animation data. The app only calls the sim; it never decides outcomes.
 4. League screens: standings, schedule, Top 25, team, roster and player cards
 5. Dynasty flow: pick a team, play week by week, playoffs, then the offseason
    (staff, contracts, draft, free agency); save and load
+
+### Milestone 7: your offseason (current)
+The AI still runs the other 49 teams; you make your own team's calls. Each
+decision goes through the sim's rules (cap, player mood, scouting knowledge).
+1. Re-signings: see each expiring player's asking price, years, mood and odds
+   of accepting; choose who to re-sign (and fifth-year options) within the cap
+2. Scouting and the draft: spend weekly scouting points during the season;
+   make your own picks on the clock from your scouting board
+3. Free agency: make offers (money, years); players choose by mood
+4. Roster: cuts to 72 and the depth chart
+5. Staff: fire and hire coaches and executives within the staff budget
 
 After each step: run it, show sample output, and stop for review.
 

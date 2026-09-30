@@ -2,7 +2,7 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
-import { Card, SimProgress, Swatch } from "../../components/ui";
+import { Card, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
@@ -18,7 +18,6 @@ export default function ScheduleScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <SimProgress weeksPlayed={weeksPlayed} weeks={schedule.weeks} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, height: 58 }} contentContainerStyle={{ paddingHorizontal: 12, gap: 6, alignItems: "center" }}>
         {weeks.map((w) => (
           <Pressable

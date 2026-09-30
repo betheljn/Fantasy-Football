@@ -2,7 +2,7 @@
 import { useRouter } from "expo-router";
 import { FlatList, Text, View } from "react-native";
 import { formatRecord, teamName } from "@dynasty/sim";
-import { Card, LinkRow, SimProgress, Swatch } from "../../components/ui";
+import { Card, LinkRow, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
@@ -13,7 +13,6 @@ export default function RankingsScreen() {
   const top = rankings.slice(0, 25);
   return (
     <View style={{ flex: 1 }}>
-      <SimProgress weeksPlayed={weeksPlayed} weeks={schedule.weeks} />
       <FlatList
         data={top}
         keyExtractor={(e) => e.team}

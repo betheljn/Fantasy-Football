@@ -1,6 +1,6 @@
 // Small shared building blocks for list-style screens.
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { teamColor } from "../field/colors";
 import { useTheme } from "../theme";
 
@@ -28,18 +28,4 @@ export function LinkRow({ onPress, children, label }: { onPress: () => void; chi
 /** Team color swatch. */
 export function Swatch({ abbr, size = 10 }: { abbr: string; size?: number }) {
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: teamColor(abbr) }} />;
-}
-
-/** Shown while the season is still being simulated in the background. */
-export function SimProgress({ weeksPlayed, weeks }: { weeksPlayed: number; weeks: number }) {
-  const t = useTheme();
-  if (weeksPlayed >= weeks) return null;
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: t.card, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: t.border }}>
-      <ActivityIndicator size="small" color={t.accent} />
-      <Text style={{ color: t.muted, fontSize: 13 }}>
-        Simulating the season… week {weeksPlayed} of {weeks}
-      </Text>
-    </View>
-  );
 }
