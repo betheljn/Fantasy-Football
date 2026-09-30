@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    // The sim is consumed as TypeScript source and imports its files with .ts extensions.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
