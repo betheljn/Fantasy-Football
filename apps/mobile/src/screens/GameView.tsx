@@ -3,8 +3,7 @@
 // the play on the field, so nothing ahead is given away.
 import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { allTeams, generateLeague, lookupFor, simulateGame, teamName, type League } from "@dynasty/sim";
+import { lookupFor, type GameResult, type Team } from "@dynasty/sim";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
 import { teamColor, uniform } from "../field/colors";
@@ -14,24 +13,15 @@ import { boxScoreAfter, lineScoreAfter, scoreAfter } from "../game/live";
 import { prepareGame } from "../game/playback";
 import { useTheme, type Theme } from "../theme";
 
-const LEAGUE_SEED = "dynasty";
-
-export function GameScreen() {
+/** Watch one finished game (the sim has already decided it; this only replays it). */
+export function GameView({ game, home, away }: { game: GameResult; home: Team; away: Team }) {
   const theme = useTheme();
   const s = styles(theme);
-  const league = useMemo<League>(() => generateLeague(LEAGUE_SEED), []);
-  const teams = useMemo(() => allTeams(league), [league]);
-  const [n, setN] = useState(0);
   const [tab, setTab] = useState<"plays" | "box">("plays");
-
-  // Game n: a matchup and seed that depend only on n, so it always replays the same.
-  const { game, home, away, who, feed, plays } = useMemo(() => {
-    const home = teams[(n * 7) % teams.length]!;
-    const away = teams[(n * 7 + 1 + ((n * 13) % (teams.length - 1))) % teams.length]!;
-    const game = simulateGame(home, away, `app-game-${n}`);
+  const { who, feed, plays } = useMemo(() => {
     const who = lookupFor(home, away);
-    return { game, home, away, who, feed: buildFeed(game, who), plays: prepareGame(game, who) };
-  }, [n, teams]);
+    return { who, feed: buildFeed(game, who), plays: prepareGame(game, who) };
+  }, [game, home, away]);
 
   const pb = usePlayback(plays);
   const play = pb.play;
@@ -76,15 +66,7 @@ export function GameScreen() {
   const rightOwner = play ? (play.direction === 1 ? play.defense : play.offense) : game.away;
 
   return (
-    <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
-      <View style={s.header}>
-        <Text style={s.matchup} numberOfLines={1}>
-          {teamName(away)} at {teamName(home)}
-        </Text>
-        <Pressable style={s.nextGame} onPress={() => setN((x) => x + 1)} accessibilityRole="button">
-          <Text style={s.nextGameText}>Next game</Text>
-        </Pressable>
-      </View>
+    <View style={s.screen}>
 
       <View style={s.scoreboard}>
         <TeamScore abbr={game.away} score={score[game.away]!} hasBall={!atEnd && play?.offense === game.away} theme={theme} />
@@ -142,7 +124,7 @@ export function GameScreen() {
           <BoxScoreView game={game} box={box} line={line} who={who} />
         ) : null}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -179,10 +161,6 @@ function Control({ label, onPress, theme, primary, hint }: { label: string; onPr
 const styles = (t: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
-    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 16, paddingTop: 8 },
-    matchup: { flex: 1, fontSize: 15, fontWeight: "600", color: t.muted },
-    nextGame: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: t.border },
-    nextGameText: { color: t.text, fontWeight: "600", fontSize: 13 },
     scoreboard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
     status: { flex: 1, alignItems: "center" },
     statusMain: { fontSize: 16, fontWeight: "700", color: t.text, fontVariant: ["tabular-nums"] },

@@ -12,7 +12,7 @@ export function formatContract(c: Contract): string {
   const guaranteed = c.years.reduce((s, y) => s + y.bonus + (y.guaranteed ? y.salary : 0), 0);
   const pick = c.pick ? `, pick #${c.pick}` : "";
   const hg = c.homegrown ? ", homegrown (80% cap)" : "";
-  return `${c.years.length} yrs/${formatMoney(total)} (${c.signed}-${finalSeason(c)}) ${KIND[c.kind]}${pick}, ${formatMoney(guaranteed)} guaranteed${hg}`;
+  return `${c.years.length} ${c.years.length === 1 ? "yr" : "yrs"}/${formatMoney(total)} (${c.signed}-${finalSeason(c)}) ${KIND[c.kind]}${pick}, ${formatMoney(guaranteed)} guaranteed${hg}`;
 }
 
 /** Year-by-year breakdown of one contract. */
