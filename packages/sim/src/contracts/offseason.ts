@@ -19,11 +19,12 @@ import { allTeams, type League } from "../league/league.ts";
 import { Rng } from "../rng.ts";
 import { CAP_RULES, capFloor, marketIndex, marketValue, minimumSalary, payroll, salaryCap } from "./cap.ts";
 import { evaluationError, keepStyle } from "../dynasty/frontoffice.ts";
+import { hometownDiscount, mood, persona, resignChance, teamAppeal, wouldStart } from "./mood.ts";
 import { keepValue, ROSTER_MIN } from "../dynasty/roster.ts";
 import type { DraftPick } from "../dynasty/draft.ts";
 import type { RosterMove } from "../dynasty/roster.ts";
 
-export type ContractMoveKind = "re-signed" | "extended" | "option" | "released" | "signed" | "cut" | "cap cut";
+export type ContractMoveKind = "re-signed" | "extended" | "option" | "released" | "declined" | "signed" | "cut" | "cap cut";
 
 export interface ContractMove {
   kind: ContractMoveKind;
@@ -33,12 +34,17 @@ export interface ContractMove {
   contract?: Contract;
   /** Dead money left on the cap (cuts). */
   deadMoney?: number;
+  /** Free agency: how many teams made offers, and whether he went home. */
+  bidders?: number;
+  hometown?: boolean;
 }
 
 /** Who earned incentives last season. */
 export interface IncentiveTriggers {
   awardWinners: ReadonlySet<PlayerId>;
   playoffTeams: ReadonlySet<string>;
+  /** Last season's win pct by team (how attractive a winner is); default .500. */
+  winPct?: ReadonlyMap<string, number>;
 }
 
 /** Cushion teams keep under the cap when planning (share of the cap). */
@@ -133,11 +139,21 @@ export function openContractYear(played: League, league: League, triggers: Incen
         kind = "option";
       } else if (keep) {
         const homegrown = c?.draftedBy === abbr;
+        // Would he stay? Happy players re-sign (a little cheaper); unhappy ones test the market.
+        const m = mood(p, teamAppeal(team, p, triggers.winPct?.get(abbr) ?? 0.5), 1);
+        if (!rng.chance(resignChance(m, homegrown))) {
+          roster = roster.filter((q) => q.id !== p.id);
+          const { contract: _gone, ...free } = p;
+          freeAgents.push(free);
+          moves.push({ kind: "declined", team: abbr, player: p });
+          continue;
+        }
+        const happyDiscount = 0.1 * Math.max(0, Math.min(1, (m - 50) / 30));
         deal = veteranContract(p, capNext, {
           kind: homegrown ? "extension" : "veteran",
           signed: next,
           years: contractLength(rng, p),
-          annual: marketValue(p, capNext, index) * Math.exp(rng.normal(0, 0.1)),
+          annual: marketValue(p, capNext, index) * Math.exp(rng.normal(0, 0.1)) * (1 - happyDiscount - hometownDiscount(p, team)),
           homegrown,
           ...(c?.draftedBy ? { draftedBy: c.draftedBy } : {}),
         });
@@ -207,11 +223,13 @@ export interface FreeAgencyResult {
 }
 
 /**
- * A simple free agency: the best free agents first, each signing with the team
- * that most wants him (he'd be among its top players at the position) and can
- * afford his market price; ties go to the team with the most cap room.
+ * Free agency: the best free agents first. Every team that wants him (he'd be
+ * among its top players at the position) and can afford him makes an offer:
+ * more when he'd start for them, less when he's coming home (the hometown
+ * discount). He signs where he'd be happiest: money, winning, playing time,
+ * the head coach and home, weighted by what he cares about.
  */
-export function runFreeAgency(league: League, pool: readonly Player[], next: number, index = 1): FreeAgencyResult {
+export function runFreeAgency(league: League, pool: readonly Player[], next: number, index = 1, winPct: ReadonlyMap<string, number> = new Map()): FreeAgencyResult {
   const rng = new Rng(`${league.seed}:${next}:freeagency`);
   const capNext = salaryCap(league.seed, next);
   const teams: League["teams"] = { ...league.teams };
@@ -219,25 +237,37 @@ export function runFreeAgency(league: League, pool: readonly Player[], next: num
   const unsigned: Player[] = [];
   const sorted = [...pool].sort((a, b) => marketValue(b, capNext) - marketValue(a, capNext) || a.id.localeCompare(b.id));
   for (const p of sorted) {
-    const ask = marketValue(p, capNext, index) * Math.exp(rng.normal(0, 0.1));
-    const deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years: contractLength(rng, p), annual: ask });
-    const hit = capHit(deal, next);
-    let best: { team: Team; room: number } | undefined;
+    const market = marketValue(p, capNext, index);
+    const ask = market * Math.exp(rng.normal(0, 0.1));
+    const years = contractLength(rng, p);
+    const offers: Array<{ team: Team; deal: Contract; mood: number }> = [];
     for (const t of Object.values(teams)) {
       const atPos = t.roster.filter((q) => q.position === p.position);
       if (atPos.length >= ROSTER_TEMPLATE[p.position] + 2) continue;
       if (!wanted({ ...t, roster: [...t.roster, p] }, p)) continue;
-      const room = spendable(t, capNext, next) - hit;
-      if (room < 0) continue;
-      if (!best || room > best.room) best = { team: t, room };
+      const room = spendable(t, capNext, next);
+      const eagerness = 1 + (wouldStart(t, p) ? 0.12 : 0) + rng.normal(0, 0.05);
+      let annual = ask * eagerness * (1 - hometownDiscount(p, t));
+      let deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years, annual });
+      // Tight on room: a team will stretch down to 90% of his ask, no further.
+      if (capHit(deal, next) > room) {
+        annual = Math.min(annual, (annual * room) / capHit(deal, next));
+        if (annual < ask * 0.9 * (1 - hometownDiscount(p, t))) continue;
+        deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years, annual });
+        if (capHit(deal, next) > room) continue;
+      }
+      const offered = deal.years.reduce((s, y) => s + y.salary + y.bonus, 0) / deal.years.length;
+      offers.push({ team: t, deal, mood: mood(p, teamAppeal(t, p, winPct.get(t.abbr) ?? 0.5), offered / market) });
     }
-    if (!best) {
+    if (offers.length === 0) {
       unsigned.push(p);
       continue;
     }
-    const signed = { ...p, contract: deal, jersey: pickJersey(rng, p.position, new Set(best.team.roster.map((q) => q.jersey))) };
-    teams[best.team.abbr] = withRoster(best.team, [...best.team.roster, signed]);
-    moves.push({ kind: "signed", team: best.team.abbr, player: signed, contract: deal });
+    const choice = offers.reduce((a, b) => (b.mood > a.mood || (b.mood === a.mood && b.team.abbr < a.team.abbr) ? b : a));
+    const t = choice.team;
+    const signed = { ...p, contract: choice.deal, jersey: pickJersey(rng, p.position, new Set(t.roster.map((q) => q.jersey))) };
+    teams[t.abbr] = withRoster(t, [...t.roster, signed]);
+    moves.push({ kind: "signed", team: t.abbr, player: signed, contract: choice.deal, bidders: offers.length, hometown: persona(p).homeState === t.abbr });
   }
   return { league: { ...league, teams }, moves, unsigned };
 }
@@ -296,14 +326,19 @@ export interface ContractSummary {
   biggestDeals: Array<{ team: string; player: string; position: string; kind: ContractMoveKind; years: number; total: number }>;
   /** Teams under the cap floor after the offseason, with the shortfall paid out to their players. */
   floorShortfalls: Array<{ team: string; shortfall: number }>;
+  /** Free agents who signed with their home-state team. */
+  hometownSignings: number;
+  /** Most sought-after free agents: who signed where, from how many offers. */
+  topFreeAgents: Array<{ player: string; position: string; from: string; to: string; bidders: number; hometown: boolean; years: number; total: number }>;
 }
 
 export function summarizeContracts(league: League, moves: readonly ContractMove[], next: number): ContractSummary {
-  const counts = Object.fromEntries((["re-signed", "extended", "option", "released", "signed", "cut", "cap cut"] as const).map((k) => [k, 0])) as Record<ContractMoveKind, number>;
+  const counts = Object.fromEntries((["re-signed", "extended", "option", "released", "declined", "signed", "cut", "cap cut"] as const).map((k) => [k, 0])) as Record<ContractMoveKind, number>;
   for (const m of moves) counts[m.kind]++;
   const deals = moves.filter((m) => m.contract && m.kind !== "option");
   const total = (c: Contract) => c.years.filter((y) => y.season >= next).reduce((s, y) => s + y.salary + y.bonus, 0);
-  const capNext = salaryCap(league.seed, next);
+  const formerTeam = new Map(moves.filter((m) => m.kind === "released" || m.kind === "declined").map((m) => [m.player.id, m.team]));
+  const signings = moves.filter((m) => m.kind === "signed");
   return {
     counts,
     deadMoney: allTeams(league).reduce((s, t) => s + (t.cap?.deadMoney ?? 0), 0),
@@ -314,6 +349,11 @@ export function summarizeContracts(league: League, moves: readonly ContractMove[
     floorShortfalls: allTeams(league)
       .filter((t) => (t.cap?.floorPayment ?? 0) > 0)
       .map((t) => ({ team: t.abbr, shortfall: t.cap!.floorPayment! })),
+    hometownSignings: signings.filter((m) => m.hometown).length,
+    topFreeAgents: [...signings]
+      .sort((a, b) => total(b.contract!) - total(a.contract!))
+      .slice(0, 5)
+      .map((m) => ({ player: `${m.player.firstName} ${m.player.lastName}`, position: m.player.position, from: formerTeam.get(m.player.id) ?? "-", to: m.team, bidders: m.bidders ?? 1, hometown: !!m.hometown, years: m.contract!.years.length, total: total(m.contract!) })),
   };
 }
 

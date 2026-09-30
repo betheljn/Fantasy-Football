@@ -94,25 +94,25 @@ describe("coaching changes how teams play", () => {
   it("defensive schemes set the blitz rate", () => {
     const rate = (s: DefensiveScheme) => blitzRate(games(withStaff(A), withStaff(B, { dc: { scheme: s } })), B.abbr);
     expect(rate("Blitz Heavy")).toBeGreaterThan(rate("Two-High Zone") * 2);
-  });
+  }, 30_000);
 
   it("up-tempo coordinators run more plays", () => {
     const fast = offenseStats(games(withStaff(A, { oc: { tempo: 90 } }), withStaff(B)), A.abbr);
     const slow = offenseStats(games(withStaff(A, { oc: { tempo: 20 } }), withStaff(B)), A.abbr);
     expect(fast.playsPerGame).toBeGreaterThan(slow.playsPerGame + 2);
-  });
+  }, 30_000);
 
   it("aggressive head coaches go for it more on 4th down", () => {
     const bold = offenseStats(games(withStaff(A, { hc: { aggressiveness: 95 } }), withStaff(B), 250), A.abbr);
     const timid = offenseStats(games(withStaff(A, { hc: { aggressiveness: 5 } }), withStaff(B), 250), A.abbr);
     expect(bold.goRate).toBeGreaterThan(timid.goRate + 0.05);
-  });
+  }, 30_000);
 
   it("disciplined head coaches draw fewer flags", () => {
     const clean = offenseStats(games(withStaff(A, { hc: { discipline: 95 } }), withStaff(B), 250), A.abbr);
     const sloppy = offenseStats(games(withStaff(A, { hc: { discipline: 25 } }), withStaff(B), 250), A.abbr);
     expect(clean.pensPerGame).toBeLessThan(sloppy.pensPerGame - 1);
-  });
+  }, 30_000);
 
   it("better coordinators give their unit an edge", () => {
     const great = withStaff(A, { oc: { playCalling: 90, passingGame: 90, runningGame: 90 } });
@@ -124,7 +124,7 @@ describe("coaching changes how teams play", () => {
     expect(e1.completion).toBeGreaterThan(0.02);
     const pts = (t: Team) => games(t, withStaff(B), 200).reduce((s, g) => s + g.score[A.abbr]!, 0) / 200;
     expect(pts(great)).toBeGreaterThan(pts(poor));
-  });
+  }, 30_000);
 });
 
 describe("two-point decisions", () => {

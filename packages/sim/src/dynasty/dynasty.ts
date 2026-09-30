@@ -183,10 +183,11 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
 
   // Contracts: expiring deals and extensions, the draft, free agency, then cuts and the cap.
   const next = league.season + 1;
-  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)) };
+  const winPctNow = new Map([...computeRecords(league, season.results).values()].map((r) => [r.team, winPct(r)]));
+  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)), winPct: winPctNow };
   const opened = openContractYear(league, developed, triggers, order);
   const draft = runDraft(opened.league, draftClass, scouting, order);
-  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex);
+  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow);
   const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });
   let settled = settleCap(moves.league, moves.cuts, next);
   const contractMoves = [...opened.moves, ...freeAgency.moves, ...settled.moves];

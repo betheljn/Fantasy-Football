@@ -28,6 +28,8 @@ const done: Dynasty = runDynasty(start, seasons, (d) => {
   const big = c.biggestDeals[0];
   console.log(`      Contracts: ${c.counts["re-signed"]} re-signed, ${c.counts.extended} extended, ${c.counts.option} options, ${c.counts.signed} free agents signed, ${c.counts["cap cut"]} cap cuts; dead money ${formatMoney(c.deadMoney)}`);
   if (big) console.log(`      Biggest deal: ${big.player} (${big.position}, ${big.team}) ${big.years} yrs/${formatMoney(big.total)} (${big.kind})`);
+  const fa = c.topFreeAgents[0];
+  if (fa) console.log(`      Top free agent: ${fa.player} (${fa.position}) ${fa.from} -> ${fa.to}, ${fa.years} yrs/${formatMoney(fa.total)} from ${fa.bidders} offers${fa.hometown ? " (hometown)" : ""}; ${c.counts.declined} tested the market, ${c.hometownSignings} went home`);
 });
 const secs = (performance.now() - t0) / 1000;
 

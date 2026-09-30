@@ -2,6 +2,10 @@
 // attributes that matter most for his position, then every attribute by group.
 import { DEV_TRAIT_NAMES, playerOverall, type Player } from "../model/player.ts";
 import { formatContract } from "./capsheet.ts";
+import { PRIORITY_NAMES, persona, topPriorities } from "../contracts/mood.ts";
+import { STATES } from "../gen/names.ts";
+
+const STATE_NAME = new Map(STATES.map(([name, abbr]) => [abbr, name]));
 import type { RangeEstimate, ScoutingReport } from "../dynasty/scouting.ts";
 import { OVERALL_WEIGHTS, RATING_INFO, RATING_KEYS, type RatingGroup, type RatingKey } from "../model/ratings.ts";
 
@@ -24,6 +28,8 @@ export function formatPlayerCard(player: Player, teamLabel = ""): string {
       `  age ${player.age}${teamLabel ? `  ${teamLabel}` : ""}  OVR ${playerOverall(player)}` +
       `  Dev: ${player.devTraitRevealed ? DEV_TRAIT_NAMES[player.devTrait] : "?"}`,
   );
+  const who = persona(player);
+  lines.push(`  From ${STATE_NAME.get(who.homeState) ?? who.homeState}; cares most about ${topPriorities(who).map((k) => PRIORITY_NAMES[k]).join(" and ")}`);
   if (player.contract) lines.push(`  Contract: ${formatContract(player.contract)}`);
   lines.push(`  Key:  ${keyAttributes(player).map(cell).join("  ")}`);
   for (const group of GROUP_ORDER) {
