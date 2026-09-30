@@ -5,11 +5,14 @@ import { clampRating } from "../model/ratings.ts";
 import {
   staffOverall,
   type HeadCoach,
+  type StaffContract,
   type StaffMember,
   type StaffRole,
   type TeamStaff,
 } from "../model/staff.ts";
 import { Rng } from "../rng.ts";
+import { salaryCap } from "../contracts/cap.ts";
+import { STAFF_PAY, staffAsk, staffBudget, staffBuyout, staffContract } from "../contracts/staffcontracts.ts";
 import {
   generateDefensiveCoordinator,
   generateGeneralManager,
@@ -45,7 +48,11 @@ export interface StaffChange {
   /** Name of the person leaving (null when filling a new vacancy). */
   out: string | null;
   in: string;
-  reason: "fired" | "retired" | "hired away";
+  reason: "fired" | "retired" | "hired away" | "contract expired";
+  /** Buyout the team still owes a fired staff member (the rest of his deal), $K. */
+  buyout?: number;
+  /** The new hire's deal. */
+  contract?: StaffContract;
   /** Where the new hire came from. */
   from: "free agent" | "promoted coordinator" | "new face";
 }
@@ -64,6 +71,8 @@ export interface StaffOffseasonResult {
   pool: StaffMember[];
   careers: Map<string, StaffCareer>;
   changes: StaffChange[];
+  /** Staff whose expiring deals were renewed (same seat, new contract). */
+  renewals: StaffChange[];
   coachOfTheYear: CoachOfTheYear | null;
 }
 
@@ -227,9 +236,14 @@ export function runStaffOffseason(
   }
   if (coty) careerFor(careers, { ...allTeams(league).find((t) => t.abbr === coty!.team)!.staff!.hc }).coachOfTheYear++;
 
-  // --- who leaves: retirements, firings ---
+  // --- who leaves: retirements, expiring deals, firings ---
+  const next = season + 1;
+  const capNext = salaryCap(league.seed, next);
+  const budget = staffBudget(capNext);
   const staffs = new Map<string, Partial<TeamStaff>>();
-  const vacancies: Array<{ team: string; slot: Slot; out: string | null; reason: StaffChange["reason"] }> = [];
+  const deadMoney = new Map<string, Array<{ season: number; amount: number; name: string }>>();
+  const vacancies: Array<{ team: string; slot: Slot; out: string | null; reason: StaffChange["reason"]; buyout?: number }> = [];
+  const renewals: StaffChange[] = [];
   const newPool: StaffMember[] = [...pool];
   /** Staff each team let go this offseason (it won't rehire them). */
   const letGo = new Set<string>();
@@ -245,9 +259,28 @@ export function runStaffOffseason(
   for (const t of allTeams(league)) {
     const s: Partial<TeamStaff> = { ...t.staff };
     staffs.set(t.abbr, s);
+    deadMoney.set(t.abbr, (t.staffDeadMoney ?? []).filter((d) => d.season >= next).map((d) => ({ ...d })));
     const pct = winPct(records.get(t.abbr)!);
     const prev = lastSeasonPct.get(t.abbr) ?? pct;
     const madePlayoffs = inField.has(t.abbr);
+    /** Let someone go: to the unemployed pool, his seat open. Firing him leaves a buyout. */
+    const release = (slot: Slot, m: StaffMember, reason: "fired" | "contract expired") => {
+      const c = careerFor(careers, m);
+      c.status = "unemployed";
+      let buyout = 0;
+      if (reason === "fired") {
+        c.timesFired++;
+        buyout = staffBuyout(m.contract, next);
+        for (let y = next; m.contract && y <= m.contract.through; y++) deadMoney.get(t.abbr)!.push({ season: y, amount: m.contract.salary, name: fullName(m) });
+      }
+      const { contract: _ended, ...free } = m;
+      newPool.push(free as StaffMember);
+      letGo.add(`${t.abbr}:${m.id}`);
+      delete s[slot];
+      vacancies.push({ team: t.abbr, slot, out: fullName(m), reason, ...(buyout ? { buyout } : {}) });
+    };
+    /** A big buyout buys patience: the chance a team goes through with a firing. */
+    const willPay = (m: StaffMember) => Math.max(0.35, Math.min(1, 1 - staffBuyout(m.contract, next) / (1.5 * budget)));
 
     for (const slot of SLOTS) {
       const m = s[slot];
@@ -260,8 +293,28 @@ export function runStaffOffseason(
       }
     }
 
+    // Deals that just ran out: renewed if the job went well, otherwise he moves on.
+    for (const slot of SLOTS) {
+      const m = s[slot];
+      if (!m?.contract || m.contract.through > season) continue;
+      const rank = slot === "oc" ? offenseRank.get(t.abbr)! : slot === "dc" ? defenseRank.get(t.abbr)! : 25;
+      const doingWell =
+        slot === "hc" ? madePlayoffs || pct >= 0.5 :
+        slot === "gm" ? madePlayoffs || (pct + prev) / 2 >= 0.45 :
+        slot === "scout" ? true : rank <= 35;
+      // The raise has to fit the budget alongside everyone else and any buyouts.
+      const others = SLOTS.filter((o) => o !== slot).reduce((sum, o) => sum + (s[o]?.contract && s[o]!.contract!.through >= next ? s[o]!.contract!.salary : 0), 0);
+      const owed = deadMoney.get(t.abbr)!.filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
+      const affordable = staffAsk(m, capNext, reputation(careers.get(m.id), m.role)) <= budget - others - owed;
+      if (doingWell && affordable && rng.chance(0.9)) {
+        const renewed = { ...m, contract: staffContract(rng, m, next, capNext, reputation(careers.get(m.id), m.role)) } as StaffMember;
+        (s as Record<Slot, StaffMember>)[slot] = renewed;
+        renewals.push({ team: t.abbr, role: m.role, out: fullName(m), in: fullName(m), reason: "contract expired", from: "free agent", contract: renewed.contract! });
+      } else release(slot, m, "contract expired");
+    }
+
     // Head coach on the hot seat (tenure counts seasons completed before this one).
-    // A title, or a long winning run with this team, buys patience.
+    // A title, or a long winning run with this team, buys patience; so does a big buyout.
     const hc = s.hc;
     let hcFired = false;
     if (hc && !madePlayoffs && hc.tenure + 1 >= HOT_SEAT.minTenure) {
@@ -270,44 +323,20 @@ export function runStaffOffseason(
       const secure = (stint?.titles ?? 0) > 0 || (hc.tenure >= 3 && stintPct >= 0.6);
       const awful = pct < HOT_SEAT.awful && rng.chance(secure ? 0.25 : 0.8);
       const slump = !secure && (pct + prev) / 2 < HOT_SEAT.poorTwoYears && rng.chance(0.6);
-      if (awful || slump) hcFired = true;
+      if ((awful || slump) && rng.chance(willPay(hc))) hcFired = true;
     }
-    if (hc && hcFired) {
-      const c = careerFor(careers, hc);
-      c.timesFired++;
-      c.status = "unemployed";
-      newPool.push(hc);
-      letGo.add(`${t.abbr}:${hc.id}`);
-      delete s.hc;
-      vacancies.push({ team: t.abbr, slot: "hc", out: fullName(hc), reason: "fired" });
-    }
+    if (hc && hcFired) release("hc", hc, "fired");
     // Coordinators: often go with a fired head coach, or after a bottom-five unit.
     for (const slot of ["oc", "dc"] as const) {
       const m = s[slot];
       if (!m) continue;
       const rank = slot === "oc" ? offenseRank.get(t.abbr)! : defenseRank.get(t.abbr)!;
       const fired = (hcFired && rng.chance(0.5)) || (rank >= 46 && m.tenure + 1 >= 2 && rng.chance(0.3));
-      if (fired) {
-        const c = careerFor(careers, m);
-        c.timesFired++;
-        c.status = "unemployed";
-        newPool.push(m);
-        letGo.add(`${t.abbr}:${m.id}`);
-        delete s[slot];
-        vacancies.push({ team: t.abbr, slot, out: fullName(m), reason: "fired" });
-      }
+      if (fired && rng.chance(willPay(m))) release(slot, m, "fired");
     }
     // GM after several poor years.
     const gm = s.gm;
-    if (gm && gm.tenure + 1 >= 4 && (pct + prev) / 2 < 0.4 && !madePlayoffs && rng.chance(0.5)) {
-      const c = careerFor(careers, gm);
-      c.timesFired++;
-      c.status = "unemployed";
-      newPool.push(gm);
-      letGo.add(`${t.abbr}:${gm.id}`);
-      delete s.gm;
-      vacancies.push({ team: t.abbr, slot: "gm", out: fullName(gm), reason: "fired" });
-    }
+    if (gm && gm.tenure + 1 >= 4 && (pct + prev) / 2 < 0.4 && !madePlayoffs && rng.chance(0.5) && rng.chance(willPay(gm))) release("gm", gm, "fired");
   }
 
   // --- hiring: worst teams choose first; coordinators can be hired away as head coaches ---
@@ -332,21 +361,33 @@ export function runStaffOffseason(
         }
       }
     }
-    const pick = candidates.reduce((best, c) => {
+    // What the team can pay: its budget, less current salaries and buyouts, less a
+    // going-rate reserve for its other open seats.
+    const current = staffs.get(v.team)!;
+    const committed =
+      (Object.values(current) as StaffMember[]).reduce((sum, m) => sum + (m.contract && m.contract.through >= next ? m.contract.salary : 0), 0) +
+      deadMoney.get(v.team)!.filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
+    const reserve = vacancies.filter((o) => o.team === v.team).reduce((sum, o) => sum + 0.6 * STAFF_PAY[SLOT_ROLE[o.slot]] * capNext, 0);
+    const room = budget - committed - reserve;
+    const ask = (c: Candidate) => staffAsk(c.m, capNext, reputation(careers.get(c.m.id), role));
+    const affordable = candidates.filter((c) => ask(c) <= room);
+    const shortlist = affordable.length > 0 ? affordable : [candidates.reduce((a, b) => (ask(b) < ask(a) ? b : a))];
+    const pick = shortlist.reduce((best, c) => {
       // Teams hesitate over someone just fired (a small mark against).
       const stigma = c.from === "free agent" && careers.get(c.m.id)?.status === "unemployed" ? 2 : 0;
       const score = staffOverall(c.m) + reputation(careers.get(c.m.id), role) - stigma + rng.normal(0, 3);
       return score > best.score ? { c, score } : best;
-    }, { c: candidates[0]!, score: -Infinity }).c;
+    }, { c: shortlist[0]!, score: -Infinity }).c;
 
-    const hire = { ...pick.m, tenure: 0 } as StaffMember;
+    const contract = staffContract(rng, pick.m, next, capNext, reputation(careers.get(pick.m.id), role));
+    const hire = { ...pick.m, tenure: 0, contract } as StaffMember;
     const target = staffs.get(v.team)!;
     (target as Record<Slot, StaffMember>)[v.slot] = hire;
     newHires.add(hire.id);
     const poolIdx = newPool.findIndex((m) => m.id === pick.m.id);
     if (poolIdx >= 0) newPool.splice(poolIdx, 1);
     careerFor(careers, hire).status = "active";
-    changes.push({ team: v.team, role, out: v.out, in: fullName(hire), reason: v.reason, from: pick.from });
+    changes.push({ team: v.team, role, out: v.out, in: fullName(hire), reason: v.reason, from: pick.from, contract, ...(v.buyout ? { buyout: v.buyout } : {}) });
     if (pick.source) {
       // His old team now needs a coordinator.
       delete staffs.get(pick.source.team)![pick.source.slot];
@@ -361,7 +402,9 @@ export function runStaffOffseason(
     const s = staffs.get(t.abbr)!;
     const aged = {} as TeamStaff;
     for (const slot of SLOTS) (aged as Record<Slot, StaffMember>)[slot] = ageStaff(rng, s[slot]!, true, newHires.has(s[slot]!.id));
-    teams[t.abbr] = { ...t, staff: aged };
+    const owed = deadMoney.get(t.abbr)!;
+    const { staffDeadMoney: _old, ...rest } = t;
+    teams[t.abbr] = { ...rest, staff: aged, ...(owed.length ? { staffDeadMoney: owed } : {}) };
   }
   const agedPool = newPool
     .map((m) => ageStaff(rng, m, false, false))
@@ -373,5 +416,5 @@ export function runStaffOffseason(
     .sort((a, b) => staffOverall(b) - staffOverall(a))
     .slice(0, 80);
 
-  return { league: { ...league, teams }, pool: agedPool, careers, changes, coachOfTheYear: coty };
+  return { league: { ...league, teams }, pool: agedPool, careers, changes, renewals, coachOfTheYear: coty };
 }

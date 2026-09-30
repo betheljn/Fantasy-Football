@@ -89,7 +89,7 @@ formations/coverages/blitzes, and 2D player positions (packages/sim/src/anim).
    sets scouting quality, head coach affects player development
 4. Staff careers: aging, firings and hirings, Coach of the Year, staff history
 
-### Milestone 5: contracts and salary cap (current)
+### Milestone 5: contracts and salary cap (done)
 Our own cap system (all money fictional, stored in $ thousands):
 - Hard cap, starting at $300M in 2031 and growing 3-6% a year with league revenue;
   teams must spend at least 85% of it (cap floor)
@@ -113,9 +113,17 @@ Steps:
 3. Player mood and free agency: home states, preferences, bidding, hometown discount
 4. Staff contracts and the staff budget
 
-### Milestone 6: mobile app (apps/mobile)
+### Milestone 6: mobile app (apps/mobile) (current)
 Expo + React Native + Skia 2D field and play-by-play, driven by the event log
-and animation data.
+and animation data. The app only calls the sim; it never decides outcomes.
+1. App scaffold in the workspace: simulate a game on the phone and show the
+   score and play-by-play feed
+2. Skia 2D field: animate each play from the sim's animation data, with playback
+   controls (play/pause, next play, speed)
+3. Game screen: scoreboard, field and feed in sync; box score
+4. League screens: standings, schedule, Top 25, team, roster and player cards
+5. Dynasty flow: pick a team, play week by week, playoffs, then the offseason
+   (staff, contracts, draft, free agency); save and load
 
 After each step: run it, show sample output, and stop for review.
 

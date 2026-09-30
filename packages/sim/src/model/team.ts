@@ -20,6 +20,8 @@ export interface Team {
   staff?: TeamStaff;
   /** Cap bookkeeping for the current season (absent = nothing carried over). */
   cap?: TeamCap;
+  /** Staff buyouts still being paid: each remaining season of a fired staff member's deal, $K. */
+  staffDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number; readonly name: string }>;
 }
 
 export interface TeamCap {

@@ -22,7 +22,8 @@ const done: Dynasty = runDynasty(start, seasons, (d) => {
   if (coty) console.log(`      Coach of the Year: ${coty.name} (${coty.team}, ${coty.record}, ${coty.overExpected >= 0 ? "+" : ""}${coty.overExpected.toFixed(1)} wins over expected)`);
   const hc = h.staffChanges.filter((c) => c.role === "HC");
   const other = h.staffChanges.length - hc.length;
-  for (const c of hc) console.log(`      ${c.team} HC: ${c.out ?? "-"} (${c.reason}) -> ${c.in} (${c.from})`);
+  for (const c of hc)
+    console.log(`      ${c.team} HC: ${c.out ?? "-"} (${c.reason}${c.buyout ? `, ${formatMoney(c.buyout)} buyout` : ""}) -> ${c.in} (${c.from}${c.contract ? `, ${formatMoney(c.contract.salary)}/yr through ${c.contract.through}` : ""})`);
   if (other) console.log(`      + ${other} coordinator/front office change${other === 1 ? "" : "s"}`);
   const c = h.contracts;
   const big = c.biggestDeals[0];

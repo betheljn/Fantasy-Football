@@ -1,11 +1,12 @@
 // Milestone 4, step 1: team staffs.
 // Usage: node scripts/staff.ts [league-seed] [team]
-import { DEFENSIVE_SCHEMES, GM_PHILOSOPHIES, OFFENSIVE_SCHEMES, allTeams, formatStaff, generateLeague, staffOverall, teamName } from "../src/index.ts";
+import { DEFENSIVE_SCHEMES, GM_PHILOSOPHIES, OFFENSIVE_SCHEMES, allTeams, formatMoney, formatStaff, generateLeague, salaryCap, staffBudget, staffOverall, staffSpending, teamName } from "../src/index.ts";
 
 const [seed = "dynasty", teamArg = "TX"] = process.argv.slice(2);
 const league = generateLeague(seed);
 const team = league.teams[teamArg.toUpperCase()]!;
-console.log(`${teamName(team)} staff (league "${seed}")\n${formatStaff(team.staff!)}\n`);
+const budget = staffBudget(salaryCap(league.seed, league.season));
+console.log(`${teamName(team)} staff (league "${seed}")  budget ${formatMoney(budget)}, spending ${formatMoney(staffSpending(team, league.season))}\n${formatStaff(team.staff!)}\n`);
 
 const teams = allTeams(league);
 const count = <T extends string>(list: readonly T[], get: (t: (typeof teams)[number]) => T) =>

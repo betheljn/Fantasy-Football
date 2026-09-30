@@ -55,3 +55,4 @@ export * from "./gen/contract-gen.ts";
 export * from "./feed/capsheet.ts";
 export * from "./contracts/offseason.ts";
 export * from "./contracts/mood.ts";
+export * from "./contracts/staffcontracts.ts";

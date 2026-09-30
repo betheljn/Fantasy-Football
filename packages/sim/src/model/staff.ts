@@ -45,6 +45,15 @@ interface StaffBase {
   readonly experience: number;
   /** Seasons with the current team. */
   readonly tenure: number;
+  /** Current deal (absent when unemployed or outside the budget system). */
+  readonly contract?: StaffContract;
+}
+
+/** A staff deal: a flat yearly salary ($K) from `signed` through `through`. */
+export interface StaffContract {
+  readonly signed: number;
+  readonly through: number;
+  readonly salary: number;
 }
 
 export interface HeadCoach extends StaffBase {
