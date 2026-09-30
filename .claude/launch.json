@@ -4,7 +4,17 @@
     {
       "name": "mobile-web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "apps/mobile", "exec", "expo", "start", "--web", "--port", "8081"],
+      "runtimeArgs": [
+        "--dir",
+        "apps/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8081",
+        "--clear"
+      ],
       "port": 8081
     }
   ]

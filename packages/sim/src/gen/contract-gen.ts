@@ -5,7 +5,7 @@ import { HOMEGROWN_CREDIT, capHit, type Contract, type ContractKind, type Contra
 import { playerOverall, type Player } from "../model/player.ts";
 import type { Team } from "../model/team.ts";
 import { draftValue } from "../dynasty/draftclass.ts";
-import { allTeams, type League } from "../league/league.ts";
+import type { League } from "../league/league.ts";
 import { Rng } from "../rng.ts";
 
 /** Picks in a draft (7 rounds x 50 teams). */
@@ -98,7 +98,7 @@ function scaleContract(c: Contract, k: number, min: number): Contract {
 /** Young players drafted in a given year form a cohort; their rank gives an implied draft slot. */
 function impliedPicks(league: League): Map<string, number> {
   const byAge = new Map<number, Player[]>();
-  for (const t of allTeams(league)) for (const p of t.roster) if (p.age <= 25) byAge.set(p.age, [...(byAge.get(p.age) ?? []), p]);
+  for (const t of Object.values(league.teams)) for (const p of t.roster) if (p.age <= 25) byAge.set(p.age, [...(byAge.get(p.age) ?? []), p]);
   const picks = new Map<string, number>();
   for (const cohort of byAge.values()) {
     const ranked = [...cohort].sort((a, b) => draftValue(b.position, playerOverall(b), b.potential) - draftValue(a.position, playerOverall(a), a.potential) || a.id.localeCompare(b.id));
@@ -214,6 +214,6 @@ export function assignContracts(league: League): League {
   const cap = salaryCap(league.seed, league.season);
   const picks = impliedPicks(league);
   const teams: League["teams"] = {};
-  for (const t of allTeams(league)) teams[t.abbr] = assignTeamContracts(t, league, picks, cap);
+  for (const t of Object.values(league.teams)) teams[t.abbr] = assignTeamContracts(t, league, picks, cap);
   return { ...league, teams };
 }

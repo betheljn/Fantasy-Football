@@ -4,7 +4,7 @@
 import { staffOverall, type StaffContract, type StaffMember, type StaffRole, type TeamStaff } from "../model/staff.ts";
 import type { Team } from "../model/team.ts";
 import { STAFF_AVERAGE } from "../play/coaching.ts";
-import { allTeams, type League } from "../league/league.ts";
+import type { League } from "../league/league.ts";
 import { Rng } from "../rng.ts";
 import { salaryCap } from "./cap.ts";
 
@@ -59,7 +59,7 @@ export function staffDeadMoneyFor(team: Team, season: number): number {
 export function assignStaffContracts(league: League): League {
   const cap = salaryCap(league.seed, league.season);
   const teams: League["teams"] = {};
-  for (const t of allTeams(league)) {
+  for (const t of Object.values(league.teams)) {
     if (!t.staff) {
       teams[t.abbr] = t;
       continue;

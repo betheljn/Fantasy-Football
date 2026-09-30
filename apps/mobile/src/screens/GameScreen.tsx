@@ -5,6 +5,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { allTeams, generateLeague, lookupFor, periodLabel, simulateGame, teamName, type League, type Team } from "@dynasty/sim";
 import { buildFeed, type FeedRow } from "../game/feed";
+import { FieldPanel } from "./FieldPanel";
 import { useTheme, type Theme } from "../theme";
 
 const LEAGUE_SEED = "dynasty";
@@ -15,6 +16,7 @@ export function GameScreen() {
   const league = useMemo<League>(() => generateLeague(LEAGUE_SEED), []);
   const teams = useMemo(() => allTeams(league), [league]);
   const [n, setN] = useState(0);
+  const [view, setView] = useState<"field" | "feed">("field");
   const list = useRef<FlatList<FeedRow>>(null);
   const nextGame = () => {
     setN((x) => x + 1);
@@ -22,11 +24,12 @@ export function GameScreen() {
   };
 
   // Game n: a matchup and seed that depend only on n, so it always replays the same.
-  const { game, home, away, feed } = useMemo(() => {
+  const { game, home, away, feed, who } = useMemo(() => {
     const home = teams[(n * 7) % teams.length]!;
     const away = teams[(n * 7 + 1 + ((n * 13) % (teams.length - 1))) % teams.length]!;
     const game = simulateGame(home, away, `app-game-${n}`);
-    return { game, home, away, feed: buildFeed(game, lookupFor(home, away)) };
+    const who = lookupFor(home, away);
+    return { game, home, away, who, feed: buildFeed(game, who) };
   }, [n, teams]);
 
   const periods = game.periodScores[game.home]!.map((_, i) => periodLabel(i + 1));
@@ -84,7 +87,15 @@ export function GameScreen() {
         {teamRow(away, game.away)}
         {teamRow(home, game.home)}
       </View>
-      <FlatList ref={list} data={feed} keyExtractor={(r) => r.key} renderItem={renderRow} contentContainerStyle={s.feed} initialNumToRender={30} />
+      <View style={s.tabs}>
+        {(["field", "feed"] as const).map((v) => (
+          <Pressable key={v} onPress={() => setView(v)} style={[s.tab, view === v && s.tabOn]} accessibilityRole="tab" accessibilityState={{ selected: view === v }}>
+            <Text style={[s.tabText, view === v && s.tabTextOn]}>{v === "field" ? "Field" : "Play-by-play"}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {view === "field" ? <FieldPanel game={game} who={who} /> : null}
+      <FlatList style={view === "field" ? s.hidden : undefined} ref={list} data={feed} keyExtractor={(r) => r.key} renderItem={renderRow} contentContainerStyle={s.feed} initialNumToRender={30} />
     </SafeAreaView>
   );
 }
@@ -104,6 +115,12 @@ const styles = (t: Theme) =>
     lineTotal: { width: 36, textAlign: "right", color: t.text, fontSize: 18, fontWeight: "700", fontVariant: ["tabular-nums"] },
     winner: { fontWeight: "800" },
     feed: { padding: 16, paddingBottom: 40 },
+    hidden: { display: "none" },
+    tabs: { flexDirection: "row", marginHorizontal: 16, marginTop: 12, padding: 3, borderRadius: 10, backgroundColor: t.border },
+    tab: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center" },
+    tabOn: { backgroundColor: t.card },
+    tabText: { fontSize: 14, fontWeight: "600", color: t.muted },
+    tabTextOn: { color: t.text },
     period: { marginTop: 14, marginBottom: 6, fontSize: 13, fontWeight: "700", color: t.accent, textTransform: "uppercase", letterSpacing: 0.5 },
     drive: { marginTop: 8, marginBottom: 4, fontSize: 12, color: t.muted },
     play: { paddingVertical: 7, paddingHorizontal: 10, marginBottom: 4, backgroundColor: t.card, borderRadius: 8 },
