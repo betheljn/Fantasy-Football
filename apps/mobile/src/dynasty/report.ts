@@ -40,7 +40,16 @@ const person = (p: Player, note: string): ReportPlayer => ({
  * `before` is the dynasty as the season was played; `after` is the one returned
  * by finishSeason. `record` and `rank` are your team's final regular season.
  */
-export function buildReport(team: string, before: Dynasty, after: Dynasty, log: OffseasonLog, record: string, rank: number | null): OffseasonReport {
+export function buildReport(
+  team: string,
+  before: Dynasty,
+  after: Dynasty,
+  log: OffseasonLog,
+  record: string,
+  rank: number | null,
+  /** Expiring players you chose to keep (so the report can say why one still left). */
+  wantedBack: ReadonlySet<string> = new Set(),
+): OffseasonReport {
   const h = after.history.at(-1)!;
   const oldTeam = new Map<string, string>();
   for (const t of Object.values(before.league.teams)) for (const p of t.roster) oldTeam.set(p.id, t.abbr);
@@ -54,15 +63,17 @@ export function buildReport(team: string, before: Dynasty, after: Dynasty, log: 
   const why = new Map<string, string>();
   for (const m of log.contractMoves) {
     if (m.team !== team) continue;
-    if (m.kind === "released") why.set(m.player.id, "not re-signed");
-    if (m.kind === "declined") why.set(m.player.id, "tested free agency");
+    if (m.kind === "released") why.set(m.player.id, wantedBack.has(m.player.id) ? "didn't fit under the cap" : "not re-signed");
+    if (m.kind === "declined") why.set(m.player.id, wantedBack.has(m.player.id) ? "turned down your offer" : "tested free agency");
     if (m.kind === "cut" || m.kind === "cap cut") why.set(m.player.id, m.kind === "cap cut" ? "cap cut" : "cut");
   }
+  // The offseason's version of each player (a year older, after development) where the log has one.
+  const current = new Map(log.contractMoves.map((m) => [m.player.id, m.player]));
   for (const [id, p] of beforeRoster) {
     if (afterRoster.has(id)) continue;
     const went = newTeam.get(id);
     const note = retired.has(id) ? "retired" : `${why.get(id) ?? "left"}${went ? ` → signed with ${went}` : ""}`;
-    departed.push(person(p, note));
+    departed.push(person(current.get(id) ?? p, note));
   }
 
   const draft = log.draft.filter((d) => d.team === team).map((d) => person(afterRoster.get(d.player.id) ?? d.player, `round ${d.round}, pick ${d.overall}`));

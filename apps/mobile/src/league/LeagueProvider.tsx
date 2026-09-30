@@ -10,8 +10,12 @@ import {
   computeRankings,
   createSeasonStats,
   divisionStandings,
-  finishSeason,
+  beginOffseason,
+  finishOffseason,
   formatRecord,
+  offseasonContractPlan,
+  type ContractPlan,
+  type OffseasonState,
   computeRecords,
   playGame,
   seasonSchedule,
@@ -48,7 +52,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "report";
+export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -61,6 +65,10 @@ export interface DynastyControls {
   playRegularSeason: () => void;
   playPlayoffRound: () => void;
   startOffseason: () => void;
+  /** Your re-signing picture while the offseason waits on you. */
+  contractPlan: ContractPlan | null;
+  /** Finish the offseason keeping these expiring players. */
+  finishOffseason: (keep: ReadonlySet<string>) => void;
   startNextSeason: () => void;
   deleteDynasty: () => void;
 }
@@ -91,6 +99,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SaveState | null>(null);
   const [busy, setBusy] = useState<"loading" | "building" | "offseason" | "simming" | null>("loading");
   const [progress, setProgress] = useState(0);
+  /** The offseason paused for your decisions (in memory only; rebuilt identically if the app restarts). */
+  const [offseason, setOffseason] = useState<OffseasonState | null>(null);
   const stateRef = useRef<SaveState | null>(null);
   stateRef.current = state;
 
@@ -118,6 +128,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     if (!league || !schedule || !results || !seasonOver) return null;
     return simulatePlayoffs(league, { season: schedule.season, schedule, results, standings });
   }, [league, schedule, results, seasonOver, standings]);
+  const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
     const m = new Map<string, { player: Player; team: Team }>();
     if (league) for (const team of allTeams(league)) for (const player of team.roster) m.set(player.id, { player, team });
@@ -131,6 +142,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : offseason ? "resign"
     : !state.userTeam ? "choose"
     : !seasonOver ? "season"
     : state.playoffRoundsShown < PLAYOFF_ROUND_COUNT ? "playoffs"
@@ -200,10 +212,21 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setTimeout(() => {
         const s = stateRef.current!;
         const season = { season: schedule.season, schedule, results: s.results, standings };
-        const { dynasty: after, log } = finishSeason(s.dynasty, { season, stats: s.stats, playoffs });
+        setOffseason(beginOffseason(s.dynasty, { season, stats: s.stats, playoffs }));
+        setBusy(null);
+      }, 50);
+    },
+    contractPlan,
+    finishOffseason: (keep) => {
+      if (!state || !offseason || !playoffs) return;
+      setBusy("offseason");
+      setTimeout(() => {
+        const s = stateRef.current!;
+        const { dynasty: after, log } = finishOffseason(offseason, { resign: { team: s.userTeam, keep } });
         const rec = computeRecords(s.dynasty.league, s.results).get(s.userTeam);
         const rank = playoffs.ranking.find((e) => e.team === s.userTeam)?.rank ?? null;
-        const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank);
+        const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keep);
+        setOffseason(null);
         persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report });
         setBusy(null);
       }, 50);
@@ -213,6 +236,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     },
     deleteDynasty: () => {
       clearSave().catch(() => undefined);
+      setOffseason(null);
       setState(null);
     },
   };

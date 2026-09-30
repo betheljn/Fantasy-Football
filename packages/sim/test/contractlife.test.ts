@@ -6,6 +6,7 @@ import {
   buildContract,
   capFloor,
   capHit,
+  contractPlan,
   deadMoney,
   finalSeason,
   generateLeague,
@@ -173,5 +174,55 @@ describe("cuts and the cap", () => {
     const t = r.league.teams[abbr]!;
     expect(t.cap!.floorPayment).toBeGreaterThan(0);
     expect(payroll(t, next)).toBe(capFloor(capNext));
+  });
+});
+
+describe("a team making its own re-signing calls", () => {
+  const abbr = ORDER[2]!;
+  // Give every player on the team an expiring deal so there are plenty of decisions.
+  const expiring: League = {
+    ...LEAGUE,
+    teams: { ...LEAGUE.teams, [abbr]: { ...LEAGUE.teams[abbr]!, roster: LEAGUE.teams[abbr]!.roster.map((p) => ({ ...p, contract: expiringDeal(p) })) } },
+  };
+  const plan = contractPlan(expiring, expiring, NO_TRIGGERS, ORDER, abbr);
+  const moveFor = (r: ReturnType<typeof openContractYear>, id: string) => r.moves.find((m) => m.team === abbr && m.player.id === id)!;
+
+  it("previews every expiring player's deal, mood and odds", () => {
+    expect(plan.offers).toHaveLength(72);
+    expect(plan.budget).toBeGreaterThan(0);
+    for (const o of plan.offers) {
+      expect(o.chance).toBeGreaterThan(0);
+      expect(o.chance).toBeLessThanOrEqual(1);
+      expect(o.capHit).toBe(capHit(o.deal, SEASON + 1));
+    }
+    expect(plan.offers.some((o) => o.aiWants)).toBe(true);
+    expect(plan.offers.some((o) => !o.aiWants)).toBe(true);
+  });
+
+  it("matches the AI exactly when you choose what the AI would", () => {
+    const ai = openContractYear(expiring, expiring, NO_TRIGGERS, ORDER);
+    const same = openContractYear(expiring, expiring, NO_TRIGGERS, ORDER, { team: abbr, keep: new Set(plan.offers.filter((o) => o.aiWants).map((o) => o.player.id)) });
+    expect(same.moves).toEqual(ai.moves);
+  });
+
+  it("keeps exactly who you chose, on the previewed terms, if they agree and fit", () => {
+    const keep = new Set(plan.offers.filter((o) => !o.aiWants).slice(0, 5).map((o) => o.player.id));
+    const r = openContractYear(expiring, expiring, NO_TRIGGERS, ORDER, { team: abbr, keep });
+    for (const o of plan.offers) {
+      const m = moveFor(r, o.player.id);
+      if (!keep.has(o.player.id)) expect(m.kind).toBe("released");
+      else if (!o.accepts) expect(m.kind).toBe("declined");
+      else {
+        expect(m.kind).toBe("re-signed");
+        expect(m.contract).toEqual(o.deal);
+      }
+    }
+  });
+
+  it("lets everyone go if you keep no one, and leaves other teams to the AI", () => {
+    const r = openContractYear(expiring, expiring, NO_TRIGGERS, ORDER, { team: abbr, keep: new Set() });
+    expect(r.moves.filter((m) => m.team === abbr).every((m) => m.kind === "released")).toBe(true);
+    const ai = openContractYear(expiring, expiring, NO_TRIGGERS, ORDER);
+    expect(r.moves.filter((m) => m.team !== abbr)).toEqual(ai.moves.filter((m) => m.team !== abbr));
   });
 });

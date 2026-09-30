@@ -9,19 +9,31 @@ import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
 import { simulateSeason, type SeasonResult } from "../league/season.ts";
 import { simulatePlayoffs, type PlayoffResult } from "../league/playoffs.ts";
-import { divisionStandings } from "../league/standings.ts";
+import { divisionStandings, type DivisionStandings, type TeamRecord } from "../league/standings.ts";
 import { PLAYER_STAT_KEYS, type PlayerStatKey } from "../stats/boxscore.ts";
 import { addGameToSeason, createSeasonStats, type SeasonStats } from "../league/seasonstats.ts";
 import { computeAwards, type Award } from "./awards.ts";
 import { developLeague } from "./development.ts";
-import { generateDraftClass } from "./draftclass.ts";
+import { generateDraftClass, type DraftClass } from "./draftclass.ts";
 import { draftOrder, runDraft, type DraftPick } from "./draft.ts";
-import { processRetirements, type Retiree } from "./retirement.ts";
+import { processRetirements, type Retiree, type RetirementResult } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
-import { openContractYear, runFreeAgency, settleCap, signDraftPicks, summarizeContracts, type ContractMove, type ContractSummary } from "../contracts/offseason.ts";
-import { createScouting, runCombine, scoutSeason } from "./scouting.ts";
-import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange } from "./staffcareers.ts";
+import {
+  contractPlan,
+  openContractYear,
+  runFreeAgency,
+  settleCap,
+  signDraftPicks,
+  summarizeContracts,
+  type ContractMove,
+  type ContractPlan,
+  type ContractSummary,
+  type IncentiveTriggers,
+  type ResignChoices,
+} from "../contracts/offseason.ts";
+import { createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
+import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange, type StaffOffseasonResult } from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
 import { computeRecords, winPct } from "../league/standings.ts";
 
@@ -193,6 +205,43 @@ export interface OffseasonLog {
  * Returns the dynasty ready for next season and a full log of the offseason.
  */
 export function finishSeason(dynasty: Dynasty, played: PlayedSeason): { dynasty: Dynasty; log: OffseasonLog } {
+  return finishOffseason(beginOffseason(dynasty, played));
+}
+
+/**
+ * The offseason paused where a team's own decisions come in: awards and
+ * careers recorded, staff moves, retirements and development done; contracts,
+ * the draft and free agency still to come.
+ */
+export interface OffseasonState {
+  dynasty: Dynasty;
+  played: PlayedSeason;
+  awards: Award[];
+  standings: DivisionStandings[];
+  careers: Map<PlayerId, CareerLine>;
+  order: string[];
+  staff: StaffOffseasonResult;
+  records: Map<string, TeamRecord>;
+  retired: RetirementResult;
+  /** Rosters after retirements and development. */
+  developed: League;
+  draftClass: DraftClass;
+  scouting: ScoutingState;
+  winPct: Map<string, number>;
+  triggers: IncentiveTriggers;
+}
+
+/** Your team's calls for the rest of the offseason (anything left out is the AI's). */
+export interface OffseasonChoices {
+  resign?: ResignChoices;
+}
+
+/** A team's re-signing picture at this point of the offseason. */
+export function offseasonContractPlan(state: OffseasonState, team: string): ContractPlan {
+  return contractPlan(state.dynasty.league, state.developed, state.triggers, state.order, team);
+}
+
+export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): OffseasonState {
   const league = dynasty.league;
   const { season, stats, playoffs } = played;
 
@@ -228,12 +277,21 @@ export function finishSeason(dynasty: Dynasty, played: PlayedSeason): { dynasty:
   const records = computeRecords(league, season.results);
   const retired = processRetirements(staff.league);
   const developed = developLeague(retired.league);
+  const winPctNow = new Map([...records.values()].map((r) => [r.team, winPct(r)]));
+  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)), winPct: winPctNow };
+  return { dynasty, played, awards, standings, careers, order, staff, records, retired, developed, draftClass, scouting, winPct: winPctNow, triggers };
+}
+
+/** Run the rest of the offseason (with your choices, if any) and return next season's dynasty. */
+export function finishOffseason(state: OffseasonState, choices: OffseasonChoices = {}): { dynasty: Dynasty; log: OffseasonLog } {
+  const { dynasty, played, awards, standings, careers, order, staff, records, retired, developed, draftClass, scouting, triggers } = state;
+  const winPctNow = state.winPct;
+  const league = dynasty.league;
+  const { playoffs } = played;
 
   // Contracts: expiring deals and extensions, the draft, free agency, then cuts and the cap.
   const next = league.season + 1;
-  const winPctNow = new Map([...computeRecords(league, season.results).values()].map((r) => [r.team, winPct(r)]));
-  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)), winPct: winPctNow };
-  const opened = openContractYear(league, developed, triggers, order);
+  const opened = openContractYear(league, developed, triggers, order, choices.resign);
   const draft = runDraft(opened.league, draftClass, scouting, order);
   const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow);
   const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });

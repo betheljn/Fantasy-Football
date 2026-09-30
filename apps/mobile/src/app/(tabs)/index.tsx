@@ -18,6 +18,7 @@ import {
   teamRatings,
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { ResignScreen } from "../../screens/ResignScreen";
 import type { OffseasonReport, ReportPlayer } from "../../dynasty/report";
 import { useDynasty, useLeagueMaybe, type LeagueData } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
@@ -62,6 +63,8 @@ export default function Home() {
       );
     case "choose":
       return data ? <ChooseTeam data={data} /> : null;
+    case "resign":
+      return d.contractPlan ? <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} /> : null;
     case "report":
       return d.save?.report ? <Report report={d.save.report} /> : null;
     default:
