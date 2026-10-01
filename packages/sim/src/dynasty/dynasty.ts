@@ -22,6 +22,7 @@ import { assignContracts } from "../gen/contract-gen.ts";
 import {
   contractPlan,
   openContractYear,
+  freeAgencyPlan,
   runFreeAgency,
   settleCap,
   signDraftPicks,
@@ -29,6 +30,8 @@ import {
   type ContractMove,
   type ContractPlan,
   type ContractSummary,
+  type FreeAgencyChoices,
+  type FreeAgencyPlan,
   type IncentiveTriggers,
   type OpenYearResult,
   type ResignChoices,
@@ -246,6 +249,7 @@ export interface OffseasonState {
 /** Your team's calls for the rest of the offseason (anything left out is the AI's). */
 export interface OffseasonChoices {
   resign?: ResignChoices;
+  freeAgency?: FreeAgencyChoices;
 }
 
 /** A team's re-signing picture at this point of the offseason. */
@@ -297,7 +301,7 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): Offseaso
 /** Run the rest of the offseason (with your choices, if any) and return next season's dynasty. */
 export function finishOffseason(state: OffseasonState, choices: OffseasonChoices = {}): { dynasty: Dynasty; log: OffseasonLog } {
   const s = state.contracts ? state : resolveContracts(state, choices.resign);
-  return completeOffseason(s, runDraft(s.contracts!.league, s.draftClass, s.scouting, s.order));
+  return completeOffseason(s, runDraft(s.contracts!.league, s.draftClass, s.scouting, s.order), choices.freeAgency);
 }
 
 /** Settle expiring contracts (with a team's own re-signing calls, if given). The draft comes next. */
@@ -312,7 +316,15 @@ export function offseasonDraft(state: OffseasonState, humans: ReadonlySet<string
 }
 
 /** After the draft: free agency, roster moves, the cap, and the season's record. */
-export function completeOffseason(state: OffseasonState, draft: DraftResult): { dynasty: Dynasty; log: OffseasonLog } {
+/** The free-agent market as it opens after the draft, from one team's point of view. */
+export function offseasonFreeAgencyPlan(state: OffseasonState, draft: DraftResult, team: string): FreeAgencyPlan {
+  const opened = state.contracts;
+  if (!opened) throw new Error("Resolve contracts before free agency");
+  const next = state.dynasty.league.season + 1;
+  return freeAgencyPlan(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, state.winPct, team);
+}
+
+export function completeOffseason(state: OffseasonState, draft: DraftResult, freeAgencyChoices?: FreeAgencyChoices): { dynasty: Dynasty; log: OffseasonLog } {
   const { dynasty, played, awards, standings, careers, order, staff, records, retired, scouting } = state;
   const winPctNow = state.winPct;
   const league = dynasty.league;
@@ -320,7 +332,7 @@ export function completeOffseason(state: OffseasonState, draft: DraftResult): { 
   const opened = state.contracts;
   if (!opened) throw new Error("Resolve contracts before completing the offseason");
   const next = league.season + 1;
-  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow);
+  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow, freeAgencyChoices);
   const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });
   let settled = settleCap(moves.league, moves.cuts, next);
   const contractMoves = [...opened.moves, ...freeAgency.moves, ...settled.moves];

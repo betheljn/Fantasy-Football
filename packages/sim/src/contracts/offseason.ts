@@ -320,40 +320,94 @@ export interface FreeAgencyResult {
   unsigned: Player[];
 }
 
+/** Your offer to a free agent: yearly value ($K) and length. */
+export interface FreeAgentOffer {
+  annual: number;
+  years: number;
+}
+
+/** A team making its own free-agent offers (the user's team). */
+export interface FreeAgencyChoices {
+  team: string;
+  offers: ReadonlyMap<PlayerId, FreeAgentOffer>;
+  /** Let the team's front office bid (as the AI would) on players it made no offer to; otherwise it bids on no one else. */
+  frontOffice?: boolean;
+}
+
+/** What a free agent is asking, from his own random stream (so previews match the real thing). */
+export function freeAgentAsk(seed: string, next: number, p: Player, capNext: number, index: number): { market: number; ask: number; years: number } {
+  const rng = new Rng(`${seed}:${next}:fa:${p.id}`);
+  const market = marketValue(p, capNext, index);
+  const ask = market * Math.exp(rng.normal(0, 0.1));
+  return { market, ask, years: contractLength(rng, p) };
+}
+
+interface FreeAgencyContext {
+  seed: string;
+  next: number;
+  capNext: number;
+}
+
+/** An AI team's bid for a free agent, or null if it doesn't want him or can't afford him. */
+function aiBid(ctx: FreeAgencyContext, t: Team, p: Player, ask: number, years: number): Contract | null {
+  const atPos = t.roster.filter((q) => q.position === p.position);
+  if (atPos.length >= ROSTER_TEMPLATE[p.position] + 2) return null;
+  if (!wanted({ ...t, roster: [...t.roster, p] }, p)) return null;
+  const room = spendable(t, ctx.capNext, ctx.next);
+  const noise = new Rng(`${ctx.seed}:${ctx.next}:fa:${p.id}:${t.abbr}`).normal(0, 0.05);
+  const eagerness = 1 + (wouldStart(t, p) ? 0.12 : 0) + noise;
+  let annual = ask * eagerness * (1 - hometownDiscount(p, t));
+  let deal = veteranContract(p, ctx.capNext, { kind: "veteran", signed: ctx.next, years, annual });
+  // Tight on room: a team will stretch down to 90% of his ask, no further.
+  if (capHit(deal, ctx.next) > room) {
+    annual = Math.min(annual, (annual * room) / capHit(deal, ctx.next));
+    if (annual < ask * 0.9 * (1 - hometownDiscount(p, t))) return null;
+    deal = veteranContract(p, ctx.capNext, { kind: "veteran", signed: ctx.next, years, annual });
+    if (capHit(deal, ctx.next) > room) return null;
+  }
+  return deal;
+}
+
+/** Free agents in the order they sign (best first). */
+function freeAgentOrder(pool: readonly Player[], capNext: number): Player[] {
+  return [...pool].sort((a, b) => marketValue(b, capNext) - marketValue(a, capNext) || a.id.localeCompare(b.id));
+}
+
 /**
  * Free agency: the best free agents first. Every team that wants him (he'd be
  * among its top players at the position) and can afford him makes an offer:
  * more when he'd start for them, less when he's coming home (the hometown
- * discount). He signs where he'd be happiest: money, winning, playing time,
- * the head coach and home, weighted by what he cares about.
+ * discount). A team given `choices` bids only its own offers. He signs where
+ * he'd be happiest: money, winning, playing time, the head coach and home,
+ * weighted by what he cares about.
  */
-export function runFreeAgency(league: League, pool: readonly Player[], next: number, index = 1, winPct: ReadonlyMap<string, number> = new Map()): FreeAgencyResult {
+export function runFreeAgency(
+  league: League,
+  pool: readonly Player[],
+  next: number,
+  index = 1,
+  winPct: ReadonlyMap<string, number> = new Map(),
+  choices?: FreeAgencyChoices,
+): FreeAgencyResult {
   const rng = new Rng(`${league.seed}:${next}:freeagency`);
   const capNext = salaryCap(league.seed, next);
+  const ctx: FreeAgencyContext = { seed: league.seed, next, capNext };
   const teams: League["teams"] = { ...league.teams };
   const moves: ContractMove[] = [];
   const unsigned: Player[] = [];
-  const sorted = [...pool].sort((a, b) => marketValue(b, capNext) - marketValue(a, capNext) || a.id.localeCompare(b.id));
-  for (const p of sorted) {
-    const market = marketValue(p, capNext, index);
-    const ask = market * Math.exp(rng.normal(0, 0.1));
-    const years = contractLength(rng, p);
+  for (const p of freeAgentOrder(pool, capNext)) {
+    const { market, ask, years } = freeAgentAsk(league.seed, next, p, capNext, index);
     const offers: Array<{ team: Team; deal: Contract; mood: number }> = [];
     for (const t of Object.values(teams)) {
-      const atPos = t.roster.filter((q) => q.position === p.position);
-      if (atPos.length >= ROSTER_TEMPLATE[p.position] + 2) continue;
-      if (!wanted({ ...t, roster: [...t.roster, p] }, p)) continue;
-      const room = spendable(t, capNext, next);
-      const eagerness = 1 + (wouldStart(t, p) ? 0.12 : 0) + rng.normal(0, 0.05);
-      let annual = ask * eagerness * (1 - hometownDiscount(p, t));
-      let deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years, annual });
-      // Tight on room: a team will stretch down to 90% of his ask, no further.
-      if (capHit(deal, next) > room) {
-        annual = Math.min(annual, (annual * room) / capHit(deal, next));
-        if (annual < ask * 0.9 * (1 - hometownDiscount(p, t))) continue;
-        deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years, annual });
-        if (capHit(deal, next) > room) continue;
-      }
+      let deal: Contract | null;
+      if (choices?.team === t.abbr) {
+        const mine = choices.offers.get(p.id);
+        if (mine) {
+          deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years: mine.years, annual: mine.annual });
+          if (capHit(deal, next) > spendable(t, capNext, next)) deal = null;
+        } else deal = choices.frontOffice ? aiBid(ctx, t, p, ask, years) : null;
+      } else deal = aiBid(ctx, t, p, ask, years);
+      if (!deal) continue;
       const offered = deal.years.reduce((s, y) => s + y.salary + y.bonus, 0) / deal.years.length;
       offers.push({ team: t, deal, mood: mood(p, teamAppeal(t, p, winPct.get(t.abbr) ?? 0.5), offered / market) });
     }
@@ -368,6 +422,64 @@ export function runFreeAgency(league: League, pool: readonly Player[], next: num
     moves.push({ kind: "signed", team: t.abbr, player: signed, contract: choice.deal, bidders: offers.length, hometown: persona(p).homeState === t.abbr });
   }
   return { league: { ...league, teams }, moves, unsigned };
+}
+
+/** One free agent as a team sees him before free agency opens. */
+export interface FreeAgentListing {
+  player: Player;
+  /** His market value and what he's asking ($K a year), and for how long. */
+  market: number;
+  ask: number;
+  years: number;
+  /** Teams (other than yours) that want him and can afford him as free agency opens. */
+  interest: number;
+  /** How he'd feel about your team at his asking price (0-100). */
+  mood: number;
+  /** He'd start for your team. */
+  wouldStart: boolean;
+  /** Your team is his home-state team. */
+  hometown: boolean;
+}
+
+export interface FreeAgencyPlan {
+  team: string;
+  season: number;
+  cap: number;
+  /** What your team can spend now, keeping enough to fill the roster at the minimum. */
+  room: number;
+  minimum: number;
+  rosterSize: number;
+  /** In signing order (best first). */
+  pool: FreeAgentListing[];
+}
+
+/** The free-agent market as it opens, from one team's point of view. Same league/pool/index as runFreeAgency. */
+export function freeAgencyPlan(league: League, pool: readonly Player[], next: number, index: number, winPct: ReadonlyMap<string, number>, abbr: string): FreeAgencyPlan {
+  const capNext = salaryCap(league.seed, next);
+  const ctx: FreeAgencyContext = { seed: league.seed, next, capNext };
+  const me = league.teams[abbr]!;
+  const others = Object.values(league.teams).filter((t) => t.abbr !== abbr);
+  return {
+    team: abbr,
+    season: next,
+    cap: capNext,
+    room: spendable(me, capNext, next),
+    minimum: minimumSalary(capNext),
+    rosterSize: me.roster.length,
+    pool: freeAgentOrder(pool, capNext).map((p) => {
+      const { market, ask, years } = freeAgentAsk(league.seed, next, p, capNext, index);
+      return {
+        player: p,
+        market,
+        ask,
+        years,
+        interest: others.filter((t) => aiBid(ctx, t, p, ask, years) !== null).length,
+        mood: mood(p, teamAppeal(me, p, winPct.get(abbr) ?? 0.5), ask / market),
+        wouldStart: wouldStart(me, p),
+        hometown: persona(p).homeState === abbr,
+      };
+    }),
+  };
 }
 
 /**

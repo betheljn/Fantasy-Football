@@ -25,6 +25,8 @@ export interface OffseasonReport {
   arrived: ReportPlayer[];
   departed: ReportPlayer[];
   kept: ReportPlayer[];
+  /** How each of your free-agent offers turned out. */
+  offers: ReportPlayer[];
 }
 
 const person = (p: Player, note: string): ReportPlayer => ({
@@ -49,6 +51,8 @@ export function buildReport(
   rank: number | null,
   /** Expiring players you chose to keep (so the report can say why one still left). */
   wantedBack: ReadonlySet<string> = new Set(),
+  /** Free agents you made offers to. */
+  offered: ReadonlyMap<string, { annual: number; years: number }> = new Map(),
 ): OffseasonReport {
   const h = after.history.at(-1)!;
   const oldTeam = new Map<string, string>();
@@ -94,7 +98,18 @@ export function buildReport(
     .filter((c) => c.team === team)
     .map((c) => `${c.role}: ${c.out ?? "—"} (${c.reason}) → ${c.in}`);
 
+  const signedWith = new Map(log.contractMoves.filter((m) => m.kind === "signed").map((m) => [m.player.id, m]));
+  const offers: ReportPlayer[] = [];
+  for (const id of offered.keys()) {
+    const m = signedWith.get(id);
+    const p = m?.player ?? log.contractMoves.find((x) => x.player.id === id)?.player;
+    if (!p) continue;
+    const note = !m ? "nobody signed him" : m.team === team ? `signed with you (${m.bidders ?? 1} offer${(m.bidders ?? 1) === 1 ? "" : "s"})` : `chose ${m.team} (${m.bidders ?? 1} offers)`;
+    offers.push(person(p, note));
+  }
+
   return {
+    offers,
     season: h.season,
     champion: h.champion,
     runnerUp: h.runnerUp,

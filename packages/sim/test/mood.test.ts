@@ -3,6 +3,8 @@ import {
   PRIORITIES,
   allTeams,
   capHit,
+  freeAgencyPlan,
+  freeAgentAsk,
   generateLeague,
   hometownDiscount,
   marketValue,
@@ -116,5 +118,63 @@ describe("free agency bidding", () => {
     const atHome = mood(homebody, { ...same, home: teamAppeal(home, homebody, 0.5).home }, 1 - hometownDiscount(homebody, home));
     const elsewhere = mood(homebody, { ...same, home: teamAppeal(away, homebody, 0.5).home }, 1);
     expect(atHome).toBeGreaterThan(elsewhere);
+  });
+});
+
+describe("your free-agent offers", () => {
+  // A bigger market: the top two players from twelve teams, released.
+  const released: Player[] = TEAMS.slice(0, 12).flatMap((t) =>
+    [...t.roster]
+      .sort((a, b) => playerOverall(b) - playerOverall(a))
+      .slice(0, 2)
+      .map((p) => {
+        const { contract: _c, ...free } = p;
+        return free;
+      }),
+  );
+  const league = {
+    ...LEAGUE,
+    teams: Object.fromEntries(TEAMS.map((t) => [t.abbr, { ...t, roster: t.roster.filter((p) => !released.some((r) => r.id === p.id)) } as Team])),
+  };
+  const me = TEAMS[20]!.abbr;
+  const plan = freeAgencyPlan(league, released, NEXT, 1.3, new Map(), me);
+
+  it("previews the market: each player's ask, interest and mood toward you", () => {
+    expect(plan.pool).toHaveLength(released.length);
+    expect(plan.room).toBeGreaterThan(0);
+    for (const l of plan.pool) {
+      expect(l.ask).toBe(freeAgentAsk(LEAGUE.seed, NEXT, l.player, salaryCap(LEAGUE.seed, NEXT), 1.3).ask);
+      expect(l.interest).toBeGreaterThanOrEqual(0);
+      expect(l.mood).toBeGreaterThanOrEqual(0);
+      expect(l.mood).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("your team bids on no one when you make no offers", () => {
+    const r = runFreeAgency(league, released, NEXT, 1.3, new Map(), { team: me, offers: new Map() });
+    expect(r.moves.some((m) => m.team === me)).toBe(false);
+  });
+
+  it("a big offer lands a player, on exactly your terms", () => {
+    const target = plan.pool.find((l) => l.ask * 1.6 < plan.room * 0.5)!;
+    const offer = { annual: Math.round(target.ask * 1.6), years: 3 };
+    const r = runFreeAgency(league, released, NEXT, 1.3, new Map(), { team: me, offers: new Map([[target.player.id, offer]]) });
+    const move = r.moves.find((m) => m.player.id === target.player.id)!;
+    expect(move.team).toBe(me);
+    expect(move.contract!.years).toHaveLength(3);
+    const avg = move.contract!.years.reduce((s, y) => s + y.salary + y.bonus, 0) / 3;
+    expect(Math.abs(avg - offer.annual) / offer.annual).toBeLessThan(0.01);
+  });
+
+  it("lets your front office bid on everyone else if you ask, exactly as the AI would", () => {
+    const ai = runFreeAgency(league, released, NEXT, 1.3);
+    const fo = runFreeAgency(league, released, NEXT, 1.3, new Map(), { team: me, offers: new Map(), frontOffice: true });
+    expect(fo.moves).toEqual(ai.moves);
+  });
+
+  it("ignores an offer you can't afford", () => {
+    const target = plan.pool[0]!;
+    const r = runFreeAgency(league, released, NEXT, 1.3, new Map(), { team: me, offers: new Map([[target.player.id, { annual: plan.room * 3, years: 2 }]]) });
+    expect(r.moves.find((m) => m.player.id === target.player.id)?.team).not.toBe(me);
   });
 });

@@ -15,10 +15,14 @@ import {
   salaryCap,
   staffOverall,
   teamName,
+  mood,
+  teamAppeal,
   teamRatings,
+  winPct,
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
 import { DraftScreen } from "../../screens/DraftScreen";
+import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
 import type { OffseasonReport, ReportPlayer } from "../../dynasty/report";
 import { SCOUT_POINTS, useDynasty, useLeagueMaybe, type LeagueData } from "../../league/LeagueProvider";
@@ -68,6 +72,22 @@ export default function Home() {
       return d.contractPlan ? <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} /> : null;
     case "draft":
       return d.draftTurn && data ? <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} /> : null;
+    case "freeagency":
+      return d.freeAgencyPlan && data ? (
+        <FreeAgencyScreen
+          plan={d.freeAgencyPlan}
+          offers={d.offers}
+          setOffer={d.setOffer}
+          onOpen={d.openFreeAgency}
+          frontOffice={d.frontOffice}
+          setFrontOffice={d.setFrontOffice}
+          moodAt={(l, annual) => {
+            const rec = computeRecords(data.league, data.results).get(data.userTeam);
+            const appeal = teamAppeal(data.league.teams[data.userTeam]!, l.player, rec ? winPct(rec) : 0.5);
+            return mood(l.player, appeal, annual / l.market);
+          }}
+        />
+      ) : null;
     case "report":
       return d.save?.report ? <Report report={d.save.report} /> : null;
     default:
@@ -364,6 +384,7 @@ function Report({ report }: { report: OffseasonReport }) {
       </Card>
       {section("Draft class", report.draft, "No picks.")}
       {section("Re-signed", report.kept, "No one re-signed.")}
+      {(report.offers ?? []).length > 0 ? section("Your free-agent offers", report.offers, "") : null}
       {section("New arrivals", report.arrived, "No one new.")}
       {section("Departures", report.departed, "No one left.")}
       <Button label={`Start the ${next} season`} onPress={d.startNextSeason} theme={t} primary />

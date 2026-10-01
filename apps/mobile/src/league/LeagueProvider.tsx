@@ -18,6 +18,9 @@ import {
   createScouting,
   generateDraftClass,
   offseasonDraft,
+  offseasonFreeAgencyPlan,
+  type FreeAgencyPlan,
+  type FreeAgentOffer,
   resolveContracts,
   type DraftClass,
   type DraftResult,
@@ -65,7 +68,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "report";
+export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "freeagency" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -93,6 +96,14 @@ export interface DynastyControls {
   draftPick: (prospect: string) => void;
   /** Take the best player on your board with each of your remaining picks. */
   autoDraft: () => void;
+  /** The free-agent market after the draft, your offers, and opening free agency. */
+  freeAgencyPlan: FreeAgencyPlan | null;
+  offers: ReadonlyMap<string, FreeAgentOffer>;
+  setOffer: (player: string, offer: FreeAgentOffer | null) => void;
+  /** Let your front office bid on players you made no offer to. */
+  frontOffice: boolean;
+  setFrontOffice: (on: boolean) => void;
+  openFreeAgency: () => void;
   startNextSeason: () => void;
   deleteDynasty: () => void;
 }
@@ -126,6 +137,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   /** The offseason paused for your decisions (in memory only; rebuilt identically if the app restarts). */
   const [offseason, setOffseason] = useState<OffseasonState | null>(null);
   const [draftTurn, setDraftTurn] = useState<DraftTurn | null>(null);
+  /** The finished draft, while you make free-agent offers. */
+  const [draftDone, setDraftDone] = useState<DraftResult | null>(null);
+  const [offers, setOffers] = useState<ReadonlyMap<string, FreeAgentOffer>>(new Map());
+  const [frontOffice, setFrontOffice] = useState(true);
   const draftRef = useRef<Generator<DraftTurn, DraftResult, string> | null>(null);
   /** Expiring players you chose to keep (for the report). */
   const keptRef = useRef<ReadonlySet<string>>(new Set());
@@ -157,6 +172,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     return simulatePlayoffs(league, { season: schedule.season, schedule, results, standings });
   }, [league, schedule, results, seasonOver, standings]);
   const draftClass = useMemo(() => (league ? generateDraftClass(league) : null), [league]);
+  const freeAgencyPlanValue = useMemo(
+    () => (offseason?.contracts && draftDone && state?.userTeam ? offseasonFreeAgencyPlan(offseason, draftDone, state.userTeam) : null),
+    [offseason, draftDone, state?.userTeam],
+  );
   const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
     const m = new Map<string, { player: Player; team: Team }>();
@@ -171,6 +190,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : offseason?.contracts && draftDone ? "freeagency"
     : offseason?.contracts && draftTurn ? "draft"
     : offseason ? "resign"
     : !state.userTeam ? "choose"
@@ -197,23 +217,32 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     return { ...s, weeksPlayed: week, results: [...s.results, ...played], scouting, scoutPlan: [] };
   };
 
-  /** Draft over: the rest of the offseason, then the report. */
-  const completeWith = (draft: DraftResult) => {
+  /** Free agency and the rest of the offseason, then the report. */
+  const completeWith = (draft: DraftResult, myOffers: ReadonlyMap<string, FreeAgentOffer>, foBids: boolean) => {
     const s = stateRef.current;
     const off = offseason;
     if (!s || !off || !playoffs) return;
     setBusy("offseason");
     setDraftTurn(null);
+    setDraftDone(null);
     draftRef.current = null;
     setTimeout(() => {
-      const { dynasty: after, log } = completeOffseason(off, draft);
+      const { dynasty: after, log } = completeOffseason(off, draft, { team: s.userTeam, offers: myOffers, frontOffice: foBids });
       const rec = computeRecords(s.dynasty.league, s.results).get(s.userTeam);
       const rank = playoffs.ranking.find((e) => e.team === s.userTeam)?.rank ?? null;
-      const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keptRef.current);
+      const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keptRef.current, myOffers);
+      setOffers(new Map());
       setOffseason(null);
       persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [] });
       setBusy(null);
     }, 50);
+  };
+
+  /** Draft over: on to free agency. */
+  const finishDraft = (draft: DraftResult) => {
+    setDraftTurn(null);
+    draftRef.current = null;
+    setDraftDone(draft);
   };
 
   /** Move the draft on with your pick (or start it with undefined). */
@@ -221,7 +250,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const gen = draftRef.current;
     if (!gen) return;
     const r = pick === undefined ? gen.next() : gen.next(pick);
-    if (r.done) completeWith(r.value);
+    if (r.done) finishDraft(r.value);
     else setDraftTurn(r.value);
   };
 
@@ -309,8 +338,22 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (!gen || !draftTurn) return;
       let r = gen.next(draftTurn.board[0]!.prospect.player.id);
       while (!r.done) r = gen.next(r.value.board[0]!.prospect.player.id);
-      completeWith(r.value);
+      finishDraft(r.value);
     },
+    freeAgencyPlan: freeAgencyPlanValue,
+    offers,
+    setOffer: (player, offer) =>
+      setOffers((o) => {
+        const n = new Map(o);
+        if (offer) n.set(player, offer);
+        else n.delete(player);
+        return n;
+      }),
+    openFreeAgency: () => {
+      if (draftDone) completeWith(draftDone, offers, frontOffice);
+    },
+    frontOffice,
+    setFrontOffice,
     startNextSeason: () => {
       if (state) persist({ ...state, report: null });
     },
@@ -318,6 +361,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       clearSave().catch(() => undefined);
       setOffseason(null);
       setDraftTurn(null);
+      setDraftDone(null);
+      setOffers(new Map());
       draftRef.current = null;
       setState(null);
     },
