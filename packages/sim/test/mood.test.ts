@@ -34,11 +34,15 @@ describe("personas", () => {
     }
   });
 
-  it("come from every state, big states most often", () => {
+  it("come from every state about equally, not by population", () => {
     const homes = new Map<string, number>();
     for (const p of PLAYERS) homes.set(persona(p).homeState, (homes.get(persona(p).homeState) ?? 0) + 1);
-    expect(homes.size).toBeGreaterThan(40);
-    expect(homes.get("CA")!).toBeGreaterThan(5 * (homes.get("WY") ?? 1));
+    expect(homes.size).toBe(50);
+    const fair = PLAYERS.length / 50;
+    for (const n of homes.values()) {
+      expect(n).toBeGreaterThan(fair * 0.5);
+      expect(n).toBeLessThan(fair * 1.6);
+    }
   });
 });
 

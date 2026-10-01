@@ -26,17 +26,6 @@ export interface Persona {
   weights: Record<Priority, number>;
 }
 
-/**
- * Relative number of players each state produces (roughly its population,
- * in millions), so big states send more players into the league.
- */
-const STATE_WEIGHT: Record<string, number> = {
-  AL: 5, AK: 0.7, AZ: 7.3, AR: 3, CA: 39, CO: 5.8, CT: 3.6, DE: 1, FL: 22, GA: 11, HI: 1.4, ID: 1.9, IL: 12.6,
-  IN: 6.8, IA: 3.2, KS: 2.9, KY: 4.5, LA: 4.6, ME: 1.4, MD: 6.2, MA: 7, MI: 10, MN: 5.7, MS: 2.9, MO: 6.2,
-  MT: 1.1, NE: 2, NV: 3.2, NH: 1.4, NJ: 9.3, NM: 2.1, NY: 19.6, NC: 10.7, ND: 0.8, OH: 11.8, OK: 4, OR: 4.2,
-  PA: 13, RI: 1.1, SC: 5.3, SD: 0.9, TN: 7, TX: 30, UT: 3.4, VT: 0.6, VA: 8.7, WA: 7.8, WV: 1.8, WI: 5.9, WY: 0.6,
-};
-
 /** A player's persona, the same every time for the same id. */
 const personaCache = new Map<string, Persona>();
 
@@ -51,16 +40,9 @@ export function persona(player: Pick<Player, "id">): Persona {
 
 function makePersona(id: string): Persona {
   const rng = new Rng(`persona:${id}`);
-  const total = STATES.reduce((s, [, abbr]) => s + (STATE_WEIGHT[abbr] ?? 1), 0);
-  let r = rng.next() * total;
-  let homeState = STATES[0]![1];
-  for (const [, abbr] of STATES) {
-    r -= STATE_WEIGHT[abbr] ?? 1;
-    if (r <= 0) {
-      homeState = abbr;
-      break;
-    }
-  }
+  // Talent isn't tied to population: every state produces players equally,
+  // so small states get hometown recruits too.
+  const homeState = STATES[rng.int(0, STATES.length - 1)]![1];
   // Everyone cares about money; the rest varies a lot from player to player.
   const raw: Record<Priority, number> = {
     money: 1 + rng.next() * 1.5,
