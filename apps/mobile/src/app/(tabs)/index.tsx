@@ -21,6 +21,7 @@ import {
   winPct,
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
@@ -88,6 +89,8 @@ export default function Home() {
           }}
         />
       ) : null;
+    case "cuts":
+      return d.rosterPlan ? <CutsScreen plan={d.rosterPlan} onDone={d.finishCuts} /> : null;
     case "report":
       return d.save?.report ? <Report report={d.save.report} /> : null;
     default:

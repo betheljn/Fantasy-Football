@@ -19,6 +19,10 @@ import {
   generateDraftClass,
   offseasonDraft,
   offseasonFreeAgencyPlan,
+  offseasonRosterPlan,
+  runOffseasonFreeAgency,
+  type Position,
+  type RosterPlan,
   type FreeAgencyPlan,
   type FreeAgentOffer,
   resolveContracts,
@@ -68,7 +72,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "freeagency" | "report";
+export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "freeagency" | "cuts" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -103,6 +107,12 @@ export interface DynastyControls {
   /** Let your front office bid on players you made no offer to. */
   frontOffice: boolean;
   setFrontOffice: (on: boolean) => void;
+  /** Your roster after free agency, and finishing the offseason with your cuts. */
+  rosterPlan: RosterPlan | null;
+  finishCuts: (cuts: ReadonlySet<string>) => void;
+  /** Reorder your depth chart at a position (regular season only). */
+  canEditDepthChart: boolean;
+  setDepthChart: (pos: Position, ids: string[]) => void;
   openFreeAgency: () => void;
   startNextSeason: () => void;
   deleteDynasty: () => void;
@@ -176,6 +186,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     () => (offseason?.contracts && draftDone && state?.userTeam ? offseasonFreeAgencyPlan(offseason, draftDone, state.userTeam) : null),
     [offseason, draftDone, state?.userTeam],
   );
+  const rosterPlanValue = useMemo(() => (offseason?.freeAgency && state?.userTeam ? offseasonRosterPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
     const m = new Map<string, { player: Player; team: Team }>();
@@ -190,6 +201,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : offseason?.freeAgency ? "cuts"
     : offseason?.contracts && draftDone ? "freeagency"
     : offseason?.contracts && draftTurn ? "draft"
     : offseason ? "resign"
@@ -217,17 +229,30 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     return { ...s, weeksPlayed: week, results: [...s.results, ...played], scouting, scoutPlan: [] };
   };
 
-  /** Free agency and the rest of the offseason, then the report. */
-  const completeWith = (draft: DraftResult, myOffers: ReadonlyMap<string, FreeAgentOffer>, foBids: boolean) => {
+  /** Free agency (with your offers); roster cuts come next. */
+  const runFreeAgencyNow = (draft: DraftResult, myOffers: ReadonlyMap<string, FreeAgentOffer>, foBids: boolean) => {
     const s = stateRef.current;
     const off = offseason;
-    if (!s || !off || !playoffs) return;
+    if (!s || !off) return;
+    setBusy("offseason");
+    setTimeout(() => {
+      setOffseason(runOffseasonFreeAgency(off, draft, { team: s.userTeam, offers: myOffers, frontOffice: foBids }));
+      setBusy(null);
+    }, 50);
+  };
+
+  /** Your cuts, the rest of the offseason, then the report. */
+  const completeWith = (cuts: ReadonlySet<string>) => {
+    const s = stateRef.current;
+    const off = offseason;
+    if (!s || !off?.freeAgency || !playoffs) return;
+    const myOffers = offers;
     setBusy("offseason");
     setDraftTurn(null);
     setDraftDone(null);
     draftRef.current = null;
     setTimeout(() => {
-      const { dynasty: after, log } = completeOffseason(off, draft, { team: s.userTeam, offers: myOffers, frontOffice: foBids });
+      const { dynasty: after, log } = completeOffseason(off, off.freeAgency!.draft, undefined, { team: s.userTeam, players: cuts });
       const rec = computeRecords(s.dynasty.league, s.results).get(s.userTeam);
       const rank = playoffs.ranking.find((e) => e.team === s.userTeam)?.rank ?? null;
       const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keptRef.current, myOffers);
@@ -350,7 +375,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         return n;
       }),
     openFreeAgency: () => {
-      if (draftDone) completeWith(draftDone, offers, frontOffice);
+      if (draftDone) runFreeAgencyNow(draftDone, offers, frontOffice);
+    },
+    rosterPlan: rosterPlanValue,
+    finishCuts: (cuts) => completeWith(cuts),
+    // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
+    canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver,
+    setDepthChart: (pos, ids) => {
+      if (!state || offseason || !state.userTeam || seasonOver) return;
+      const league = state.dynasty.league;
+      const team = league.teams[state.userTeam]!;
+      const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
+      persist({ ...state, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
     },
     frontOffice,
     setFrontOffice,

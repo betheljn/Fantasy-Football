@@ -9,7 +9,10 @@ import {
   generateDraftClass,
   knowledge,
   offseasonDraft,
+  offseasonRosterPlan,
   resolveContracts,
+  runDraft,
+  runOffseasonFreeAgency,
   allTeams,
   buildDynasty,
   createSeasonStats,
@@ -183,3 +186,37 @@ function playSeasonLike() {
   const season = { season: schedule.season, schedule, results, standings: divisionStandings(START.league, results) };
   return { season, stats, playoffs: simulatePlayoffs(START.league, season) };
 }
+
+describe("your roster cuts", () => {
+  const contracts = resolveContracts(beginOffseason(START, playSeasonLike()));
+  const draft = runDraft(contracts.contracts!.league, contracts.draftClass, contracts.scouting, contracts.order);
+  const afterFa = runOffseasonFreeAgency(contracts, draft);
+  // The team with the most players after free agency, so there's real cutting to do.
+  const me = allTeams(afterFa.freeAgency!.result.league).sort((a, b) => b.roster.length - a.roster.length)[0]!.abbr;
+  const plan = offseasonRosterPlan(afterFa, me);
+
+  it("shows the roster after free agency with cap effects and the front office's cuts", () => {
+    expect(plan.players.length).toBeGreaterThan(72);
+    expect(plan.aiCuts.length).toBeGreaterThan(0);
+    for (const p of plan.players) expect(p.savings).toBe(p.capHit - p.deadMoney);
+  });
+
+  it("ends with the same roster as the AI when you make the front office's cuts", () => {
+    const ai = completeOffseason(afterFa, draft).dynasty;
+    const mine = completeOffseason(afterFa, draft, undefined, { team: me, players: new Set(plan.aiCuts) }).dynasty;
+    const ids = (d: typeof ai) => d.league.teams[me]!.roster.map((p) => p.id).sort();
+    expect(ids(mine)).toEqual(ids(ai));
+  }, 60_000);
+
+  it("cuts exactly who you choose, charging dead money, and leaves a valid 72-man roster", () => {
+    // Cut the front office's picks plus one more: the priciest veteran who leaves dead money.
+    const extra = [...plan.players].filter((p) => !p.rookie && p.deadMoney > 0).sort((a, b) => b.capHit - a.capHit)[0]!;
+    const cuts = new Set([...plan.aiCuts, extra.player.id]);
+    const { dynasty, log } = completeOffseason(afterFa, draft, undefined, { team: me, players: cuts });
+    const team = dynasty.league.teams[me]!;
+    expect(team.roster.some((p) => p.id === extra.player.id)).toBe(false);
+    expect(team.roster).toHaveLength(72);
+    expect(validateTeam(team)).toEqual([]);
+    expect(log.contractMoves.find((m) => m.kind === "cut" && m.player.id === extra.player.id)?.deadMoney).toBe(extra.deadMoney);
+  }, 60_000);
+});

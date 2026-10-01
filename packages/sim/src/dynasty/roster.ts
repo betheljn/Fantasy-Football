@@ -64,6 +64,8 @@ export interface RosterMoveOptions {
   scouting?: ScoutingState;
   /** Teams sign undrafted players in this order (e.g. the draft order); default league order. */
   order?: string[];
+  /** A team's own cuts (the user's team), made before anything else; the usual moves then fill around them. */
+  cuts?: { team: string; players: ReadonlySet<PlayerId> };
 }
 
 /**
@@ -81,6 +83,20 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
   const cuts: RosterMove[] = [];
   const signings: Signing[] = [];
   const rosters = new Map<string, Player[]>(Object.entries(league.teams).map(([t, team]) => [t, [...team.roster]]));
+  // Replacement players need ids no one in the league has (this can run more than once an offseason).
+  const taken = new Set<PlayerId>([...[...rosters.values()].flat().map((p) => p.id), ...pool.map((p) => p.player.id)]);
+  const freshId = (team: string) => {
+    let n = 1;
+    while (taken.has(`FA${league.season}-${team}-${n}`)) n++;
+    const id = `FA${league.season}-${team}-${n}`;
+    taken.add(id);
+    return id;
+  };
+  if (opts.cuts) {
+    const roster = rosters.get(opts.cuts.team)!;
+    for (const p of roster.filter((x) => opts.cuts!.players.has(x.id))) cuts.push({ team: opts.cuts.team, player: p });
+    rosters.set(opts.cuts.team, roster.filter((x) => !opts.cuts!.players.has(x.id)));
+  }
 
   // Rookies drafted this year are valued on the team's scouting estimate of their ceiling.
   const draftedRookies = new Set<PlayerId>();
@@ -113,7 +129,7 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
           from = "undrafted";
         } else {
           player = generatePlayer(rng, {
-            id: `FA${league.season}-${team}-${signings.length + 1}`,
+            id: freshId(team),
             position: pos,
             talentMean: 52, // replacement level
             jersey: 0,
@@ -149,7 +165,16 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
     const roster = rosters.get(team)!;
     while (roster.length < ROSTER_MAX) {
       const candidates = pool.filter((p) => count(roster, p.player.position) < ROSTER_POSITION_MAX[p.player.position]);
-      if (candidates.length === 0) break;
+      if (candidates.length === 0) {
+        // Nobody left worth signing: a replacement-level free agent at the thinnest position.
+        const pos = POSITIONS.filter((x) => count(roster, x) < ROSTER_POSITION_MAX[x]).sort((a, b) => count(roster, a) / ROSTER_MIN[a] - count(roster, b) / ROSTER_MIN[b])[0];
+        if (!pos) break;
+        const filler = generatePlayer(rng, { id: freshId(team), position: pos, talentMean: 52, jersey: 0 });
+        const player = { ...filler, jersey: pickJersey(rng, pos, new Set(roster.map((p) => p.jersey))) };
+        roster.push(player);
+        signings.push({ team, player, from: "free_agent" });
+        continue;
+      }
       const best = candidates.reduce((a, b) => (value(team, b.player) > value(team, a.player) ? b : a));
       pool.splice(pool.indexOf(best), 1);
       const player = { ...best.player, jersey: pickJersey(rng, best.player.position, new Set(roster.map((p) => p.jersey))) };

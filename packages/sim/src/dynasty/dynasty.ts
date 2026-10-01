@@ -1,9 +1,10 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
-import { POSITIONS, BASE_STARTERS } from "../model/positions.ts";
+import { POSITIONS, BASE_STARTERS, type Position } from "../model/positions.ts";
+import { capHit, deadMoney } from "../model/contract.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
-import { starters } from "../model/team.ts";
+import { ROSTER_MAX, starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
@@ -17,7 +18,7 @@ import { developLeague } from "./development.ts";
 import { generateDraftClass, type DraftClass } from "./draftclass.ts";
 import { draftOrder, draftSteps, runDraft, type DraftPick, type DraftResult, type DraftTurn } from "./draft.ts";
 import { processRetirements, type Retiree, type RetirementResult } from "./retirement.ts";
-import { makeRosterMoves } from "./roster.ts";
+import { ROSTER_MIN, ROSTER_POSITION_MAX, makeRosterMoves } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
 import {
   contractPlan,
@@ -31,6 +32,7 @@ import {
   type ContractPlan,
   type ContractSummary,
   type FreeAgencyChoices,
+  type FreeAgencyResult,
   type FreeAgencyPlan,
   type IncentiveTriggers,
   type OpenYearResult,
@@ -244,6 +246,8 @@ export interface OffseasonState {
   triggers: IncentiveTriggers;
   /** Set once expiring contracts are settled (resolveContracts); the draft comes next. */
   contracts?: OpenYearResult;
+  /** Set once the draft and free agency are done (runOffseasonFreeAgency); roster cuts come next. */
+  freeAgency?: { draft: DraftResult; result: FreeAgencyResult };
 }
 
 /** Your team's calls for the rest of the offseason (anything left out is the AI's). */
@@ -324,16 +328,77 @@ export function offseasonFreeAgencyPlan(state: OffseasonState, draft: DraftResul
   return freeAgencyPlan(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, state.winPct, team);
 }
 
-export function completeOffseason(state: OffseasonState, draft: DraftResult, freeAgencyChoices?: FreeAgencyChoices): { dynasty: Dynasty; log: OffseasonLog } {
-  const { dynasty, played, awards, standings, careers, order, staff, records, retired, scouting } = state;
-  const winPctNow = state.winPct;
+/** Sign the draft class and run free agency (with a team's own offers, if given). Roster cuts come next. */
+export function runOffseasonFreeAgency(state: OffseasonState, draft: DraftResult, choices?: FreeAgencyChoices): OffseasonState {
+  const opened = state.contracts;
+  if (!opened) throw new Error("Resolve contracts before free agency");
+  const next = state.dynasty.league.season + 1;
+  const result = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, state.winPct, choices);
+  return { ...state, freeAgency: { draft, result } };
+}
+
+/** One player on a roster that's being cut down, with what cutting him would mean for the cap. */
+export interface RosterPlanPlayer {
+  player: Player;
+  overall: number;
+  /** Next season: what he counts against the cap, what cutting him leaves behind, and what it saves. */
+  capHit: number;
+  deadMoney: number;
+  savings: number;
+  /** Drafted this offseason. */
+  rookie: boolean;
+}
+
+export interface RosterPlan {
+  team: string;
+  season: number;
+  players: RosterPlanPlayer[];
+  /** Who the front office would cut. */
+  aiCuts: PlayerId[];
+  max: number;
+  positionMin: Record<Position, number>;
+  positionMax: Record<Position, number>;
+}
+
+/** A team's roster after free agency, before cuts to 72. */
+export function offseasonRosterPlan(state: OffseasonState, team: string): RosterPlan {
+  const fa = state.freeAgency;
+  if (!fa) throw new Error("Run free agency before roster cuts");
+  const next = state.dynasty.league.season + 1;
+  const ai = makeRosterMoves(fa.result.league, { undrafted: fa.draft.undrafted, scouting: state.scouting, order: state.order });
+  const drafted = new Set(fa.draft.picks.filter((p) => p.team === team).map((p) => p.player.id));
+  return {
+    team,
+    season: next,
+    players: fa.result.league.teams[team]!.roster.map((p) => {
+      const hit = p.contract ? capHit(p.contract, next) : 0;
+      const dead = p.contract ? deadMoney(p.contract, next) : 0;
+      return { player: p, overall: playerOverall(p), capHit: hit, deadMoney: dead, savings: hit - dead, rookie: drafted.has(p.id) };
+    }),
+    aiCuts: ai.cuts.filter((c) => c.team === team).map((c) => c.player.id),
+    max: ROSTER_MAX,
+    positionMin: ROSTER_MIN,
+    positionMax: ROSTER_POSITION_MAX,
+  };
+}
+
+export function completeOffseason(
+  state: OffseasonState,
+  draft: DraftResult,
+  freeAgencyChoices?: FreeAgencyChoices,
+  /** A team's own roster cuts (the user's); everyone else's are the AI's. */
+  cutChoices?: { team: string; players: ReadonlySet<PlayerId> },
+): { dynasty: Dynasty; log: OffseasonLog } {
+  const s = state.freeAgency ? state : runOffseasonFreeAgency(state, draft, freeAgencyChoices);
+  const { dynasty, played, awards, standings, careers, order, staff, records, retired, scouting } = s;
+  const winPctNow = s.winPct;
   const league = dynasty.league;
   const { playoffs } = played;
-  const opened = state.contracts;
-  if (!opened) throw new Error("Resolve contracts before completing the offseason");
+  const opened = s.contracts!;
   const next = league.season + 1;
-  const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow, freeAgencyChoices);
-  const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });
+  const freeAgency = s.freeAgency!.result;
+  draft = s.freeAgency!.draft;
+  const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order, ...(cutChoices ? { cuts: cutChoices } : {}) });
   let settled = settleCap(moves.league, moves.cuts, next);
   const contractMoves = [...opened.moves, ...freeAgency.moves, ...settled.moves];
   // Cap cuts leave holes; refill them from the undrafted players left (at the minimum).

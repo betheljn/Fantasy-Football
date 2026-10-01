@@ -1,7 +1,7 @@
 // A team: record and ranking, staff, cap, schedule and results, and the roster
 // by position in depth-chart order.
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   POSITIONS,
   STAFF_ROLE_NAMES,
@@ -22,7 +22,7 @@ export default function TeamScreen() {
   const t = useTheme();
   const router = useRouter();
   const { abbr } = useLocalSearchParams<{ abbr: string }>();
-  const { league, schedule, results, standings, rankings } = useLeague();
+  const { league, schedule, results, standings, rankings, userTeam } = useLeague();
   const team = league.teams[abbr ?? ""];
   if (!team) return <Text style={{ padding: 16, color: t.text }}>Unknown team.</Text>;
 
@@ -53,6 +53,11 @@ export default function TeamScreen() {
           <Text style={{ color: t.muted, marginTop: 2 }}>
             Payroll {formatMoney(pay)} of {formatMoney(cap)} cap ({((pay / cap) * 100).toFixed(0)}%)
           </Text>
+          {team.abbr === userTeam ? (
+            <Pressable onPress={() => router.push("/depth")} accessibilityRole="button" style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
+              <Text style={{ color: t.accent, fontWeight: "700" }}>Depth chart</Text>
+            </Pressable>
+          ) : null}
         </Card>
 
         <Card>

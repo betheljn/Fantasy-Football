@@ -67,7 +67,7 @@ export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, front
               <Line label="Cap room (keeping enough to fill the roster)" value={formatMoney(plan.room)} theme={t} />
               <Line label={`Your offers (${offers.size}, if they all sign)`} value={`−${formatMoney(plan.room - room)}`} theme={t} />
               <Line label="Room left" value={formatMoney(room)} theme={t} strong />
-              <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} (cuts to 72 come after free agency)</Text>
+              <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} (you'll cut down to 72 after free agency)</Text>
             </Card>
             <Pressable
               onPress={() => setFrontOffice(!frontOffice)}
