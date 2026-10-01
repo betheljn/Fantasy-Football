@@ -10,8 +10,19 @@ import {
   computeRankings,
   createSeasonStats,
   divisionStandings,
+  REGULAR_SEASON_WEEKS,
+  SCOUTING,
+  advanceScoutingWeek,
   beginOffseason,
-  finishOffseason,
+  completeOffseason,
+  createScouting,
+  generateDraftClass,
+  offseasonDraft,
+  resolveContracts,
+  type DraftClass,
+  type DraftResult,
+  type DraftTurn,
+  type ScoutingState,
   formatRecord,
   offseasonContractPlan,
   type ContractPlan,
@@ -35,6 +46,8 @@ import { SAVE_VERSION, deserialize, serialize, type SaveState } from "../dynasty
 import { clearSave, loadText, saveText } from "../dynasty/storage";
 
 export const PLAYOFF_ROUND_COUNT = 4;
+/** Scouting points you get each week (as every team does). */
+export const SCOUT_POINTS = SCOUTING.pointsPerWeek;
 
 export interface LeagueData {
   league: League;
@@ -52,7 +65,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "report";
+export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -67,8 +80,19 @@ export interface DynastyControls {
   startOffseason: () => void;
   /** Your re-signing picture while the offseason waits on you. */
   contractPlan: ContractPlan | null;
-  /** Finish the offseason keeping these expiring players. */
+  /** Settle re-signings (keeping these expiring players) and go to the draft. */
   finishOffseason: (keep: ReadonlySet<string>) => void;
+  /** Next year's draft class and everyone's scouting of it (this season). */
+  draftClass: DraftClass | null;
+  scouting: ScoutingState | null;
+  /** Your points for the coming week, and changing them (+/- points on a prospect). */
+  scoutPlan: SaveState["scoutPlan"];
+  assignScouting: (prospect: string, delta: number) => void;
+  /** Your pick on the clock during the draft. */
+  draftTurn: DraftTurn | null;
+  draftPick: (prospect: string) => void;
+  /** Take the best player on your board with each of your remaining picks. */
+  autoDraft: () => void;
   startNextSeason: () => void;
   deleteDynasty: () => void;
 }
@@ -101,6 +125,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState(0);
   /** The offseason paused for your decisions (in memory only; rebuilt identically if the app restarts). */
   const [offseason, setOffseason] = useState<OffseasonState | null>(null);
+  const [draftTurn, setDraftTurn] = useState<DraftTurn | null>(null);
+  const draftRef = useRef<Generator<DraftTurn, DraftResult, string> | null>(null);
+  /** Expiring players you chose to keep (for the report). */
+  const keptRef = useRef<ReadonlySet<string>>(new Set());
   const stateRef = useRef<SaveState | null>(null);
   stateRef.current = state;
 
@@ -128,6 +156,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     if (!league || !schedule || !results || !seasonOver) return null;
     return simulatePlayoffs(league, { season: schedule.season, schedule, results, standings });
   }, [league, schedule, results, seasonOver, standings]);
+  const draftClass = useMemo(() => (league ? generateDraftClass(league) : null), [league]);
   const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
     const m = new Map<string, { player: Player; team: Team }>();
@@ -142,13 +171,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : offseason?.contracts && draftTurn ? "draft"
     : offseason ? "resign"
     : !state.userTeam ? "choose"
     : !seasonOver ? "season"
     : state.playoffRoundsShown < PLAYOFF_ROUND_COUNT ? "playoffs"
     : "complete";
 
-  /** Play one week of the regular season onto a state (mutates its stats). */
+  /** Play one week of the regular season onto a state (mutates its stats), and a week of scouting. */
   const playOneWeek = (s: SaveState, sched: Schedule): SaveState => {
     const week = s.weeksPlayed + 1;
     const played: GameSummary[] = [];
@@ -157,7 +187,42 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       addGameToSeason(s.stats, result);
       played.push(summary);
     }
-    return { ...s, weeksPlayed: week, results: [...s.results, ...played] };
+    let scouting = s.scouting;
+    if (draftClass) {
+      const current = scouting ?? createScouting(s.dynasty.league, draftClass);
+      // Your points if you assigned any; otherwise your scouts pick (as they do for every other team).
+      const choices = s.scoutPlan.length > 0 ? { [s.userTeam]: s.scoutPlan } : {};
+      scouting = current.week < REGULAR_SEASON_WEEKS ? advanceScoutingWeek(current, s.dynasty.league, draftClass, choices) : current;
+    }
+    return { ...s, weeksPlayed: week, results: [...s.results, ...played], scouting, scoutPlan: [] };
+  };
+
+  /** Draft over: the rest of the offseason, then the report. */
+  const completeWith = (draft: DraftResult) => {
+    const s = stateRef.current;
+    const off = offseason;
+    if (!s || !off || !playoffs) return;
+    setBusy("offseason");
+    setDraftTurn(null);
+    draftRef.current = null;
+    setTimeout(() => {
+      const { dynasty: after, log } = completeOffseason(off, draft);
+      const rec = computeRecords(s.dynasty.league, s.results).get(s.userTeam);
+      const rank = playoffs.ranking.find((e) => e.team === s.userTeam)?.rank ?? null;
+      const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keptRef.current);
+      setOffseason(null);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [] });
+      setBusy(null);
+    }, 50);
+  };
+
+  /** Move the draft on with your pick (or start it with undefined). */
+  const stepDraft = (pick: string | undefined) => {
+    const gen = draftRef.current;
+    if (!gen) return;
+    const r = pick === undefined ? gen.next() : gen.next(pick);
+    if (r.done) completeWith(r.value);
+    else setDraftTurn(r.value);
   };
 
   const controls: DynastyControls = {
@@ -176,7 +241,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           setTimeout(step, 0);
           return;
         }
-        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null });
+        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [] });
         setBusy(null);
       };
       setTimeout(step, 50);
@@ -212,24 +277,39 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setTimeout(() => {
         const s = stateRef.current!;
         const season = { season: schedule.season, schedule, results: s.results, standings };
-        setOffseason(beginOffseason(s.dynasty, { season, stats: s.stats, playoffs }));
+        setOffseason(beginOffseason(s.dynasty, { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}) }));
         setBusy(null);
       }, 50);
     },
     contractPlan,
     finishOffseason: (keep) => {
       if (!state || !offseason || !playoffs) return;
-      setBusy("offseason");
-      setTimeout(() => {
-        const s = stateRef.current!;
-        const { dynasty: after, log } = finishOffseason(offseason, { resign: { team: s.userTeam, keep } });
-        const rec = computeRecords(s.dynasty.league, s.results).get(s.userTeam);
-        const rank = playoffs.ranking.find((e) => e.team === s.userTeam)?.rank ?? null;
-        const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keep);
-        setOffseason(null);
-        persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report });
-        setBusy(null);
-      }, 50);
+      keptRef.current = keep;
+      const withContracts = resolveContracts(offseason, { team: state.userTeam, keep });
+      setOffseason(withContracts);
+      draftRef.current = offseasonDraft(withContracts, new Set([state.userTeam]));
+      stepDraft(undefined);
+    },
+    draftClass,
+    // On draft day, the finished scouting (every week plus the combine).
+    scouting: offseason?.scouting ?? state?.scouting ?? null,
+    scoutPlan: state?.scoutPlan ?? [],
+    assignScouting: (prospect, delta) => {
+      if (!state) return;
+      const used = state.scoutPlan.reduce((n, a) => n + a.points, 0);
+      const current = state.scoutPlan.find((a) => a.prospect === prospect)?.points ?? 0;
+      const points = Math.max(0, Math.min(current + delta, current + (SCOUT_POINTS - used)));
+      const rest = state.scoutPlan.filter((a) => a.prospect !== prospect);
+      persist({ ...state, scoutPlan: points > 0 ? [...rest, { prospect, points }] : rest });
+    },
+    draftTurn,
+    draftPick: (prospect) => stepDraft(prospect),
+    autoDraft: () => {
+      const gen = draftRef.current;
+      if (!gen || !draftTurn) return;
+      let r = gen.next(draftTurn.board[0]!.prospect.player.id);
+      while (!r.done) r = gen.next(r.value.board[0]!.prospect.player.id);
+      completeWith(r.value);
     },
     startNextSeason: () => {
       if (state) persist({ ...state, report: null });
@@ -237,6 +317,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     deleteDynasty: () => {
       clearSave().catch(() => undefined);
       setOffseason(null);
+      setDraftTurn(null);
+      draftRef.current = null;
       setState(null);
     },
   };

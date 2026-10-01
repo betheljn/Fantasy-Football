@@ -15,7 +15,7 @@ import { addGameToSeason, createSeasonStats, type SeasonStats } from "../league/
 import { computeAwards, type Award } from "./awards.ts";
 import { developLeague } from "./development.ts";
 import { generateDraftClass, type DraftClass } from "./draftclass.ts";
-import { draftOrder, runDraft, type DraftPick } from "./draft.ts";
+import { draftOrder, draftSteps, runDraft, type DraftPick, type DraftResult, type DraftTurn } from "./draft.ts";
 import { processRetirements, type Retiree, type RetirementResult } from "./retirement.ts";
 import { makeRosterMoves } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
@@ -30,9 +30,10 @@ import {
   type ContractPlan,
   type ContractSummary,
   type IncentiveTriggers,
+  type OpenYearResult,
   type ResignChoices,
 } from "../contracts/offseason.ts";
-import { createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
+import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
 import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange, type StaffOffseasonResult } from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
 import { computeRecords, winPct } from "../league/standings.ts";
@@ -151,6 +152,13 @@ export function quietOffseason(league: League): League {
   return { ...moves.league, season: league.season + 1 };
 }
 
+/** Bring in-season scouting to draft day: any weeks not scouted get the AI's choices, then the combine. */
+export function finishScouting(scouting: ScoutingState, league: League, draftClass: DraftClass): ScoutingState {
+  let state = scouting;
+  while (state.week < REGULAR_SEASON_WEEKS) state = advanceScoutingWeek(state, league, draftClass);
+  return state.combineDone ? state : runCombine(state);
+}
+
 export function talentSnapshot(league: League): TalentSnapshot {
   const teams = allTeams(league);
   const starterOvr = teams.flatMap((t) => POSITIONS.flatMap((pos) => starters(t, pos, BASE_STARTERS[pos]).map(playerOverall)));
@@ -182,6 +190,8 @@ export interface PlayedSeason {
   season: SeasonResult;
   stats: SeasonStats;
   playoffs: PlayoffResult;
+  /** Scouting of next year's class done during the season (e.g. with a user's weekly choices); AI scouting if absent. */
+  scouting?: ScoutingState;
 }
 
 /** Play the whole season at once. An app can instead play it week by week (same games, same seeds). */
@@ -229,6 +239,8 @@ export interface OffseasonState {
   scouting: ScoutingState;
   winPct: Map<string, number>;
   triggers: IncentiveTriggers;
+  /** Set once expiring contracts are settled (resolveContracts); the draft comes next. */
+  contracts?: OpenYearResult;
 }
 
 /** Your team's calls for the rest of the offseason (anything left out is the AI's). */
@@ -247,7 +259,7 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): Offseaso
 
   // The class entering next season was scouted while this season was played.
   const draftClass = generateDraftClass(league);
-  const scouting = scoutSeason(league, draftClass);
+  const scouting = played.scouting ? finishScouting(played.scouting, league, draftClass) : scoutSeason(league, draftClass);
 
   const awards = computeAwards(league, stats, season.results);
   const standings = divisionStandings(league, season.results);
@@ -284,15 +296,30 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): Offseaso
 
 /** Run the rest of the offseason (with your choices, if any) and return next season's dynasty. */
 export function finishOffseason(state: OffseasonState, choices: OffseasonChoices = {}): { dynasty: Dynasty; log: OffseasonLog } {
-  const { dynasty, played, awards, standings, careers, order, staff, records, retired, developed, draftClass, scouting, triggers } = state;
+  const s = state.contracts ? state : resolveContracts(state, choices.resign);
+  return completeOffseason(s, runDraft(s.contracts!.league, s.draftClass, s.scouting, s.order));
+}
+
+/** Settle expiring contracts (with a team's own re-signing calls, if given). The draft comes next. */
+export function resolveContracts(state: OffseasonState, resign?: ResignChoices): OffseasonState {
+  return { ...state, contracts: openContractYear(state.dynasty.league, state.developed, state.triggers, state.order, resign) };
+}
+
+/** The draft, pausing at each pick of the `humans` teams (see draftSteps). Needs resolveContracts first. */
+export function offseasonDraft(state: OffseasonState, humans: ReadonlySet<string>): Generator<DraftTurn, DraftResult, PlayerId> {
+  if (!state.contracts) throw new Error("Resolve contracts before the draft");
+  return draftSteps(state.contracts.league, state.draftClass, state.scouting, state.order, humans);
+}
+
+/** After the draft: free agency, roster moves, the cap, and the season's record. */
+export function completeOffseason(state: OffseasonState, draft: DraftResult): { dynasty: Dynasty; log: OffseasonLog } {
+  const { dynasty, played, awards, standings, careers, order, staff, records, retired, scouting } = state;
   const winPctNow = state.winPct;
   const league = dynasty.league;
   const { playoffs } = played;
-
-  // Contracts: expiring deals and extensions, the draft, free agency, then cuts and the cap.
+  const opened = state.contracts;
+  if (!opened) throw new Error("Resolve contracts before completing the offseason");
   const next = league.season + 1;
-  const opened = openContractYear(league, developed, triggers, order, choices.resign);
-  const draft = runDraft(opened.league, draftClass, scouting, order);
   const freeAgency = runFreeAgency(signDraftPicks(draft.league, draft.picks, next), opened.freeAgents, next, opened.marketIndex, winPctNow);
   const moves = makeRosterMoves(freeAgency.league, { undrafted: draft.undrafted, scouting, order });
   let settled = settleCap(moves.league, moves.cuts, next);

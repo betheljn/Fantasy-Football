@@ -4,6 +4,7 @@ import {
   PLAYOFF_ROUNDS,
   buildDepthChart,
   draftOrder,
+  draftSteps,
   generateDraftClass,
   generateLeague,
   runDraft,
@@ -120,5 +121,51 @@ describe("runDraft", () => {
 
   it("is deterministic", () => {
     expect(runDraft(LEAGUE, CLASS, SCOUTING, ORDER)).toEqual(DRAFT);
+  });
+});
+
+describe("draftSteps (a human team on the clock)", () => {
+  const me = ORDER[3]!;
+  const turns: Array<{ round: number; pick: number; overall: number; picksBefore: number; boardSize: number; chose: string }> = [];
+  const steps = draftSteps(LEAGUE, CLASS, SCOUTING, ORDER, new Set([me]));
+  let r = steps.next();
+  while (!r.done) {
+    const turn = r.value;
+    // Take the fifth-best player on my board (not what the AI would do).
+    const choice = turn.board[Math.min(4, turn.board.length - 1)]!.prospect.player.id;
+    turns.push({ round: turn.round, pick: turn.pick, overall: turn.overall, picksBefore: turn.picks.length, boardSize: turn.board.length, chose: choice });
+    r = steps.next(choice);
+  }
+  const result = r.value;
+
+  it("stops once per round at my pick, with everyone before me already picked", () => {
+    expect(turns).toHaveLength(DRAFT_ROUNDS);
+    turns.forEach((t, i) => {
+      expect(t.round).toBe(i + 1);
+      expect(t.pick).toBe(4);
+      expect(t.overall).toBe(i * 50 + 4);
+      expect(t.picksBefore).toBe(t.overall - 1);
+      expect(t.boardSize).toBe(CLASS.prospects.length - (t.overall - 1));
+    });
+  });
+
+  it("gives me exactly the players I chose, and finishes the whole draft", () => {
+    expect(result.picks).toHaveLength(350);
+    expect(result.picks.filter((p) => p.team === me).map((p) => p.player.id)).toEqual(turns.map((t) => t.chose));
+    const roster = result.league.teams[me]!.roster.map((p) => p.id);
+    for (const t of turns) expect(roster).toContain(t.chose);
+  });
+
+  it("matches runDraft when driven the same way", () => {
+    const again = runDraft(LEAGUE, CLASS, SCOUTING, ORDER, { choose: { [me]: (board) => board[Math.min(4, board.length - 1)]!.prospect.player.id } });
+    expect(again.picks).toEqual(result.picks);
+  });
+
+  it("refuses a player who is already gone", () => {
+    const s2 = draftSteps(LEAGUE, CLASS, SCOUTING, ORDER, new Set([me]));
+    const first = s2.next();
+    expect(first.done).toBe(false);
+    const gone = !first.done ? first.value.picks[0]!.player.id : "";
+    expect(() => s2.next(gone)).toThrow(/isn't available/);
   });
 });

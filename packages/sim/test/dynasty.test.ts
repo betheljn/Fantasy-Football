@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   addGameToSeason,
+  advanceScoutingWeek,
   advanceSeason,
+  beginOffseason,
+  completeOffseason,
+  createScouting,
+  generateDraftClass,
+  knowledge,
+  offseasonDraft,
+  resolveContracts,
   allTeams,
   buildDynasty,
   createSeasonStats,
@@ -134,3 +142,44 @@ describe("playing a season week by week", () => {
     expect(r.value.league).toEqual(START.league);
   }, 60_000);
 });
+
+describe("a staged offseason with your own scouting and draft picks", () => {
+  it("uses your in-season scouting and your picks, and ends with valid rosters", () => {
+    const me = allTeams(START.league)[0]!.abbr;
+    const draftClass = generateDraftClass(START.league);
+    const target = draftClass.prospects[0]!.player.id;
+    // Scout one prospect hard all season; the AI scouts for everyone else.
+    let scouting = createScouting(START.league, draftClass);
+    for (let w = 0; w < 22; w++) scouting = advanceScoutingWeek(scouting, START.league, draftClass, { [me]: [{ prospect: target, points: 12 }] });
+    const other = allTeams(START.league)[1]!.abbr;
+    expect(knowledge(scouting, me, target)).toBeGreaterThan(knowledge(scouting, other, target));
+
+    const played = { ...playSeasonLike(), scouting };
+    const state = resolveContracts(beginOffseason(START, played));
+    const draft = offseasonDraft(state, new Set([me]));
+    const mine: string[] = [];
+    let r = draft.next();
+    while (!r.done) {
+      const choice = r.value.board[0]!.prospect.player.id;
+      mine.push(choice);
+      r = draft.next(choice);
+    }
+    const { dynasty } = completeOffseason(state, r.value);
+    for (const id of mine) expect(dynasty.league.teams[me]!.roster.some((p) => p.id === id)).toBe(true);
+    for (const t of allTeams(dynasty.league)) expect(validateTeam(t)).toEqual([]);
+  }, 60_000);
+});
+
+/** The first season, played all at once (as ONE was). */
+function playSeasonLike() {
+  const schedule = seasonSchedule(START);
+  const stats = createSeasonStats();
+  const results = [];
+  for (const g of schedule.games) {
+    const { summary, result } = playGame(START.league, g);
+    addGameToSeason(stats, result);
+    results.push(summary);
+  }
+  const season = { season: schedule.season, schedule, results, standings: divisionStandings(START.league, results) };
+  return { season, stats, playoffs: simulatePlayoffs(START.league, season) };
+}

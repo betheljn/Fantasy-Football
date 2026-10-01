@@ -18,9 +18,10 @@ import {
   teamRatings,
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { DraftScreen } from "../../screens/DraftScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
 import type { OffseasonReport, ReportPlayer } from "../../dynasty/report";
-import { useDynasty, useLeagueMaybe, type LeagueData } from "../../league/LeagueProvider";
+import { SCOUT_POINTS, useDynasty, useLeagueMaybe, type LeagueData } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
 
 export default function Home() {
@@ -65,6 +66,8 @@ export default function Home() {
       return data ? <ChooseTeam data={data} /> : null;
     case "resign":
       return d.contractPlan ? <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} /> : null;
+    case "draft":
+      return d.draftTurn && data ? <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} /> : null;
     case "report":
       return d.save?.report ? <Report report={d.save.report} /> : null;
     default:
@@ -164,6 +167,8 @@ function SeasonHub({ data }: { data: LeagueData }) {
         </Card>
       ) : null}
 
+      {d.phase === "season" ? <ScoutingCard data={data} /> : null}
+
       {playoffs ? <Playoffs data={data} /> : null}
 
       {d.phase === "playoffs" ? (
@@ -186,6 +191,24 @@ function SeasonHub({ data }: { data: LeagueData }) {
       <History data={data} />
       <DangerZone />
     </ScrollView>
+  );
+}
+
+function ScoutingCard({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const used = d.scoutPlan.reduce((n, a) => n + a.points, 0);
+  return (
+    <Card>
+      <SectionTitle>Scouting the {data.league.season + 1} class</SectionTitle>
+      <Text style={{ color: t.muted }}>
+        {used > 0 ? `${used} of ${SCOUT_POINTS} points assigned for week ${data.weeksPlayed + 1}.` : `${SCOUT_POINTS} points this week — your scouts will choose unless you do.`}
+      </Text>
+      <View style={{ marginTop: 10 }}>
+        <Button label="Open the draft board" onPress={() => router.push("/scouting")} theme={t} small />
+      </View>
+    </Card>
   );
 }
 

@@ -82,6 +82,38 @@ export interface DraftOptions {
  * it has nobody), with a little seeded variety between teams.
  */
 export function runDraft(league: League, draftClass: DraftClass, scouting: ScoutingState, order: string[], opts: DraftOptions = {}): DraftResult {
+  const humans = new Set(Object.keys(opts.choose ?? {}));
+  const steps = draftSteps(league, draftClass, scouting, order, humans);
+  let r = steps.next();
+  while (!r.done) r = steps.next(opts.choose![r.value.team]!(r.value.board));
+  return r.value;
+}
+
+/** A pick on the clock for a human-controlled team. */
+export interface DraftTurn {
+  team: string;
+  round: number;
+  /** Pick within the round, and overall. */
+  pick: number;
+  overall: number;
+  /** The team's own board of prospects still available. */
+  board: BoardEntry[];
+  /** Every pick made so far. */
+  picks: readonly DraftPick[];
+}
+
+/**
+ * The draft one human pick at a time: AI teams pick on their own; at each pick
+ * belonging to a team in `humans`, it yields that team's turn and resumes with
+ * the chosen prospect's id (next(id)). Returns the finished draft.
+ */
+export function* draftSteps(
+  league: League,
+  draftClass: DraftClass,
+  scouting: ScoutingState,
+  order: string[],
+  humans: ReadonlySet<string> = new Set(),
+): Generator<DraftTurn, DraftResult, PlayerId> {
   const rng = new Rng(`${league.seed}:${draftClass.season}:draft`);
   const available = new Set(draftClass.prospects.map((p) => p.player.id));
   const byId = new Map(draftClass.prospects.map((p) => [p.player.id, p]));
@@ -90,14 +122,13 @@ export function runDraft(league: League, draftClass: DraftClass, scouting: Scout
   const drafted = new Map<string, Map<Position, number>>(Object.keys(league.teams).map((t) => [t, new Map()]));
 
   for (let round = 1; round <= DRAFT_ROUNDS; round++) {
-    order.forEach((team, i) => {
-      if (available.size === 0) return;
+    for (const [i, team] of order.entries()) {
+      if (available.size === 0) break;
       const board = teamBoard(scouting, draftClass, team, available);
       const roster = rosters.get(team)!;
       let chosen: BoardEntry;
-      const human = opts.choose?.[team];
-      if (human) {
-        const id = human(board);
+      if (humans.has(team)) {
+        const id: PlayerId = yield { team, round, pick: i + 1, overall: picks.length + 1, board, picks: [...picks] };
         const entry = board.find((e) => e.prospect.player.id === id);
         if (!entry) throw new Error(`${team} tried to draft ${id}, who isn't available`);
         chosen = entry;
@@ -144,7 +175,7 @@ export function runDraft(league: League, draftClass: DraftClass, scouting: Scout
         publicRank: p.boardRank,
         teamRank: chosen.rank,
       });
-    });
+    }
   }
 
   const teams: Record<string, Team> = {};

@@ -75,7 +75,7 @@ export function ResignScreen({ plan, onDone }: { plan: ContractPlan; onDone: (ke
         accessibilityRole="button"
         style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
       >
-        <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>Continue: draft and free agency</Text>
+        <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>Continue to the draft</Text>
       </Pressable>
     </ScrollView>
   );
