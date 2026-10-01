@@ -52,8 +52,19 @@ export function buildDepthChart(roster: readonly Player[]): DepthChart {
   return chart;
 }
 
+/** An id index per roster (rebuilt if the roster array changed size). */
+const rosterIndex = new WeakMap<readonly Player[], Map<PlayerId, Player>>();
+
 export function getPlayer(team: Team, id: PlayerId): Player {
-  const player = team.roster.find((p) => p.id === id);
+  let index = rosterIndex.get(team.roster);
+  if (!index || index.size !== team.roster.length) {
+    index = new Map(team.roster.map((p) => [p.id, p]));
+    rosterIndex.set(team.roster, index);
+  }
+  let player = index.get(id);
+  // A roster edited in place: fall back to a search.
+  if (player && player.id !== id) player = undefined;
+  player ??= team.roster.find((p) => p.id === id);
   if (!player) throw new Error(`Player ${id} is not on ${team.abbr}`);
   return player;
 }

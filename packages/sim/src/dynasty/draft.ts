@@ -120,14 +120,24 @@ export function* draftSteps(
   const rosters = new Map<string, Player[]>(Object.entries(league.teams).map(([abbr, t]) => [abbr, [...t.roster]]));
   const picks: DraftPick[] = [];
   const drafted = new Map<string, Map<Position, number>>(Object.keys(league.teams).map((t) => [t, new Map()]));
+  // A team's estimates don't change during the draft, so neither does the order
+  // of its board: sort it once, then skip whoever is gone at each pick.
+  const fullBoards = new Map<string, BoardEntry[]>();
+  const fullBoard = (team: string) => {
+    let b = fullBoards.get(team);
+    if (!b) fullBoards.set(team, (b = teamBoard(scouting, draftClass, team)));
+    return b;
+  };
 
   for (let round = 1; round <= DRAFT_ROUNDS; round++) {
     for (const [i, team] of order.entries()) {
       if (available.size === 0) break;
-      const board = teamBoard(scouting, draftClass, team, available);
       const roster = rosters.get(team)!;
       let chosen: BoardEntry;
       if (humans.has(team)) {
+        const board = fullBoard(team)
+          .filter((e) => available.has(e.prospect.player.id))
+          .map((e, k) => ({ ...e, rank: k + 1 }));
         const id: PlayerId = yield { team, round, pick: i + 1, overall: picks.length + 1, board, picks: [...picks] };
         const entry = board.find((e) => e.prospect.player.id === id);
         if (!entry) throw new Error(`${team} tried to draft ${id}, who isn't available`);
@@ -135,7 +145,8 @@ export function* draftSteps(
       } else {
         const needs = positionNeeds({ roster });
         const already = drafted.get(team)!;
-        const has = (pos: Position) => roster.some((p) => p.position === pos);
+        const present = new Set(roster.map((p) => p.position));
+        const has = (pos: Position) => present.has(pos);
         // The GM's philosophy weights need and now-vs-later; his eye adds his own misjudgments.
         const teamObj = league.teams[team];
         const style = draftStyle(teamObj);
@@ -153,8 +164,13 @@ export function* draftSteps(
         };
         // Consider the top of the board, plus the best player at any empty position.
         // Each candidate is scored once, so the random variety can't contradict itself.
-        const pool = board.slice(0, DRAFT_CONSIDER);
-        for (const e of board) if (!has(e.prospect.player.position) && !pool.includes(e)) pool.push(e);
+        const pool: BoardEntry[] = [];
+        let rank = 0;
+        for (const e of fullBoard(team)) {
+          if (!available.has(e.prospect.player.id)) continue;
+          rank++;
+          if (pool.length < DRAFT_CONSIDER || !has(e.prospect.player.position)) pool.push({ ...e, rank });
+        }
         const scored = pool.map((e) => ({ e, score: fit(e) }));
         chosen = scored.reduce((best, x) => (x.score > best.score ? x : best)).e;
       }

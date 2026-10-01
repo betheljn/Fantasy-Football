@@ -21,8 +21,21 @@ export function evaluationError(team: Team | undefined, playerId: string): numbe
   const gm = team?.staff?.gm;
   if (!gm) return 0;
   const sd = Math.max(0.5, Math.min(6, 3 - 1.5 * staffEdge(gm.talentEvaluation)));
-  return new Rng(`eval:${gm.id}:${playerId}`).normal(0, sd);
+  // The same draw Rng.normal would make (its two factors kept apart so the result is bit-for-bit the same).
+  const key = `${gm.id}:${playerId}`;
+  let draw = evalDraws.get(key);
+  if (!draw) {
+    const rng = new Rng(`eval:${key}`);
+    const u = 1 - rng.next();
+    const v = rng.next();
+    draw = [Math.sqrt(-2 * Math.log(u)), Math.cos(2 * Math.PI * v)];
+    if (evalDraws.size > 400_000) evalDraws.clear();
+    evalDraws.set(key, draw);
+  }
+  return 0 + sd * draw[0] * draw[1];
 }
+
+const evalDraws = new Map<string, [number, number]>();
 
 /**
  * How much of the gap between the scouting estimate and a player's real value

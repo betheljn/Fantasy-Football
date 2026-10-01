@@ -55,6 +55,7 @@ import {
   type Schedule,
   type SeasonStats,
   type Team,
+  type TeamRecord,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
 import { SAVE_VERSION, deserialize, serialize, type SaveState } from "../dynasty/save";
@@ -72,6 +73,8 @@ export interface LeagueData {
   /** Weeks fully played. */
   weeksPlayed: number;
   standings: DivisionStandings[];
+  /** Every team's record so far (computed once per week played). */
+  records: Map<string, TeamRecord>;
   rankings: RankingEntry[];
   playerById: Map<string, { player: Player; team: Team }>;
   userTeam: string;
@@ -192,6 +195,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const results = state?.results;
   const standings = useMemo(() => (league && results ? divisionStandings(league, results) : []), [league, results]);
   const rankings = useMemo(() => (league && results ? computeRankings(league, results) : []), [league, results]);
+  const records = useMemo(() => (league && results ? computeRecords(league, results) : new Map<string, TeamRecord>()), [league, results]);
   const seasonOver = !!schedule && !!state && state.weeksPlayed >= schedule.weeks;
   const playoffs = useMemo(() => {
     if (!league || !schedule || !results || !seasonOver) return null;
@@ -465,6 +469,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           stats: state.stats,
           weeksPlayed: state.weeksPlayed,
           standings,
+          records,
           rankings,
           playerById,
           userTeam: state.userTeam,

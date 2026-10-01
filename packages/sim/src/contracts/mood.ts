@@ -38,8 +38,19 @@ const STATE_WEIGHT: Record<string, number> = {
 };
 
 /** A player's persona, the same every time for the same id. */
+const personaCache = new Map<string, Persona>();
+
 export function persona(player: Pick<Player, "id">): Persona {
-  const rng = new Rng(`persona:${player.id}`);
+  const cached = personaCache.get(player.id);
+  if (cached) return cached;
+  const value = makePersona(player.id);
+  if (personaCache.size > 100_000) personaCache.clear();
+  personaCache.set(player.id, value);
+  return value;
+}
+
+function makePersona(id: string): Persona {
+  const rng = new Rng(`persona:${id}`);
   const total = STATES.reduce((s, [, abbr]) => s + (STATE_WEIGHT[abbr] ?? 1), 0);
   let r = rng.next() * total;
   let homeState = STATES[0]![1];

@@ -119,7 +119,13 @@ export function makeRatings(overrides: Partial<Ratings> = {}, base = 50): Rating
 }
 
 /** Weighted position overall, 0-99. */
+/** Overall ratings already worked out: a player's ratings object never changes once he is built. */
+const overallCache = new WeakMap<Ratings, Partial<Record<Position, number>>>();
+
 export function overall(position: Position, ratings: Ratings): number {
+  let byPos = overallCache.get(ratings);
+  const hit = byPos?.[position];
+  if (hit !== undefined) return hit;
   const weights = OVERALL_WEIGHTS[position];
   let total = 0;
   let weightSum = 0;
@@ -127,7 +133,10 @@ export function overall(position: Position, ratings: Ratings): number {
     total += ratings[key] * weight;
     weightSum += weight;
   }
-  return clampRating(total / weightSum);
+  const value = clampRating(total / weightSum);
+  if (!byPos) overallCache.set(ratings, (byPos = {}));
+  byPos[position] = value;
+  return value;
 }
 
 // --- composites the sim uses where several attributes combine ----------------

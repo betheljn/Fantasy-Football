@@ -8,7 +8,6 @@ import {
   PLAYOFF_ROUNDS,
   ROUND_NAMES,
   allTeams,
-  computeRecords,
   formatMoney,
   formatRecord,
   payroll,
@@ -88,7 +87,7 @@ export default function Home() {
           frontOffice={d.frontOffice}
           setFrontOffice={d.setFrontOffice}
           moodAt={(l, annual) => {
-            const rec = computeRecords(data.league, data.results).get(data.userTeam);
+            const rec = data.records.get(data.userTeam);
             const appeal = teamAppeal(data.league.teams[data.userTeam]!, l.player, rec ? winPct(rec) : 0.5);
             return mood(l.player, appeal, annual / l.market);
           }}
@@ -141,7 +140,7 @@ function SeasonHub({ data }: { data: LeagueData }) {
   const router = useRouter();
   const { league, schedule, results, userTeam, weeksPlayed, standings, rankings, playoffs, playoffRoundsShown } = data;
   const team = league.teams[userTeam]!;
-  const rec = computeRecords(league, results).get(userTeam);
+  const rec = data.records.get(userTeam);
   const div = standings.find((x) => x.teams.some((r) => r.team === userTeam));
   const place = div ? div.teams.findIndex((r) => r.team === userTeam) + 1 : 0;
   const rank = rankings.find((e) => e.team === userTeam)?.rank;
@@ -242,7 +241,7 @@ function ScoutingCard({ data }: { data: LeagueData }) {
 
 function Matchup({ data, home, away }: { data: LeagueData; home: string; away: string }) {
   const t = useTheme();
-  const recs = computeRecords(data.league, data.results);
+  const recs = data.records;
   const side = (abbr: string) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <Swatch abbr={abbr} />
