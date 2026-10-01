@@ -39,7 +39,17 @@ import {
   type ResignChoices,
 } from "../contracts/offseason.ts";
 import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
-import { runStaffOffseason, type CoachOfTheYear, type StaffCareer, type StaffChange, type StaffOffseasonResult } from "./staffcareers.ts";
+import {
+  staffHiring,
+  staffReleases,
+  type CoachOfTheYear,
+  type StaffCareer,
+  type StaffChange,
+  type StaffDecisions,
+  type StaffHires,
+  type StaffOffseasonResult,
+  type StaffReleases,
+} from "./staffcareers.ts";
 import type { StaffMember } from "../model/staff.ts";
 import { computeRecords, winPct } from "../league/standings.ts";
 
@@ -261,7 +271,19 @@ export function offseasonContractPlan(state: OffseasonState, team: string): Cont
   return contractPlan(state.dynasty.league, state.developed, state.triggers, state.order, team);
 }
 
-export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): OffseasonState {
+/** Your calls on your own staff this offseason (anything left out is the AI's). */
+export interface StaffChoices {
+  decisions?: StaffDecisions;
+  hires?: StaffHires;
+}
+
+/** The staff offseason after departures (with your decisions), before hiring: for listing your candidates. */
+export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, decisions?: StaffDecisions): StaffReleases {
+  const league = dynasty.league;
+  return staffReleases(league, played.season.results, played.playoffs, draftOrder(played.playoffs), dynasty.staffPool, dynasty.staffCareers, dynasty.lastWinPct, decisions);
+}
+
+export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoices: StaffChoices = {}): OffseasonState {
   const league = dynasty.league;
   const { season, stats, playoffs } = played;
 
@@ -293,7 +315,7 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason): Offseaso
   // Offseason.
   // Staff moves come first: a new GM runs the draft, a new head coach shapes development.
   const order = draftOrder(playoffs);
-  const staff = runStaffOffseason(league, season.results, playoffs, order, dynasty.staffPool, dynasty.staffCareers, dynasty.lastWinPct);
+  const staff = staffHiring(staffReleases(league, season.results, playoffs, order, dynasty.staffPool, dynasty.staffCareers, dynasty.lastWinPct, staffChoices.decisions), staffChoices.hires);
   const records = computeRecords(league, season.results);
   const retired = processRetirements(staff.league);
   const developed = developLeague(retired.league);

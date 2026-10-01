@@ -20,6 +20,14 @@ import {
   offseasonDraft,
   offseasonFreeAgencyPlan,
   offseasonRosterPlan,
+  offseasonStaffReleases,
+  staffCandidates,
+  staffOverview,
+  type PlayedSeason,
+  type StaffOpening,
+  type StaffReleases,
+  type StaffSeat,
+  type StaffSlot,
   runOffseasonFreeAgency,
   type Position,
   type RosterPlan,
@@ -72,7 +80,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "resign" | "draft" | "freeagency" | "cuts" | "report";
+export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -85,6 +93,12 @@ export interface DynastyControls {
   playRegularSeason: () => void;
   playPlayoffRound: () => void;
   startOffseason: () => void;
+  /** Your staff as the offseason opens, and your fire/renew calls. */
+  staffSeats: { budget: number; committed: number; seats: StaffSeat[] } | null;
+  confirmStaff: (fire: ReadonlySet<StaffSlot>, renew: ReadonlySet<StaffSlot>) => void;
+  /** Open seats on your staff and who you could hire; then hiring (missing picks are your front office's). */
+  staffOpenings: { budget: number; committed: number; openings: StaffOpening[] } | null;
+  confirmHires: (picks: ReadonlyMap<StaffSlot, string>) => void;
   /** Your re-signing picture while the offseason waits on you. */
   contractPlan: ContractPlan | null;
   /** Settle re-signings (keeping these expiring players) and go to the draft. */
@@ -146,6 +160,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState(0);
   /** The offseason paused for your decisions (in memory only; rebuilt identically if the app restarts). */
   const [offseason, setOffseason] = useState<OffseasonState | null>(null);
+  /** The staff step that opens the offseason (in memory, like the rest of the offseason). */
+  const [staffStep, setStaffStep] = useState<null | { step: "decide" } | { step: "hire"; releases: StaffReleases; fire: ReadonlySet<StaffSlot>; renew: ReadonlySet<StaffSlot> }>(null);
   const [draftTurn, setDraftTurn] = useState<DraftTurn | null>(null);
   /** The finished draft, while you make free-agent offers. */
   const [draftDone, setDraftDone] = useState<DraftResult | null>(null);
@@ -186,6 +202,11 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     () => (offseason?.contracts && draftDone && state?.userTeam ? offseasonFreeAgencyPlan(offseason, draftDone, state.userTeam) : null),
     [offseason, draftDone, state?.userTeam],
   );
+  const staffSeats = useMemo(
+    () => (staffStep?.step === "decide" && state?.userTeam ? staffOverview(state.dynasty.league, state.dynasty.staffCareers, state.userTeam) : null),
+    [staffStep, state?.dynasty, state?.userTeam],
+  );
+  const staffOpenings = useMemo(() => (staffStep?.step === "hire" && state?.userTeam ? staffCandidates(staffStep.releases, state.userTeam) : null), [staffStep, state?.userTeam]);
   const rosterPlanValue = useMemo(() => (offseason?.freeAgency && state?.userTeam ? offseasonRosterPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
@@ -201,6 +222,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : staffStep?.step === "decide" ? "staff"
+    : staffStep?.step === "hire" ? "hire"
     : offseason?.freeAgency ? "cuts"
     : offseason?.contracts && draftDone ? "freeagency"
     : offseason?.contracts && draftTurn ? "draft"
@@ -227,6 +250,28 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       scouting = current.week < REGULAR_SEASON_WEEKS ? advanceScoutingWeek(current, s.dynasty.league, draftClass, choices) : current;
     }
     return { ...s, weeksPlayed: week, results: [...s.results, ...played], scouting, scoutPlan: [] };
+  };
+
+  /** The season as played, for the offseason. */
+  const playedSeason = (): PlayedSeason | null => {
+    const s = stateRef.current;
+    if (!s || !schedule || !playoffs) return null;
+    const season = { season: schedule.season, schedule, results: s.results, standings };
+    return { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}) };
+  };
+
+  /** After your staff calls: staff moves, retirements and development, then re-signings. */
+  const startRestOfOffseason = (fire: ReadonlySet<StaffSlot>, renew: ReadonlySet<StaffSlot>, picks: ReadonlyMap<StaffSlot, string>) => {
+    const s = stateRef.current;
+    const played = playedSeason();
+    if (!s || !played) return;
+    setBusy("offseason");
+    setStaffStep(null);
+    // Let the "running the offseason" screen paint before the heavy work.
+    setTimeout(() => {
+      setOffseason(beginOffseason(s.dynasty, played, { decisions: { team: s.userTeam, fire, renew }, hires: { team: s.userTeam, picks } }));
+      setBusy(null);
+    }, 50);
   };
 
   /** Free agency (with your offers); roster cuts come next. */
@@ -325,15 +370,21 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (state && seasonOver) persist({ ...state, playoffRoundsShown: Math.min(PLAYOFF_ROUND_COUNT, state.playoffRoundsShown + 1) });
     },
     startOffseason: () => {
-      if (!state || !schedule || !playoffs) return;
-      setBusy("offseason");
-      // Let the "running the offseason" screen paint before the heavy work.
-      setTimeout(() => {
-        const s = stateRef.current!;
-        const season = { season: schedule.season, schedule, results: s.results, standings };
-        setOffseason(beginOffseason(s.dynasty, { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}) }));
-        setBusy(null);
-      }, 50);
+      if (state && schedule && playoffs) setStaffStep({ step: "decide" });
+    },
+    staffSeats,
+    confirmStaff: (fire, renew) => {
+      const s = stateRef.current;
+      const played = playedSeason();
+      if (!s || !played) return;
+      const decisions = { team: s.userTeam, fire, renew };
+      const releases = offseasonStaffReleases(s.dynasty, played, decisions);
+      if (releases.vacancies.some((v) => v.team === s.userTeam)) setStaffStep({ step: "hire", releases, fire, renew });
+      else startRestOfOffseason(fire, renew, new Map());
+    },
+    staffOpenings,
+    confirmHires: (picks) => {
+      if (staffStep?.step === "hire") startRestOfOffseason(staffStep.fire, staffStep.renew, picks);
     },
     contractPlan,
     finishOffseason: (keep) => {
@@ -396,6 +447,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     deleteDynasty: () => {
       clearSave().catch(() => undefined);
       setOffseason(null);
+      setStaffStep(null);
       setDraftTurn(null);
       setDraftDone(null);
       setOffers(new Map());

@@ -125,7 +125,7 @@ and animation data. The app only calls the sim; it never decides outcomes.
 5. Dynasty flow: pick a team, play week by week, playoffs, then the offseason
    (staff, contracts, draft, free agency); save and load
 
-### Milestone 7: your offseason (current)
+### Milestone 7: your offseason (done)
 The AI still runs the other 49 teams; you make your own team's calls. Each
 decision goes through the sim's rules (cap, player mood, scouting knowledge).
 1. Re-signings: see each expiring player's asking price, years, mood and odds

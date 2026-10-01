@@ -25,6 +25,7 @@ import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
+import { HireScreen, StaffScreen } from "../../screens/StaffScreen";
 import type { OffseasonReport, ReportPlayer } from "../../dynasty/report";
 import { SCOUT_POINTS, useDynasty, useLeagueMaybe, type LeagueData } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
@@ -69,6 +70,10 @@ export default function Home() {
       );
     case "choose":
       return data ? <ChooseTeam data={data} /> : null;
+    case "staff":
+      return d.staffSeats ? <StaffScreen overview={d.staffSeats} onConfirm={d.confirmStaff} /> : null;
+    case "hire":
+      return d.staffOpenings ? <HireScreen openings={d.staffOpenings} onConfirm={d.confirmHires} /> : null;
     case "resign":
       return d.contractPlan ? <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} /> : null;
     case "draft":

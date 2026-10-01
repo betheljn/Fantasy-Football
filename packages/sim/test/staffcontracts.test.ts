@@ -11,7 +11,11 @@ import {
   staffAsk,
   staffBudget,
   staffBuyout,
+  staffCandidates,
   staffDeadMoneyFor,
+  staffHiring,
+  staffOverview,
+  staffReleases,
   staffSpending,
   type League,
   type StaffMember,
@@ -109,5 +113,57 @@ describe("staff contracts in the offseason", () => {
     const budget = staffBudget(salaryCap(LEAGUE.seed, SEASON + 1));
     const over = allTeams(r.league).filter((t) => staffSpending(t, SEASON + 1) - staffDeadMoneyFor(t, SEASON + 1) > budget);
     expect(over.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("your own staff calls", () => {
+  const me = ORDER[0]!; // the worst team: the AI would be most tempted to fire its coach
+  const awful = new Map(allTeams(LEAGUE).map((t) => [t.abbr, 0.1]));
+  const league = coachesSignedThrough(SEASON + 2);
+  const release = (decisions?: Parameters<typeof staffReleases>[7]) => staffReleases(league, PLAYED.results, PLAYOFFS, ORDER, [], new Map(), awful, decisions);
+  const myVacancies = (rel: ReturnType<typeof release>) => rel.vacancies.filter((v) => v.team === me);
+
+  it("previews each seat: expiring deals, renewal asks, buyouts, the budget", () => {
+    const o = staffOverview(league, new Map(), me);
+    expect(o.seats).toHaveLength(5);
+    const hc = o.seats.find((x) => x.slot === "hc")!;
+    expect(hc.buyout).toBe(2 * hc.member.contract!.salary);
+    expect(hc.expiring).toBe(false);
+    expect(o.budget).toBe(staffBudget(salaryCap(LEAGUE.seed, SEASON + 1)));
+  });
+
+  it("keeps everyone you don't fire, even after a terrible season, and fires exactly who you choose", () => {
+    const keepAll = release({ team: me, fire: new Set(), renew: new Set(["hc", "oc", "dc", "gm", "scout"]) });
+    expect(myVacancies(keepAll).filter((v) => v.reason === "fired")).toHaveLength(0);
+    const fireHc = release({ team: me, fire: new Set(["hc"]), renew: new Set(["hc", "oc", "dc", "gm", "scout"]) });
+    const v = myVacancies(fireHc).find((x) => x.slot === "hc")!;
+    expect(v.reason).toBe("fired");
+    expect(v.buyout).toBe(2 * league.teams[me]!.staff!.hc.contract!.salary);
+  });
+
+  it("lists the same candidates every time, including new faces and coordinators to poach for head coach", () => {
+    const rel = release({ team: me, fire: new Set(["hc"]), renew: new Set() });
+    const a = staffCandidates(rel, me);
+    const b = staffCandidates(release({ team: me, fire: new Set(["hc"]), renew: new Set() }), me);
+    const hcOpening = a.openings.find((o) => o.slot === "hc")!;
+    expect(hcOpening.candidates.map((c) => c.member.id)).toEqual(b.openings.find((o) => o.slot === "hc")!.candidates.map((c) => c.member.id));
+    expect(hcOpening.candidates.some((c) => c.from === "new face")).toBe(true);
+    expect(hcOpening.candidates.some((c) => c.from === "promoted coordinator")).toBe(true);
+  });
+
+  it("puts your pick in the seat; a poached coordinator's old team has to replace him", () => {
+    const rel = release({ team: me, fire: new Set(["hc"]), renew: new Set() });
+    const poach = staffCandidates(rel, me).openings.find((o) => o.slot === "hc")!.candidates.find((c) => c.from === "promoted coordinator")!;
+    const result = staffHiring(rel, { team: me, picks: new Map([["hc", poach.member.id]]) });
+    expect(result.league.teams[me]!.staff!.hc.id).toBe(poach.member.id);
+    const replaced = result.changes.find((c) => c.team === poach.currentTeam && c.reason === "hired away");
+    expect(replaced).toBeDefined();
+    expect(result.league.teams[poach.currentTeam!]!.staff![poach.currentSlot!].id).not.toBe(poach.member.id);
+  });
+
+  it("changes nothing when you make no calls", () => {
+    const a = run(league, awful);
+    const b = staffHiring(release());
+    expect(b.changes).toEqual(a.changes);
   });
 });

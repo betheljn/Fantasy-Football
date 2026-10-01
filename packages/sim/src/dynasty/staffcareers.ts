@@ -186,6 +186,57 @@ export function runStaffOffseason(
   careersIn: Map<string, StaffCareer>,
   lastSeasonPct: Map<string, number> = new Map(),
 ): StaffOffseasonResult {
+  return staffHiring(staffReleases(league, results, playoffs, order, pool, careersIn, lastSeasonPct));
+}
+
+/** A team's own calls on its staff (the user's team); everyone else is the AI's. */
+export interface StaffDecisions {
+  team: string;
+  /** Seats whose current holder you fire (buying out the rest of his deal). */
+  fire: ReadonlySet<Slot>;
+  /** Seats with an expiring deal that you renew; any other expiring deal ends. */
+  renew: ReadonlySet<Slot>;
+}
+
+/** A team's own hires: seat -> candidate id (from staffCandidates). Made before the AI teams hire. */
+export interface StaffHires {
+  team: string;
+  picks: ReadonlyMap<Slot, string>;
+}
+
+type Vacancy = { team: string; slot: Slot; out: string | null; reason: StaffChange["reason"]; buyout?: number };
+
+/** The staff offseason after everyone who's leaving has left, before anyone is hired. */
+export interface StaffReleases {
+  league: League;
+  order: string[];
+  season: number;
+  next: number;
+  capNext: number;
+  budget: number;
+  rng: Rng;
+  careers: Map<string, StaffCareer>;
+  coty: CoachOfTheYear | null;
+  staffs: Map<string, Partial<TeamStaff>>;
+  deadMoney: Map<string, Array<{ season: number; amount: number; name: string }>>;
+  vacancies: Vacancy[];
+  renewals: StaffChange[];
+  pool: StaffMember[];
+  letGo: Set<string>;
+  offenseRank: Map<string, number>;
+  defenseRank: Map<string, number>;
+}
+
+export function staffReleases(
+  league: League,
+  results: readonly GameSummary[],
+  playoffs: PlayoffResult,
+  order: string[],
+  pool: readonly StaffMember[],
+  careersIn: Map<string, StaffCareer>,
+  lastSeasonPct: Map<string, number> = new Map(),
+  decisions?: StaffDecisions,
+): StaffReleases {
   const season = league.season;
   const rng = new Rng(`${league.seed}:${season}:staff`);
   const careers = new Map(careersIn);
@@ -306,13 +357,22 @@ export function runStaffOffseason(
       const others = SLOTS.filter((o) => o !== slot).reduce((sum, o) => sum + (s[o]?.contract && s[o]!.contract!.through >= next ? s[o]!.contract!.salary : 0), 0);
       const owed = deadMoney.get(t.abbr)!.filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
       const affordable = staffAsk(m, capNext, reputation(careers.get(m.id), m.role)) <= budget - others - owed;
-      if (doingWell && affordable && rng.chance(0.9)) {
+      const keep = decisions?.team === t.abbr ? decisions.renew.has(slot) : doingWell && affordable && rng.chance(0.9);
+      if (keep) {
         const renewed = { ...m, contract: staffContract(rng, m, next, capNext, reputation(careers.get(m.id), m.role)) } as StaffMember;
         (s as Record<Slot, StaffMember>)[slot] = renewed;
         renewals.push({ team: t.abbr, role: m.role, out: fullName(m), in: fullName(m), reason: "contract expired", from: "free agent", contract: renewed.contract! });
       } else release(slot, m, "contract expired");
     }
 
+    if (decisions?.team === t.abbr) {
+      // Your calls: only the seats you chose to clear.
+      for (const slot of SLOTS) {
+        const m = s[slot];
+        if (m && decisions.fire.has(slot)) release(slot, m, "fired");
+      }
+      continue;
+    }
     // Head coach on the hot seat (tenure counts seasons completed before this one).
     // A title, or a long winning run with this team, buys patience; so does a big buyout.
     const hc = s.hc;
@@ -339,16 +399,123 @@ export function runStaffOffseason(
     if (gm && gm.tenure + 1 >= 4 && (pct + prev) / 2 < 0.4 && !madePlayoffs && rng.chance(0.5) && rng.chance(willPay(gm))) release("gm", gm, "fired");
   }
 
-  // --- hiring: worst teams choose first; coordinators can be hired away as head coaches ---
+  return { league, order, season, next, capNext, budget, rng, careers, coty, staffs, deadMoney, vacancies, renewals, pool: newPool, letGo, offenseRank, defenseRank };
+}
+
+type Candidate = { m: StaffMember; from: StaffChange["from"]; source?: { team: string; slot: Slot } };
+
+/** One candidate for an open seat, as the hiring team sees him. */
+export interface StaffCandidate {
+  member: StaffMember;
+  from: StaffChange["from"];
+  /** For a coordinator being poached: his current team and seat. */
+  currentTeam?: string;
+  currentSlot?: "oc" | "dc";
+  /** What he'd sign for a year ($K), and what his track record is worth in hiring. */
+  ask: number;
+  reputation: number;
+  overall: number;
+}
+
+export interface StaffOpening {
+  slot: Slot;
+  role: StaffRole;
+  out: string | null;
+  reason: StaffChange["reason"];
+  candidates: StaffCandidate[];
+}
+
+/** What a team's staff costs next season so far: salaries of who's staying, plus buyouts owed. */
+function committedFor(rel: StaffReleases, team: string): number {
+  const current = rel.staffs.get(team)!;
+  return (
+    (Object.values(current) as StaffMember[]).reduce((sum, m) => sum + (m.contract && m.contract.through >= rel.next ? m.contract.salary : 0), 0) +
+    rel.deadMoney.get(team)!.filter((d) => d.season === rel.next).reduce((sum, d) => sum + d.amount, 0)
+  );
+}
+
+/** The open seats on a team's staff and who it could hire for each (the same list every time for the same releases). */
+export function staffCandidates(rel: StaffReleases, team: string): { budget: number; committed: number; openings: StaffOpening[] } {
+  const openings: StaffOpening[] = rel.vacancies
+    .filter((v) => v.team === team)
+    .map((v) => {
+      const role = SLOT_ROLE[v.slot];
+      // New faces and coordinator conversions for this team come from its own stream, so the list never changes.
+      const rng = new Rng(`${rel.league.seed}:${rel.season}:staffcandidates:${team}:${v.slot}`);
+      const list: Candidate[] = rel.pool.filter((m) => m.role === role && m.age < 66 && !rel.letGo.has(`${team}:${m.id}`)).map((m) => ({ m, from: "free agent" as const }));
+      for (let k = 1; k <= 4; k++) list.push({ m: GENERATORS[role](rng, `S-${rel.season}-${role}-${team}-${k}`), from: "new face" });
+      if (role === "HC") {
+        for (const [other, s] of rel.staffs) {
+          if (other === team) continue;
+          for (const slot of ["oc", "dc"] as const) {
+            const m = s[slot];
+            const rank = slot === "oc" ? rel.offenseRank.get(other)! : rel.defenseRank.get(other)!;
+            if (m && rank <= 8) list.push({ m: asHeadCoach(rng, m), from: "promoted coordinator", source: { team: other, slot } });
+          }
+        }
+      }
+      return {
+        slot: v.slot,
+        role,
+        out: v.out,
+        reason: v.reason,
+        candidates: list
+          .map((c) => {
+            const rep = reputation(rel.careers.get(c.m.id), role);
+            return { member: c.m, from: c.from, ...(c.source ? { currentTeam: c.source.team, currentSlot: c.source.slot as "oc" | "dc" } : {}), ask: staffAsk(c.m, rel.capNext, rep), reputation: rep, overall: staffOverall(c.m) };
+          })
+          .sort((a, b) => b.overall + b.reputation - (a.overall + a.reputation)),
+      };
+    });
+  return { budget: rel.budget, committed: committedFor(rel, team), openings };
+}
+
+/** Fill every open seat (yours first, with your picks), then age everyone a year. */
+export function staffHiring(rel: StaffReleases, hires?: StaffHires): StaffOffseasonResult {
+  const { league, order, season, next, capNext, budget, rng, careers, staffs, deadMoney, renewals, letGo, offenseRank, defenseRank } = rel;
+  const coty = rel.coty;
+  const newPool = rel.pool;
+  const vacancies = rel.vacancies;
   const changes: StaffChange[] = [];
   const newHires = new Set<string>();
   let fresh = 0;
   const byOrder = (a: { team: string }, b: { team: string }) => order.indexOf(a.team) - order.indexOf(b.team);
+
+  /** Put a hire in a seat: his deal, the pool, and a coordinator's old team now needing a replacement. */
+  const place = (v: Vacancy, pick: Candidate) => {
+    const role = SLOT_ROLE[v.slot];
+    const contract = staffContract(rng, pick.m, next, capNext, reputation(careers.get(pick.m.id), role));
+    const hire = { ...pick.m, tenure: 0, contract } as StaffMember;
+    (staffs.get(v.team)! as Record<Slot, StaffMember>)[v.slot] = hire;
+    newHires.add(hire.id);
+    const poolIdx = newPool.findIndex((m) => m.id === pick.m.id);
+    if (poolIdx >= 0) newPool.splice(poolIdx, 1);
+    careerFor(careers, hire).status = "active";
+    changes.push({ team: v.team, role, out: v.out, in: fullName(hire), reason: v.reason, from: pick.from, contract, ...(v.buyout ? { buyout: v.buyout } : {}) });
+    if (pick.source) {
+      delete staffs.get(pick.source.team)![pick.source.slot];
+      vacancies.push({ team: pick.source.team, slot: pick.source.slot, out: fullName(pick.m), reason: "hired away" });
+    }
+  };
+
+  // Your picks first, so nobody else takes them.
+  if (hires) {
+    const { openings } = staffCandidates(rel, hires.team);
+    for (const [slot, id] of hires.picks) {
+      const opening = openings.find((o) => o.slot === slot);
+      const chosen = opening?.candidates.find((c) => c.member.id === id);
+      const vi = vacancies.findIndex((v) => v.team === hires.team && v.slot === slot);
+      if (!opening || !chosen || vi < 0) continue;
+      const [v] = vacancies.splice(vi, 1);
+      place(v!, { m: chosen.member, from: chosen.from, ...(chosen.currentTeam && chosen.currentSlot ? { source: { team: chosen.currentTeam, slot: chosen.currentSlot } } : {}) });
+    }
+  }
+
+  // --- hiring: worst teams choose first; coordinators can be hired away as head coaches ---
   vacancies.sort(byOrder);
   while (vacancies.length > 0) {
     const v = vacancies.shift()!;
     const role = SLOT_ROLE[v.slot];
-    type Candidate = { m: StaffMember; from: StaffChange["from"]; source?: { team: string; slot: Slot } };
     const candidates: Candidate[] = newPool.filter((m) => m.role === role && m.age < 66 && !letGo.has(`${v.team}:${m.id}`)).map((m) => ({ m, from: "free agent" as const }));
     for (let k = 0; k < 3; k++) candidates.push({ m: GENERATORS[role](rng, `S-${season}-${role}-${++fresh}`), from: "new face" });
     if (role === "HC") {
@@ -363,10 +530,7 @@ export function runStaffOffseason(
     }
     // What the team can pay: its budget, less current salaries and buyouts, less a
     // going-rate reserve for its other open seats.
-    const current = staffs.get(v.team)!;
-    const committed =
-      (Object.values(current) as StaffMember[]).reduce((sum, m) => sum + (m.contract && m.contract.through >= next ? m.contract.salary : 0), 0) +
-      deadMoney.get(v.team)!.filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
+    const committed = committedFor(rel, v.team);
     const reserve = vacancies.filter((o) => o.team === v.team).reduce((sum, o) => sum + 0.6 * STAFF_PAY[SLOT_ROLE[o.slot]] * capNext, 0);
     const room = budget - committed - reserve;
     const ask = (c: Candidate) => staffAsk(c.m, capNext, reputation(careers.get(c.m.id), role));
@@ -379,21 +543,8 @@ export function runStaffOffseason(
       return score > best.score ? { c, score } : best;
     }, { c: shortlist[0]!, score: -Infinity }).c;
 
-    const contract = staffContract(rng, pick.m, next, capNext, reputation(careers.get(pick.m.id), role));
-    const hire = { ...pick.m, tenure: 0, contract } as StaffMember;
-    const target = staffs.get(v.team)!;
-    (target as Record<Slot, StaffMember>)[v.slot] = hire;
-    newHires.add(hire.id);
-    const poolIdx = newPool.findIndex((m) => m.id === pick.m.id);
-    if (poolIdx >= 0) newPool.splice(poolIdx, 1);
-    careerFor(careers, hire).status = "active";
-    changes.push({ team: v.team, role, out: v.out, in: fullName(hire), reason: v.reason, from: pick.from, contract, ...(v.buyout ? { buyout: v.buyout } : {}) });
-    if (pick.source) {
-      // His old team now needs a coordinator.
-      delete staffs.get(pick.source.team)![pick.source.slot];
-      vacancies.push({ team: pick.source.team, slot: pick.source.slot, out: fullName(pick.m), reason: "hired away" });
-      vacancies.sort(byOrder);
-    }
+    place(v, pick);
+    if (pick.source) vacancies.sort(byOrder);
   }
 
   // --- everyone ages a year; the unemployed pool keeps its most employable ---
@@ -418,3 +569,45 @@ export function runStaffOffseason(
 
   return { league: { ...league, teams }, pool: agedPool, careers, changes, renewals, coachOfTheYear: coty };
 }
+
+/** One seat on a team's staff as the offseason opens. */
+export interface StaffSeat {
+  slot: Slot;
+  member: StaffMember;
+  overall: number;
+  /** His deal runs out now: renew it (at `renewAsk` a year) or let him go. */
+  expiring: boolean;
+  renewAsk: number;
+  /** What firing him would cost: the rest of his deal, paid out of the staff budget. */
+  buyout: number;
+  /** Old enough that he may retire this offseason, whatever you decide. */
+  mayRetire: boolean;
+}
+
+/** A team's staff before the offseason's staff moves: who's there, what keeping or replacing them costs, and the budget. */
+export function staffOverview(league: League, careers: Map<string, StaffCareer>, team: string): { season: number; budget: number; committed: number; seats: StaffSeat[] } {
+  const season = league.season;
+  const next = season + 1;
+  const capNext = salaryCap(league.seed, next);
+  const t = league.teams[team]!;
+  const seats: StaffSeat[] = SLOTS.flatMap((slot) => {
+    const m = t.staff?.[slot];
+    if (!m) return [];
+    return [
+      {
+        slot,
+        member: m,
+        overall: staffOverall(m),
+        expiring: !!m.contract && m.contract.through <= season,
+        renewAsk: staffAsk(m, capNext, reputation(careers.get(m.id), m.role)),
+        buyout: staffBuyout(m.contract, next),
+        mayRetire: m.age >= STAFF_RETIREMENT.startAge,
+      },
+    ];
+  });
+  const owed = (t.staffDeadMoney ?? []).filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
+  const committed = seats.reduce((sum, x) => sum + (x.member.contract && x.member.contract.through >= next ? x.member.contract.salary : 0), 0) + owed;
+  return { season: next, budget: staffBudget(capNext), committed, seats };
+}
+
+export type StaffSlot = Slot;
