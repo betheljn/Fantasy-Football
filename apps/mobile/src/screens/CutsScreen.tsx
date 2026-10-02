@@ -30,7 +30,8 @@ export function CutsScreen({ plan, onDone }: { plan: RosterPlan; onDone: (cuts: 
   const chosen = plan.players.filter((p) => cuts.has(p.player.id));
   const savings = chosen.reduce((s, p) => s + p.savings, 0);
   const dead = chosen.reduce((s, p) => s + p.deadMoney, 0);
-  const ok = kept <= plan.max && short.length === 0 && over.length === 0;
+  // Positions left short are filled with undrafted free agents, so only too many players blocks you.
+  const ok = kept <= plan.max && over.length === 0;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -44,7 +45,11 @@ export function CutsScreen({ plan, onDone }: { plan: RosterPlan; onDone: (cuts: 
         <Line label="Dead money left behind" value={formatMoney(dead)} theme={t} />
         {kept < plan.max ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>{plan.max - kept} open spot{plan.max - kept === 1 ? "" : "s"} will be filled with undrafted free agents at the minimum.</Text> : null}
         {kept > plan.max ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Cut {kept - plan.max} more.</Text> : null}
-        {short.length ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Too few at {short.map((p) => `${p} (need ${plan.positionMin[p]})`).join(", ")}.</Text> : null}
+        {short.length ? (
+          <Text style={{ color: t.muted, marginTop: 4 }}>
+            Short at {short.map((p) => `${p} (need ${plan.positionMin[p]})`).join(", ")}: undrafted free agents will fill those spots.
+          </Text>
+        ) : null}
         {over.length ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Too many at {over.map((p) => `${p} (max ${plan.positionMax[p]})`).join(", ")}.</Text> : null}
       </Card>
       <View style={{ flexDirection: "row", gap: 8 }}>

@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import {
   PLAYOFF_ROUNDS,
   ROUND_NAMES,
+  STATES,
   allTeams,
   formatMoney,
   formatRecord,
@@ -38,15 +39,7 @@ export default function Home() {
     case "loading":
       return <Centered theme={t}><ActivityIndicator color={t.accent} /></Centered>;
     case "start":
-      return (
-        <Centered theme={t}>
-          <Text style={{ fontSize: 28, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
-          <Text style={{ color: t.muted, textAlign: "center", marginVertical: 12, maxWidth: 320 }}>
-            Fifty teams, one per state. Pick one, play the seasons, build a dynasty.
-          </Text>
-          <Button label="New dynasty" onPress={d.newDynasty} theme={t} primary />
-        </Centered>
-      );
+      return <Saves />;
     case "building":
       return (
         <Centered theme={t}>
@@ -325,12 +318,58 @@ function History({ data }: { data: LeagueData }) {
   );
 }
 
+/** The start screen: your save slots, and starting a new dynasty in a free one. */
+function Saves() {
+  const t = useTheme();
+  const d = useDynasty();
+  const [armed, setArmed] = useState<number | null>(null);
+  const stateName = (abbr: string) => STATES.find(([, a]) => a === abbr)?.[0] ?? abbr;
+  return (
+    <Centered theme={t}>
+      <Text style={{ fontSize: 28, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
+      <Text style={{ color: t.muted, textAlign: "center", marginVertical: 12, maxWidth: 320 }}>
+        Fifty teams, one per state. Pick one, play the seasons, build a dynasty.
+      </Text>
+      <View style={{ width: "100%", maxWidth: 360, gap: 8, marginBottom: 16 }}>
+        {d.slots.map((s) => (
+          <Card key={s.slot} style={{ paddingVertical: 4 }}>
+            <LinkRow label={`Continue save ${s.slot}`} onPress={() => d.openSlot(s.slot)}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                {s.team ? <Swatch abbr={s.team} size={14} /> : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? stateName(s.team) : "New league"}</Text>
+                  <Text style={{ color: t.muted, fontSize: 12 }}>
+                    Save {s.slot} · {s.season} season · {s.stage}
+                  </Text>
+                </View>
+              </View>
+            </LinkRow>
+            <Pressable onPress={() => (armed === s.slot ? (d.deleteSlot(s.slot), setArmed(null)) : setArmed(s.slot))} accessibilityRole="button" style={{ paddingBottom: 6 }}>
+              <Text style={{ color: armed === s.slot ? t.score : t.muted, fontSize: 12, fontWeight: armed === s.slot ? "700" : "400" }}>
+                {armed === s.slot ? "Tap again to delete this save for good" : "Delete"}
+              </Text>
+            </Pressable>
+          </Card>
+        ))}
+      </View>
+      {d.canStartNew ? (
+        <Button label="New dynasty" onPress={d.newDynasty} theme={t} primary />
+      ) : (
+        <Text style={{ color: t.muted, textAlign: "center", maxWidth: 300 }}>All save slots are full. Delete one to start another dynasty.</Text>
+      )}
+    </Centered>
+  );
+}
+
 function DangerZone() {
   const t = useTheme();
   const d = useDynasty();
   const [armed, setArmed] = useState(false);
   return (
-    <View style={{ alignItems: "center", marginTop: 8 }}>
+    <View style={{ alignItems: "center", marginTop: 8, gap: 14 }}>
+      <Pressable onPress={d.closeDynasty} accessibilityRole="button">
+        <Text style={{ color: t.accent, fontWeight: "600" }}>Switch dynasty</Text>
+      </Pressable>
       <Pressable onPress={() => (armed ? d.deleteDynasty() : setArmed(true))} accessibilityRole="button">
         <Text style={{ color: armed ? t.score : t.muted, fontWeight: armed ? "700" : "400" }}>
           {armed ? "Tap again to delete this dynasty for good" : "Delete dynasty"}

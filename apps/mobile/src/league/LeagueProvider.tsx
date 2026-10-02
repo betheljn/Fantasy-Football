@@ -1,6 +1,6 @@
-// The dynasty the app is running: loaded from the save (or built new), played
+// The dynasty the app is running: loaded from a save slot (or built new), played
 // week by week, then the playoffs round by round, then the offseason - saved
-// after every step. Every screen reads the league from here (useLeague); the
+// after every step (mid-offseason, as a checkpoint of your calls so far). Every screen reads the league from here (useLeague); the
 // hub drives it (useDynasty). The sim decides everything; this only sequences it.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -58,8 +58,8 @@ import {
   type TeamRecord,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
-import { SAVE_VERSION, deserialize, serialize, type SaveState } from "../dynasty/save";
-import { clearSave, loadText, saveText } from "../dynasty/storage";
+import { SAVE_VERSION, type OffseasonProgress, type SaveState, type SlotInfo } from "../dynasty/save";
+import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 
 export const PLAYOFF_ROUND_COUNT = 4;
 /** Scouting points you get each week (as every team does). */
@@ -90,6 +90,14 @@ export interface DynastyControls {
   /** Progress of a long job (building a league, simulating to the end), 0-1. */
   progress: number;
   save: SaveState | null;
+  /** Your save slots, the one you're playing, and whether there's room for another dynasty. */
+  slots: SlotInfo[];
+  slot: number | null;
+  canStartNew: boolean;
+  openSlot: (slot: number) => void;
+  deleteSlot: (slot: number) => void;
+  /** Back to the save list (this dynasty stays saved). */
+  closeDynasty: () => void;
   newDynasty: () => void;
   chooseTeam: (abbr: string) => void;
   playWeek: () => void;
@@ -161,7 +169,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SaveState | null>(null);
   const [busy, setBusy] = useState<"loading" | "building" | "offseason" | "simming" | null>("loading");
   const [progress, setProgress] = useState(0);
-  /** The offseason paused for your decisions (in memory only; rebuilt identically if the app restarts). */
+  const [slotIndex, setSlotIndex] = useState<SlotIndex>({ active: null, slots: [] });
+  const [slot, setSlot] = useState<number | null>(null);
+  const slotRef = useRef<number | null>(null);
+  slotRef.current = slot;
+  /** Your calls so far in this offseason (the checkpoint), and one waiting to be replayed after loading. */
+  const checkpointRef = useRef<OffseasonProgress | null>(null);
+  const [restoring, setRestoring] = useState<OffseasonProgress | null>(null);
+  /** The offseason paused for your decisions (in memory; rebuilt from the checkpoint after a restart). */
   const [offseason, setOffseason] = useState<OffseasonState | null>(null);
   /** The staff step that opens the offseason (in memory, like the rest of the offseason). */
   const [staffStep, setStaffStep] = useState<null | { step: "decide" } | { step: "hire"; releases: StaffReleases; fire: ReadonlySet<StaffSlot>; renew: ReadonlySet<StaffSlot> }>(null);
@@ -176,17 +191,88 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef<SaveState | null>(null);
   stateRef.current = state;
 
-  const persist = useCallback((s: SaveState) => {
-    setState(s);
-    saveText(serialize(s)).catch((e) => console.warn("Save failed", e));
+  /** Saves run one after another, and a burst of quick changes (scouting taps) is written once. */
+  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queue = useCallback((job: () => Promise<unknown>) => {
+    saveChain.current = saveChain.current.then(job).catch((e) => console.warn("Save failed", e));
   }, []);
 
-  // Load the save, if there is one.
-  useEffect(() => {
-    loadText()
-      .then((text) => setState(text ? deserialize(text) : null))
+  const persist = useCallback(
+    (s: SaveState, now = false) => {
+      setState(s);
+      const n = slotRef.current;
+      if (n === null) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const write = () => queue(() => writeSlot(n, s, checkpointRef.current).then(setSlotIndex));
+      if (now) write();
+      else
+        saveTimer.current = setTimeout(() => {
+          saveTimer.current = null;
+          write();
+        }, 250);
+    },
+    [queue],
+  );
+
+  /** Save your latest offseason call (or clear the checkpoint once the offseason is over). */
+  const checkpoint = useCallback(
+    (p: OffseasonProgress | null) => {
+      const relabel = (checkpointRef.current === null) !== (p === null);
+      checkpointRef.current = p;
+      const n = slotRef.current;
+      const s = stateRef.current;
+      if (n === null) return;
+      queue(async () => {
+        await writeProgress(n, p);
+        if (relabel && s) setSlotIndex(await touchSlot(n, s, p));
+      });
+    },
+    [queue],
+  );
+  const updateCheckpoint = (f: (p: OffseasonProgress) => OffseasonProgress) => {
+    if (checkpointRef.current) checkpoint(f(checkpointRef.current));
+  };
+
+  /** Forget the offseason in memory (switching or deleting a dynasty). */
+  const resetOffseason = () => {
+    setOffseason(null);
+    setStaffStep(null);
+    setDraftTurn(null);
+    setDraftDone(null);
+    setOffers(new Map());
+    setFrontOffice(true);
+    draftRef.current = null;
+    keptRef.current = new Set();
+    checkpointRef.current = null;
+    setRestoring(null);
+  };
+
+  const openSlotNow = (n: number) => {
+    setBusy("loading");
+    resetOffseason();
+    loadSlot(n)
+      .then(({ state: loaded, progress: p }) => {
+        setSlot(loaded ? n : null);
+        setState(loaded);
+        checkpointRef.current = p;
+        setRestoring(p);
+        if (loaded) queue(() => touchSlot(n, loaded, p).then(setSlotIndex));
+      })
       .catch(() => setState(null))
       .finally(() => setBusy(null));
+  };
+
+  // Open the slot you were playing last, if any.
+  useEffect(() => {
+    readIndex()
+      .then((index) => {
+        setSlotIndex(index);
+        if (index.active !== null && index.slots.some((x) => x.slot === index.active)) openSlotNow(index.active);
+        else setBusy(null);
+      })
+      .catch(() => setBusy(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const dynasty = state?.dynasty ?? null;
@@ -218,6 +304,65 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     if (league) for (const team of allTeams(league)) for (const player of team.roster) m.set(player.id, { player, team });
     return m;
   }, [league]);
+
+  // After loading a slot mid-offseason: replay your calls so far through the
+  // sim (deterministic, so it lands exactly where you left off).
+  useEffect(() => {
+    const p = restoring;
+    const s = state;
+    if (!p || !s || busy) return;
+    setRestoring(null);
+    const played = playedSeason();
+    if (!played || p.season !== played.season.season) {
+      checkpoint(null);
+      return;
+    }
+    if (!p.staff) {
+      setStaffStep({ step: "decide" });
+      return;
+    }
+    const fire = new Set(p.staff.fire);
+    const renew = new Set(p.staff.renew);
+    const decisions = { team: s.userTeam, fire, renew };
+    if (!p.hires) {
+      setStaffStep({ step: "hire", releases: offseasonStaffReleases(s.dynasty, played, decisions), fire, renew });
+      return;
+    }
+    setBusy("offseason");
+    setTimeout(() => {
+      try {
+        let off = beginOffseason(s.dynasty, played, { decisions, hires: { team: s.userTeam, picks: new Map(p.hires) } });
+        setOffers(new Map(p.offers));
+        setFrontOffice(p.frontOffice);
+        if (p.keep) {
+          keptRef.current = new Set(p.keep);
+          off = resolveContracts(off, { team: s.userTeam, keep: keptRef.current });
+          const gen = offseasonDraft(off, new Set([s.userTeam]));
+          let r = gen.next();
+          for (const pick of p.picks) {
+            if (r.done) break;
+            r = gen.next(pick);
+          }
+          if (!r.done) {
+            draftRef.current = gen;
+            setDraftTurn(r.value);
+          } else {
+            setDraftDone(r.value);
+            if (p.freeAgencyDone) off = runOffseasonFreeAgency(off, r.value, { team: s.userTeam, offers: new Map(p.offers), frontOffice: p.frontOffice });
+          }
+        }
+        setOffseason(off);
+      } catch (e) {
+        // A checkpoint that no longer fits (it shouldn't happen): start the offseason over.
+        console.warn("Couldn't restore the offseason", e);
+        resetOffseason();
+        checkpoint({ season: played.season.season, picks: [], offers: [], frontOffice: true });
+        setStaffStep({ step: "decide" });
+      }
+      setBusy(null);
+    }, 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoring, state, busy, playoffs]);
 
   const phase: Phase =
     busy === "loading" ? "loading"
@@ -271,6 +416,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     if (!s || !played) return;
     setBusy("offseason");
     setStaffStep(null);
+    updateCheckpoint((p) => ({ ...p, staff: { fire: [...fire], renew: [...renew] }, hires: [...picks] }));
     // Let the "running the offseason" screen paint before the heavy work.
     setTimeout(() => {
       setOffseason(beginOffseason(s.dynasty, played, { decisions: { team: s.userTeam, fire, renew }, hires: { team: s.userTeam, picks } }));
@@ -284,6 +430,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const off = offseason;
     if (!s || !off) return;
     setBusy("offseason");
+    updateCheckpoint((p) => ({ ...p, offers: [...myOffers], frontOffice: foBids, freeAgencyDone: true }));
     setTimeout(() => {
       setOffseason(runOffseasonFreeAgency(off, draft, { team: s.userTeam, offers: myOffers, frontOffice: foBids }));
       setBusy(null);
@@ -307,7 +454,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const report = buildReport(s.userTeam, s.dynasty, after, log, rec ? formatRecord(rec) : "", rank, keptRef.current, myOffers);
       setOffers(new Map());
       setOffseason(null);
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [] });
+      checkpointRef.current = null;
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [] }, true);
+      // Clear the checkpoint only after the new season is saved.
+      checkpoint(null);
       setBusy(null);
     }, 50);
   };
@@ -323,6 +473,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const stepDraft = (pick: string | undefined) => {
     const gen = draftRef.current;
     if (!gen) return;
+    if (pick !== undefined) updateCheckpoint((p) => ({ ...p, picks: [...p.picks, pick] }));
     const r = pick === undefined ? gen.next() : gen.next(pick);
     if (r.done) finishDraft(r.value);
     else setDraftTurn(r.value);
@@ -332,7 +483,32 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     phase,
     progress,
     save: state,
+    slots: slotIndex.slots,
+    slot,
+    canStartNew: freeSlot(slotIndex) !== null,
+    openSlot: openSlotNow,
+    deleteSlot: (n) => {
+      queue(() => deleteSlot(n).then(setSlotIndex));
+    },
+    closeDynasty: () => {
+      // Write anything still waiting, then leave.
+      if (saveTimer.current && state && slot !== null) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        const s = state;
+        queue(() => writeSlot(slot, s, checkpointRef.current));
+      }
+      queue(() => closeSlot().then(setSlotIndex));
+      resetOffseason();
+      setSlot(null);
+      setState(null);
+    },
     newDynasty: () => {
+      const n = freeSlot(slotIndex);
+      if (n === null) return;
+      resetOffseason();
+      setSlot(n);
+      slotRef.current = n;
       setBusy("building");
       setProgress(0);
       const seed = `D${Date.now().toString(36)}`;
@@ -344,13 +520,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           setTimeout(step, 0);
           return;
         }
-        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [] });
+        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [] }, true);
         setBusy(null);
       };
       setTimeout(step, 50);
     },
     chooseTeam: (abbr) => {
-      if (state) persist({ ...state, userTeam: abbr });
+      if (state) persist({ ...state, userTeam: abbr }, true);
     },
     playWeek: () => {
       if (state && schedule && !seasonOver) persist(playOneWeek(state, schedule));
@@ -366,7 +542,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           setProgress(s.weeksPlayed / schedule.weeks);
           await yieldToUi();
         }
-        persist(s);
+        persist(s, true);
         setBusy(null);
       })();
     },
@@ -374,7 +550,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (state && seasonOver) persist({ ...state, playoffRoundsShown: Math.min(PLAYOFF_ROUND_COUNT, state.playoffRoundsShown + 1) });
     },
     startOffseason: () => {
-      if (state && schedule && playoffs) setStaffStep({ step: "decide" });
+      if (!state || !schedule || !playoffs) return;
+      checkpoint({ season: schedule.season, picks: [], offers: [], frontOffice: true });
+      setStaffStep({ step: "decide" });
     },
     staffSeats,
     confirmStaff: (fire, renew) => {
@@ -383,6 +561,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (!s || !played) return;
       const decisions = { team: s.userTeam, fire, renew };
       const releases = offseasonStaffReleases(s.dynasty, played, decisions);
+      updateCheckpoint((p) => ({ ...p, staff: { fire: [...fire], renew: [...renew] } }));
       if (releases.vacancies.some((v) => v.team === s.userTeam)) setStaffStep({ step: "hire", releases, fire, renew });
       else startRestOfOffseason(fire, renew, new Map());
     },
@@ -394,6 +573,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     finishOffseason: (keep) => {
       if (!state || !offseason || !playoffs) return;
       keptRef.current = keep;
+      updateCheckpoint((p) => ({ ...p, keep: [...keep] }));
       const withContracts = resolveContracts(offseason, { team: state.userTeam, keep });
       setOffseason(withContracts);
       draftRef.current = offseasonDraft(withContracts, new Set([state.userTeam]));
@@ -416,19 +596,24 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     autoDraft: () => {
       const gen = draftRef.current;
       if (!gen || !draftTurn) return;
-      let r = gen.next(draftTurn.board[0]!.prospect.player.id);
-      while (!r.done) r = gen.next(r.value.board[0]!.prospect.player.id);
+      const picks = [draftTurn.board[0]!.prospect.player.id];
+      let r = gen.next(picks[0]!);
+      while (!r.done) {
+        picks.push(r.value.board[0]!.prospect.player.id);
+        r = gen.next(picks[picks.length - 1]!);
+      }
+      updateCheckpoint((p) => ({ ...p, picks: [...p.picks, ...picks] }));
       finishDraft(r.value);
     },
     freeAgencyPlan: freeAgencyPlanValue,
     offers,
-    setOffer: (player, offer) =>
-      setOffers((o) => {
-        const n = new Map(o);
-        if (offer) n.set(player, offer);
-        else n.delete(player);
-        return n;
-      }),
+    setOffer: (player, offer) => {
+      const n = new Map(offers);
+      if (offer) n.set(player, offer);
+      else n.delete(player);
+      setOffers(n);
+      updateCheckpoint((p) => ({ ...p, offers: [...n] }));
+    },
     openFreeAgency: () => {
       if (draftDone) runFreeAgencyNow(draftDone, offers, frontOffice);
     },
@@ -444,18 +629,19 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       persist({ ...state, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
     },
     frontOffice,
-    setFrontOffice,
+    setFrontOffice: (on) => {
+      setFrontOffice(on);
+      updateCheckpoint((p) => ({ ...p, frontOffice: on }));
+    },
     startNextSeason: () => {
       if (state) persist({ ...state, report: null });
     },
     deleteDynasty: () => {
-      clearSave().catch(() => undefined);
-      setOffseason(null);
-      setStaffStep(null);
-      setDraftTurn(null);
-      setDraftDone(null);
-      setOffers(new Map());
-      draftRef.current = null;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      if (slot !== null) queue(() => deleteSlot(slot).then(setSlotIndex));
+      resetOffseason();
+      setSlot(null);
       setState(null);
     },
   };

@@ -1,9 +1,9 @@
-// What a save holds, and turning it into text and back. Maps (careers, stats)
-// don't survive plain JSON, so they're tagged and rebuilt.
-import type { Dynasty, GameSummary, ScoutingState, SeasonStats } from "@dynasty/sim";
+// What a save holds, and turning it into text and back (the sim's compact save
+// format: ratings and stat lines packed as arrays, Maps tagged).
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type StaffSlot } from "@dynasty/sim";
 import type { OffseasonReport } from "./report";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** Points assigned to one prospect for the coming week. */
 export interface ScoutAssignment {
@@ -32,17 +32,68 @@ export interface SaveState {
   scoutPlan: ScoutAssignment[];
 }
 
+/**
+ * Your calls so far in an offseason that's under way. The sim is deterministic,
+ * so replaying these on the saved league rebuilds the offseason exactly where
+ * you left it. Saved on its own (it's small) after every call.
+ */
+export interface OffseasonProgress {
+  /** The season that just ended (a checkpoint from another season is ignored). */
+  season: number;
+  /** Your fire/renew calls on the staff screen. */
+  staff?: { fire: StaffSlot[]; renew: StaffSlot[] };
+  /** Your hires; set once the rest of the offseason has begun. */
+  hires?: [StaffSlot, string][];
+  /** Expiring players you kept; set once re-signings are settled. */
+  keep?: string[];
+  /** Your draft picks so far, in order. */
+  picks: string[];
+  /** Free-agent offers so far, and whether your front office bids on the rest. */
+  offers: [string, FreeAgentOffer][];
+  frontOffice: boolean;
+  /** Free agency has run (you're making cuts). */
+  freeAgencyDone?: boolean;
+}
+
 export function serialize(state: SaveState): string {
-  return JSON.stringify(state, (_k, v) => (v instanceof Map ? { __map: [...v.entries()] } : v));
+  return toSaveJson(state);
 }
 
 export function deserialize(text: string): SaveState | null {
   try {
-    const state = JSON.parse(text, (_k, v) => (v && typeof v === "object" && Array.isArray(v.__map) ? new Map(v.__map) : v)) as SaveState;
+    const state = fromSaveJson<SaveState>(text);
     // Version 1 saves predate scouting; they pick it up from the next week played.
     if (state.version === 1) return { ...state, version: SAVE_VERSION, scouting: null, scoutPlan: [] };
+    // Version 2 is the same data in plain JSON.
+    if (state.version === 2) return { ...state, version: SAVE_VERSION };
     return state.version === SAVE_VERSION ? state : null;
   } catch {
     return null;
   }
 }
+
+export function serializeProgress(p: OffseasonProgress): string {
+  return JSON.stringify(p);
+}
+
+export function deserializeProgress(text: string | null): OffseasonProgress | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as OffseasonProgress;
+  } catch {
+    return null;
+  }
+}
+
+/** What the save list shows for a slot. */
+export interface SlotInfo {
+  slot: number;
+  team: string;
+  season: number;
+  /** Where the dynasty is, e.g. "Week 6", "Playoffs", "Offseason". */
+  stage: string;
+  /** When it was last saved (ms since epoch). */
+  savedAt: number;
+}
+
+export const SLOT_COUNT = 3;

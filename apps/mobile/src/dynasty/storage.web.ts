@@ -1,7 +1,9 @@
-// Save slot in the browser: IndexedDB (a save is several MB, too big for localStorage).
+// Saves in the browser: IndexedDB (a save is a few MB, too big for localStorage),
+// one entry per key (each save slot, its offseason checkpoint, and the slot list).
 const DB = "football-dynasty";
 const STORE = "saves";
-const KEY = "dynasty";
+/** Where the one save lived before save slots. */
+export const LEGACY_KEY = "dynasty";
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -21,15 +23,16 @@ async function run<T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBReq
   });
 }
 
-export async function saveText(text: string): Promise<void> {
-  await run("readwrite", (s) => s.put(text, KEY));
+export async function saveText(key: string, text: string): Promise<void> {
+  await run("readwrite", (s) => s.put(text, key));
 }
 
-export async function loadText(): Promise<string | null> {
-  const v = await run<unknown>("readonly", (s) => s.get(KEY));
+export async function loadText(key: string): Promise<string | null> {
+  const v = await run<unknown>("readonly", (s) => s.get(key));
   return typeof v === "string" ? v : null;
 }
 
-export async function clearSave(): Promise<void> {
-  await run("readwrite", (s) => s.delete(KEY));
+export async function removeText(key: string): Promise<void> {
+  await run("readwrite", (s) => s.delete(key));
 }
+

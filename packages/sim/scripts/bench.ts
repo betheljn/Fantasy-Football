@@ -24,6 +24,7 @@ import {
   simulatePlayoffs,
   staffCandidates,
   staffOverview,
+  toSaveJson,
 } from "../src/index.ts";
 
 const times: Array<[string, number]> = [];
@@ -77,7 +78,7 @@ time("Free agency screen (market plan)", () => offseasonFreeAgencyPlan(contracts
 const fa = time("Free agency", () => runOffseasonFreeAgency(contracts, draft));
 time("Cuts screen (roster plan)", () => offseasonRosterPlan(fa, team));
 const done = time("Complete offseason (cuts, cap, records)", () => completeOffseason(fa, draft));
-time("Serialize save (JSON)", () => JSON.stringify(done.dynasty, (_k, v) => (v instanceof Map ? [...v.entries()] : v)).length);
+time("Serialize save (compact)", () => toSaveJson(done.dynasty).length);
 
 const jit = process.execArgv.includes("--jitless") ? "jitless" : "JIT";
 console.log(`Timings (${jit}):`);
