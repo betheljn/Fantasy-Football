@@ -5,7 +5,8 @@ import { teamName, type Team } from "../model/team.ts";
 import type { GameResult } from "../game/game.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import type { BoxScore, PlayerStats } from "../stats/boxscore.ts";
-import { describePlay, formatClock, formatDownDistance, formatSpot, type PlayerLookup } from "./describe.ts";
+import { describeGamePlay,
+  describePlay, formatClock, formatDownDistance, formatSpot, type PlayerLookup } from "./describe.ts";
 
 const PERIOD_NAMES = ["1ST QUARTER", "2ND QUARTER", "3RD QUARTER", "4TH QUARTER"];
 
@@ -45,7 +46,7 @@ export function formatPlayByPlay(game: GameResult, who: PlayerLookup): string {
         : e.kind === "conversion"
           ? ""
           : clock;
-    out.push(`  ${pre.padEnd(25)} ${describePlay(e, who)}`);
+    out.push(`  ${pre.padEnd(25)} ${describeGamePlay(p, who)}`);
     if (Object.keys(pointsForEvent(e)).length > 0) {
       out.push(`  ${"".padEnd(25)} >> ${scoreLine(p.score, game.away, game.home)}`);
     }

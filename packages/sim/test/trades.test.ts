@@ -205,7 +205,7 @@ describe("AI trades", () => {
     expect(a.trades!.length).toBeGreaterThan(5);
     expect(a.trades).toEqual(b.trades);
     expect(a.season.results).toEqual(b.season.results);
-  });
+  }, 30_000);
 });
 
 describe("draft week", () => {

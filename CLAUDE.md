@@ -150,6 +150,16 @@ Follow-ups also done: draft-pick trades (next two drafts), uneven trades
 (releases with dead money to fit 72), a draft-week trade window after the
 championship, and tougher AI GMs (contenders hold starters, humans pay more).
 
+### Milestone 9: injuries and in-season moves (current)
+1. Injuries in games: players in a play can get hurt (age and stamina matter);
+   out for the game, a few weeks or the season; the injured sit on game day,
+   heal week by week, and are healthy by the offseason; injuries in the event
+   log and feed; past games replay exactly (rosters and who sat are kept)
+2. Injury report: your injured players and their return dates on the hub,
+   team pages and depth chart; injury news around the league
+3. In-season moves: injured reserve, and signing free agents to fill spots
+   (you and the AI), within the cap and the 72-man roster
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style

@@ -8,6 +8,7 @@ import {
   formatMoney,
   formatRecord,
   payroll,
+  outLabel,
   playerOverall,
   salaryCap,
   staffOverall,
@@ -118,6 +119,7 @@ export default function TeamScreen() {
                       <Text style={{ width: 30, color: t.muted, fontVariant: ["tabular-nums"] }}>#{p.jersey}</Text>
                       <Text style={{ flex: 1, color: t.text, fontWeight: i === 0 ? "700" : "400" }} numberOfLines={1}>
                         {p.firstName} {p.lastName}
+                        {p.injury ? <Text style={{ color: t.score, fontSize: 12, fontWeight: "700" }}> {outLabel(p.injury)}</Text> : null}
                       </Text>
                       <Text style={{ width: 56, color: t.muted }} numberOfLines={1}>
                         age {p.age}

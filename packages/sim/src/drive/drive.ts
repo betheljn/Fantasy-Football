@@ -1,3 +1,4 @@
+import type { Injury, InjuryTracker } from "../game/injuries.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { PlayContext } from "../play/common.ts";
@@ -38,6 +39,8 @@ export interface DrivePlay {
   /** Quarter and game clock after the play (before any runoff to the next snap). */
   quarter: number;
   clockAfter: number;
+  /** Players hurt on the play. */
+  injuries?: Injury[];
 }
 
 export interface DriveInput {
@@ -53,6 +56,8 @@ export interface DriveInput {
   timeouts: Record<string, number>;
   /** Home team abbr, for home-field advantage; omit at a neutral site. */
   homeTeam?: string;
+  /** Checks each play for injuries; the hurt leave the field for the next snap. */
+  injuries?: InjuryTracker;
 }
 
 export interface DriveResult {
@@ -76,7 +81,7 @@ export interface DriveResult {
 const SCRIMMAGE_KINDS = new Set<PlayEvent["kind"]>(["run", "pass", "kneel", "spike"]);
 
 export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
-  const { offense, defense } = input;
+  let { offense, defense } = input;
   const off = offense.abbr;
   const def = defense.abbr;
   const points: Record<string, number> = { [off]: 0, [def]: 0 };
@@ -95,7 +100,12 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
 
   /** Add an event to the drive; points always come from the event itself. */
   const record = (event: PlayEvent, clockAfter: number) => {
-    plays.push({ event, quarter, clockAfter });
+    const hurt = input.injuries?.check(event) ?? [];
+    plays.push({ event, quarter, clockAfter, ...(hurt.length > 0 ? { injuries: hurt } : {}) });
+    if (hurt.length > 0) {
+      offense = input.injuries!.teams[off]!;
+      defense = input.injuries!.teams[def]!;
+    }
     for (const [team, pts] of Object.entries(pointsForEvent(event))) points[team]! += pts;
   };
 

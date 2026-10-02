@@ -1,6 +1,7 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
 import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type PlayoffResult, type StaffSlot, type TradeRecord } from "@dynasty/sim";
+import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
 export const SAVE_VERSION = 3;
@@ -34,6 +35,8 @@ export interface SaveState {
   trades: TradeRecord[];
   /** The playoffs, decided when the regular season ends (null before). */
   playoffs?: PlayoffResult | null;
+  /** Rosters through the season, so past games replay exactly. */
+  lineups?: LineupLog;
 }
 
 /**

@@ -8,7 +8,8 @@ import { ROSTER_MAX, starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
-import { playGame, type SeasonResult } from "../league/season.ts";
+import { playWeek, type SeasonResult } from "../league/season.ts";
+import { healAll } from "../game/injuries.ts";
 import { aiTradeWeek, draftWeekWindow, seasonWindow, type TradeRecord } from "../contracts/trades.ts";
 import { simulatePlayoffs, type PlayoffResult } from "../league/playoffs.ts";
 import { divisionStandings, type DivisionStandings, type TeamRecord } from "../league/standings.ts";
@@ -243,12 +244,9 @@ export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } 
       trades.push(t);
       for (const p of t.players) traded.add(p.id);
     }
-    for (const g of schedule.games) {
-      if (g.week !== week) continue;
-      const { summary, result } = playGame(league, g);
-      addGameToSeason(stats, result);
-      results.push(summary);
-    }
+    const played = playWeek(league, schedule, week, (g) => addGameToSeason(stats, g));
+    league = played.league;
+    for (const g of played.games) results.push(g.summary);
   }
   const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
   return { season, stats, playoffs: simulatePlayoffs(league, season), trades, league };
@@ -322,7 +320,8 @@ export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, d
 }
 
 export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoices: StaffChoices = {}): OffseasonState {
-  const league = dynasty.league;
+  // Everyone hurt heals over the offseason.
+  const league = healAll(dynasty.league);
   const { season, stats, playoffs } = played;
 
   // The class entering next season was scouted while this season was played.

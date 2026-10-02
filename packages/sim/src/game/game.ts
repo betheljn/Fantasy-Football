@@ -1,3 +1,4 @@
+import { InjuryTracker, type Injury } from "./injuries.ts";
 import type { Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
@@ -18,6 +19,8 @@ export interface GamePlay {
   clockAfter: number;
   /** Score after the play, keyed by team abbr. */
   score: Record<string, number>;
+  /** Players hurt on the play. */
+  injuries?: Injury[];
 }
 
 /** A drive without its plays; `plays` indexes into GameResult.plays. */
@@ -39,6 +42,8 @@ export interface GameResult {
   winner: string | null;
   /** Period and game clock when the game ended (clock > 0 only for an overtime score). */
   final: { quarter: number; clock: number };
+  /** Everyone hurt in the game, in order. */
+  injuries: Injury[];
 }
 
 /**
@@ -54,8 +59,10 @@ export interface GameOptions {
 
 export function simulateGame(home: Team, away: Team, seed: number | string, options: GameOptions = {}): GameResult {
   const rng = new Rng(seed);
-  const teams: Record<string, Team> = { [home.abbr]: home, [away.abbr]: away };
-  const other = (abbr: string) => (abbr === home.abbr ? away : home);
+  const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away });
+  // The teams as they stand now (injured players leave the field).
+  const teams = injuries.teams;
+  const other = (abbr: string) => teams[abbr === home.abbr ? away.abbr : home.abbr]!;
 
   const score: Record<string, number> = { [home.abbr]: 0, [away.abbr]: 0 };
   const periodScores: Record<string, number[]> = { [home.abbr]: [0, 0, 0, 0], [away.abbr]: [0, 0, 0, 0] };
@@ -69,12 +76,12 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
   let pending: NextPossession = { kind: "kickoff", kickingTeam: other(openingReceiver).abbr };
   const otPossessed = new Set<string>();
 
-  const record = (event: PlayEvent, q: number, clockAfter: number) => {
+  const record = (event: PlayEvent, q: number, clockAfter: number, hurt?: Injury[]) => {
     for (const [team, pts] of Object.entries(pointsForEvent(event))) {
       score[team]! += pts;
       periodScores[team]![q - 1]! += pts;
     }
-    plays.push({ seq: plays.length, event, quarter: q, clockAfter, score: { ...score } });
+    plays.push({ seq: plays.length, event, quarter: q, clockAfter, score: { ...score }, ...(hurt && hurt.length > 0 ? { injuries: hurt } : {}) });
   };
 
   const margin = (team: string) => score[team]! - score[other(team).abbr]!;
@@ -130,7 +137,7 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
         (clock <= 150 || (clock <= 300 && lateDeficit > 8));
       const ko = simulateKickoff(rng, { kicking, receiving, quarter, clock, onside, freeKick: pending.kind === "free_kick" });
       clock = Math.max(0, clock - ko.duration);
-      record(ko, quarter, clock);
+      record(ko, quarter, clock, injuries.check(ko));
 
       if (ko.touchdown) {
         const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr));
@@ -164,9 +171,10 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
       score: { ...score },
       timeouts,
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
+      injuries,
     });
     const from = plays.length;
-    for (const p of drive.plays) record(p.event, p.quarter, p.clockAfter);
+    for (const p of drive.plays) record(p.event, p.quarter, p.clockAfter, p.injuries);
     const { plays: _drivePlays, ...summary } = drive;
     drives.push({ ...summary, plays: { from, to: plays.length } });
 
@@ -190,5 +198,6 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
     overtime: quarter >= 5,
     winner: diff === 0 ? null : diff > 0 ? home.abbr : away.abbr,
     final: { quarter, clock },
+    injuries: injuries.all,
   };
 }

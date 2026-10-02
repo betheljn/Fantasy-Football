@@ -58,3 +58,4 @@ export * from "./contracts/mood.ts";
 export * from "./contracts/staffcontracts.ts";
 export * from "./save/compact.ts";
 export * from "./contracts/trades.ts";
+export * from "./game/injuries.ts";

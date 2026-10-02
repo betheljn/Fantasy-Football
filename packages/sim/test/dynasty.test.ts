@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aiTradeWeek,
+  playWeek,
   draftWeekTrades,
   seasonWindow,
   addGameToSeason,
@@ -127,11 +128,9 @@ describe("playing a season week by week", () => {
       const talks = aiTradeWeek(league, seasonWindow(league, week - 1), new Set(), traded);
       league = talks.league;
       for (const t of talks.trades) for (const p of t.players) traded.add(p.id);
-      for (const g of schedule.games.filter((x) => x.week === week)) {
-        const { summary, result } = playGame(league, g);
-        addGameToSeason(stats, result);
-        results.push(summary);
-      }
+      const played = playWeek(league, schedule, week, (g) => addGameToSeason(stats, g));
+      league = played.league;
+      for (const g of played.games) results.push(g.summary);
     }
     const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
     const playoffs = simulatePlayoffs(league, season);

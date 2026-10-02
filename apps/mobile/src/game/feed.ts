@@ -1,7 +1,7 @@
 // Turns a finished GameResult into rows for the play-by-play list. Pure data;
 // the screen only renders it.
 import {
-  describePlay,
+  describeGamePlay,
   formatClock,
   formatDownDistance,
   formatSpot,
@@ -42,7 +42,7 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
       team: e.offense,
       clock: formatClock(e.start.clock),
       situation: SCRIMMAGE.has(e.kind) ? formatDownDistance(e.start, e.offense, e.defense) : "",
-      text: describePlay(e, who),
+      text: describeGamePlay(p, who),
       scoring: Object.keys(pointsForEvent(e)).length > 0,
       score: `${game.away} ${p.score[game.away]} – ${game.home} ${p.score[game.home]}`,
     });

@@ -59,6 +59,7 @@ import {
   type TradeProposal,
   type TradeVerdict,
   aiTradeWeek,
+  playWeek,
   applyTrade,
   checkTrade,
   draftOrder,
@@ -70,6 +71,7 @@ import {
   type TradeWindow,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
+import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
 import { SAVE_VERSION, type OffseasonProgress, type SaveState, type SlotInfo } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 
@@ -412,18 +414,31 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : "complete";
 
   /** Play one week of the regular season onto a state (mutates its stats), and a week of scouting. */
+  /**
+   * The season opens: rosters logged for replays, and the first round of AI
+   * trade talks (before week 1). After that, talks follow each week's games,
+   * so the league you see is always the one that plays.
+   */
+  const openSeason = (s: SaveState): SaveState => {
+    const before = s.dynasty.league;
+    const talks = aiTradeWeek(before, seasonWindow(before, 0), new Set([s.userTeam]));
+    const lineups = logTrades(startLog(before), before, talks.league, talks.trades, 1);
+    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups };
+  };
+
   const playOneWeek = (s: SaveState, sched: Schedule): SaveState => {
     const week = s.weeksPlayed + 1;
-    // Trade talks around the league before the week (you're left out: you make your own).
+    // A save from before lineups were logged starts its log now.
+    let lineups = s.lineups ?? startLog(s.dynasty.league);
+    // The week's games (injured players sit), then injuries move on a week.
+    const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
+    let league = week_.league;
+    const played: GameSummary[] = week_.games.map((g) => g.summary);
+    // Trade talks around the league for next week (you're left out: you make your own).
     const traded = new Set(s.trades.flatMap((t) => t.players.map((p) => p.id)));
-    const talks = aiTradeWeek(s.dynasty.league, seasonWindow(s.dynasty.league, s.weeksPlayed), new Set([s.userTeam]), traded);
-    const league = talks.league;
-    const played: GameSummary[] = [];
-    for (const g of sched.games.filter((x) => x.week === week)) {
-      const { summary, result } = playGame(league, g);
-      addGameToSeason(s.stats, result);
-      played.push(summary);
-    }
+    const talks = aiTradeWeek(league, seasonWindow(league, week), new Set([s.userTeam]), traded);
+    lineups = logTrades(lineups, league, talks.league, talks.trades, week + 1);
+    league = talks.league;
     let scouting = s.scouting;
     if (draftClass) {
       const current = scouting ?? createScouting(league, draftClass);
@@ -431,11 +446,11 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const choices = s.scoutPlan.length > 0 ? { [s.userTeam]: s.scoutPlan } : {};
       scouting = current.week < REGULAR_SEASON_WEEKS ? advanceScoutingWeek(current, league, draftClass, choices) : current;
     }
-    const dynasty = talks.trades.length > 0 ? { ...s.dynasty, league } : s.dynasty;
+    const dynasty = { ...s.dynasty, league };
     const allResults = [...s.results, ...played];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -492,7 +507,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -563,7 +578,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setTimeout(step, 50);
     },
     chooseTeam: (abbr) => {
-      if (state) persist({ ...state, userTeam: abbr }, true);
+      if (state) persist(openSeason({ ...state, userTeam: abbr }), true);
     },
     playWeek: () => {
       if (state && schedule && !seasonOver) persist(playOneWeek(state, schedule));
@@ -667,7 +682,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const league = state.dynasty.league;
       const team = league.teams[state.userTeam]!;
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
-      persist({ ...state, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
+      const lineups = logTeam(state.lineups ?? startLog(league), updated, state.weeksPlayed + 1);
+      persist({ ...state, lineups, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
     },
     tradeWindow,
     canTrade: tradeWindow !== null,
@@ -681,7 +697,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const verdict = judgeTrade(league, w, t, t.to, true);
       if (!verdict.accept) return { made: false, problems: [], verdict };
       const done = applyTrade(league, w, t, new Set([s.userTeam]));
-      persist({ ...s, dynasty: { ...s.dynasty, league: done.league }, trades: [...s.trades, done.record], ...(playoffs ? { playoffs } : {}) }, true);
+      const lineups = logTrades(s.lineups ?? startLog(league), league, done.league, [done.record], w.week === 0 ? DRAFT_WEEK : w.week);
+      persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, trades: [...s.trades, done.record], ...(playoffs ? { playoffs } : {}) }, true);
       return { made: true, problems: [], verdict };
     },
     frontOffice,
@@ -690,7 +707,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       updateCheckpoint((p) => ({ ...p, frontOffice: on }));
     },
     startNextSeason: () => {
-      if (state) persist({ ...state, report: null });
+      if (state) persist(openSeason({ ...state, report: null }), true);
     },
     deleteDynasty: () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);

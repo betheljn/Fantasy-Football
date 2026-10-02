@@ -1,5 +1,6 @@
 // Turns structured play events into play-by-play text. The sim never produces
 // text itself; this is one consumer of the event data (the renderer is another).
+import { injuryLabel, type Injury } from "../game/injuries.ts";
 import { displayName, type Player, type PlayerId } from "../model/player.ts";
 import type { KickoffEvent, Penalty, PlayEvent, PuntEvent, ScrimmagePlayEvent, Situation } from "../play/events.ts";
 import { penaltyLabel } from "../play/penalties.ts";
@@ -171,4 +172,20 @@ function returnText(e: PuntEvent | KickoffEvent, n: (id: PlayerId | null) => str
     t += `, FUMBLE by ${n(e.fumble.by)}, recovered by ${n(e.fumble.recoveredBy)} (${e.fumble.lost ? e.offense : e.defense})`;
   }
   return t;
+}
+
+/** "Injury: WR Jalen Moss (ankle, out 2 weeks)." for each player hurt on a play. */
+export function describeInjuries(injuries: readonly Injury[] | undefined, who: PlayerLookup): string {
+  return (injuries ?? [])
+    .map((i) => {
+      const p = who(i.player);
+      return `Injury: ${p.position} ${p.firstName} ${p.lastName} (${injuryLabel(i)}).`;
+    })
+    .join(" ");
+}
+
+/** A play as the feed shows it: what happened, then anyone hurt on it. */
+export function describeGamePlay(p: { event: PlayEvent; injuries?: readonly Injury[] }, who: PlayerLookup): string {
+  const hurt = describeInjuries(p.injuries, who);
+  return hurt ? `${describePlay(p.event, who)} ${hurt}` : describePlay(p.event, who);
 }

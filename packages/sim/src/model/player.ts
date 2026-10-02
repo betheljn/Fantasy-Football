@@ -1,3 +1,4 @@
+import type { PlayerInjury } from "../game/injuries.ts";
 import type { Position } from "./positions.ts";
 import { makeRatings, overall, type Ratings } from "./ratings.ts";
 import type { Contract } from "./contract.ts";
@@ -30,6 +31,8 @@ export interface Player {
   readonly devTraitRevealed: boolean;
   /** Current deal. Absent for players outside the cap system (tests, prospects). */
   readonly contract?: Contract;
+  /** Hurt and missing games (absent = healthy). */
+  readonly injury?: PlayerInjury;
 }
 
 export interface PlayerInit {

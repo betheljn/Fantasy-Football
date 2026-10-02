@@ -3,7 +3,7 @@
 // work from the league as it stood.)
 import { Stack } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { BASE_STARTERS, POSITIONS, buildDepthChart, playerOverall, type Position } from "@dynasty/sim";
+import { BASE_STARTERS, POSITIONS, buildDepthChart, outLabel, playerOverall, type Position } from "@dynasty/sim";
 import { Card, SectionTitle } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -57,6 +57,7 @@ export default function DepthChartScreen() {
                     <Text style={{ width: 22, color: t.muted, fontVariant: ["tabular-nums"] }}>{i + 1}</Text>
                     <Text style={{ flex: 1, color: t.text, fontWeight: starter ? "700" : "400" }} numberOfLines={1}>
                       {p.firstName} {p.lastName}
+                      {p.injury ? <Text style={{ color: t.score, fontSize: 12, fontWeight: "700" }}> {outLabel(p.injury)}</Text> : null}
                     </Text>
                     <Text style={{ width: 26, textAlign: "right", color: t.text, fontWeight: "700" }}>{playerOverall(p)}</Text>
                     {d.canEditDepthChart ? (

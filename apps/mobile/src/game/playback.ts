@@ -4,7 +4,7 @@
 import {
   attacksRight,
   choreograph,
-  describePlay,
+  describeGamePlay,
   formatClock,
   formatDownDistance,
   periodLabel,
@@ -86,7 +86,7 @@ export function prepareGame(game: GameResult, who: PlayerLookup): PreparedPlay[]
         track: toTrack(a.track),
       })),
       ball: { ...toTrack(anim.ball), z: anim.ball.map((k) => k.z ?? 0) },
-      caption: describePlay(e, who),
+      caption: describeGamePlay(p, who),
       clock: `${p.quarter <= 4 ? `Q${p.quarter}` : periodLabel(p.quarter)} ${formatClock(e.start.clock)}`,
       situation: e.kind === "kickoff" || e.kind === "conversion" ? "" : formatDownDistance(e.start, e.offense, e.defense),
       score: p.score,

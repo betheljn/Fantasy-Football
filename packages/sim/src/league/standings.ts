@@ -1,4 +1,5 @@
 // Standings and tiebreakers, computed purely from game results.
+import type { PlayerId } from "../model/player.ts";
 import { hashString } from "../rng.ts";
 import type { League } from "./league.ts";
 import type { GameKind } from "./schedule.ts";
@@ -17,6 +18,8 @@ export interface GameSummary {
   winner: string | null;
   /** Seed the game was simulated with: re-simulating with it replays the game exactly. */
   seed: string;
+  /** Players who sat out injured, by team (with the seed and the rosters, the game replays exactly). */
+  out?: Record<string, PlayerId[]>;
 }
 
 export interface WLT {

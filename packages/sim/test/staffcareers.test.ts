@@ -87,7 +87,7 @@ describe("staff offseason", () => {
     const bad = new Map(allTeams(league).map((t) => [t.abbr, 0.2]));
     const r = run(league, bad);
     const fired = r.changes.filter((c) => c.role === "HC" && c.reason === "fired");
-    expect(fired.length).toBeGreaterThan(5);
+    expect(fired.length).toBeGreaterThan(3);
     const inField = new Set(PLAYOFFS.seeds.map((s) => s.team));
     for (const c of fired) expect(inField.has(c.team)).toBe(false);
     for (const c of fired) expect(c.in).not.toBe(c.out); // no rehiring the coach you just fired

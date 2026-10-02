@@ -61,9 +61,11 @@ describe("season stats", () => {
       expect(p.games).toBeGreaterThan(0);
       expect(p.games).toBeLessThanOrEqual(STATS.teams.get(p.team)!.games);
     }
-    // Starting QBs play every game.
-    const qbs = [...STATS.players.values()].filter((p) => p.stats.passAtt > 50);
-    for (const q of qbs) expect(q.games).toBe(STATS.teams.get(q.team)!.games);
+    // Each team's starting QB (its leading passer) plays every game. A backup
+    // can see real snaps too, when the starter gets hurt mid-game.
+    const lead = new Map<string, { games: number; passAtt: number }>();
+    for (const p of STATS.players.values()) if ((lead.get(p.team)?.passAtt ?? 0) < p.stats.passAtt) lead.set(p.team, { games: p.games, passAtt: p.stats.passAtt });
+    for (const [team, q] of lead) expect(q.games).toBe(STATS.teams.get(team)!.games);
   });
 });
 

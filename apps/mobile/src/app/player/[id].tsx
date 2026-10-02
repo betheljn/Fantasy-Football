@@ -13,8 +13,7 @@ import {
   playerOverall,
   teamName,
   topPriorities,
-  type RatingGroup,
-} from "@dynasty/sim";
+  type RatingGroup, injuryLabel } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
@@ -51,6 +50,7 @@ export default function PlayerScreen() {
                 {p.position}
                 {p.archetype ? ` · ${p.archetype}` : ""} · age {p.age}
               </Text>
+              {p.injury ? <Text style={{ color: t.score, fontWeight: "700" }}>Injured: {injuryLabel(p.injury)}</Text> : null}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <Swatch abbr={team.abbr} />
                 <Text style={{ color: t.muted }}>{teamName(team)}</Text>

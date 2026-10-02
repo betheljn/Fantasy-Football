@@ -2,6 +2,7 @@
 // highest-ranked other teams get at-large bids. All 16 are seeded by the final
 // regular-season ranking. Fixed bracket (1v16, 8v9, ...), higher seed hosts,
 // championship at a neutral site.
+import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
 import { simulateGame, type GameResult } from "../game/game.ts";
 import type { League } from "./league.ts";
 import { computeRankings, type RankingEntry } from "./rankings.ts";
@@ -85,13 +86,19 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
   const seeds = selectPlayoffField(league, season.results, ranking);
   const bySeed = new Map(seeds.map((s) => [s.seed, s]));
   const games: PlayoffGame[] = [];
+  // Injuries carry from round to round.
+  let current = league;
+  let hurt: Injury[] = [];
 
   const play = (round: PlayoffRound, a: PlayoffSeed, b: PlayoffSeed): PlayoffSeed => {
     const [home, away] = a.seed < b.seed ? [a, b] : [b, a];
     const neutralSite = round === "championship";
     const id = `${season.season}-${round}-${away.team}@${home.team}`;
     const seed = `${league.seed}:${id}`;
-    const result = simulateGame(league.teams[home.team]!, league.teams[away.team]!, seed, { playoff: true, neutralSite });
+    const h = gameDayTeam(current.teams[home.team]!);
+    const v = gameDayTeam(current.teams[away.team]!);
+    const result = simulateGame(h.team, v.team, seed, { playoff: true, neutralSite });
+    hurt.push(...result.injuries);
     opts.onGame?.(result, round);
     if (!result.winner) throw new Error(`Playoff game ${id} ended in a tie`);
     games.push({
@@ -110,6 +117,7 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
         overtime: result.overtime,
         winner: result.winner,
         seed,
+        ...(h.out.length + v.out.length > 0 ? { out: { [home.team]: h.out, [away.team]: v.out } } : {}),
       },
     });
     return result.winner === home.team ? home : away;
@@ -119,6 +127,8 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
   let alive = BRACKET.map(([a, b]) => play("round_of_16", bySeed.get(a)!, bySeed.get(b)!));
   for (const round of ["quarterfinal", "semifinal", "championship"] as const) {
     const next: PlayoffSeed[] = [];
+    current = advanceInjuries(current, hurt);
+    hurt = [];
     for (let i = 0; i < alive.length; i += 2) next.push(play(round, alive[i]!, alive[i + 1]!));
     alive = next;
   }
