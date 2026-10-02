@@ -160,7 +160,7 @@ championship, and tougher AI GMs (contenders hold starters, humans pay more).
 3. In-season moves: injured reserve, and signing free agents to fill spots
    (you and the AI), within the cap and the 72-man roster
 
-### Milestone 10: picks (current, solo play)
+### Milestone 10: picks (done, solo play)
 Over/unders on the games you're not coaching, for points only (no money, never
 for sale). From the "beyond the league" plan; online leagues and the server
 come later.

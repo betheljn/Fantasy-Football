@@ -4,7 +4,7 @@
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SLATE_PAYOUT, SLATE_RULES, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
+import { SLATE_PAYOUT, SLATE_RULES, bookmaker, houseGreeting, houseOnResult, houseOnSlate, houseRecord, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -12,7 +12,8 @@ import { useTheme, type Theme } from "../theme";
 export default function PicksScreen() {
   const t = useTheme();
   const d = useDynasty();
-  const { weeksPlayed, schedule, userTeam } = useLeague();
+  const { weeksPlayed, schedule, userTeam, league } = useLeague();
+  const bm = bookmaker(league.seed);
   const [chosen, setChosen] = useState<SlatePick[]>([]);
   const [stake, setStake] = useState("50");
   const [message, setMessage] = useState<{ text: string; good: boolean } | null>(null);
@@ -39,7 +40,7 @@ export default function PicksScreen() {
     const p = d.placeSlate(chosen, amount);
     if (p.length > 0) setMessage({ text: p.join(" "), good: false });
     else {
-      setMessage({ text: `Slate placed: ${chosen.length} picks for ${amount} points. It pays ${slatePayout(chosen.length, amount)} if every pick hits.`, good: true });
+      setMessage({ text: `Slate placed: ${chosen.length} picks for ${amount} points. It pays ${slatePayout(chosen.length, amount).toLocaleString()} if every pick hits.`, good: true });
       setChosen([]);
     }
   };
@@ -50,6 +51,8 @@ export default function PicksScreen() {
     <>
       <Stack.Screen options={{ title: "Picks" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <HouseCard theme={t} />
+
         <Card>
           <View style={{ flexDirection: "row", alignItems: "baseline" }}>
             <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: "800" }}>{d.picks.balance.toLocaleString()} points</Text>
@@ -90,9 +93,14 @@ export default function PicksScreen() {
           <Card>
             <SectionTitle>Riding on week {week}</SectionTitle>
             {mine.map((s) => (
-              <Text key={s.id} style={{ color: t.text, paddingVertical: 2 }}>
-                {s.picks.length} picks for {s.stake} → {slatePayout(s.picks.length, s.stake).toLocaleString()} if all hit
-              </Text>
+              <View key={s.id} style={{ paddingVertical: 3 }}>
+                <Text style={{ color: t.text }}>
+                  {s.picks.length} picks for {s.stake} → {slatePayout(s.picks.length, s.stake).toLocaleString()} if all hit
+                </Text>
+                <Text style={{ color: t.muted, fontSize: 12, fontStyle: "italic" }}>
+                  {bm.nickname}: "{houseOnSlate(bm, s)}"
+                </Text>
+              </View>
             ))}
           </Card>
         ) : null}
@@ -114,7 +122,7 @@ export default function PicksScreen() {
           <Card>
             <SectionTitle>Results</SectionTitle>
             {recent.map((s) => (
-              <Result key={s.id} s={s} theme={t} />
+              <Result key={s.id} s={s} quip={houseOnResult(bm, s)} theme={t} />
             ))}
           </Card>
         ) : null}
@@ -167,12 +175,47 @@ function Side({ label, on, onPress, theme: t }: { label: string; on: boolean; on
   );
 }
 
-function Result({ s, theme: t }: { s: SettledSlate; theme: Theme }) {
+/** The bookmaker: who they are, this week's opener (or last week's verdict), and your record against the house. */
+function HouseCard({ theme: t }: { theme: Theme }) {
+  const d = useDynasty();
+  const { league, weeksPlayed, schedule } = useLeague();
+  const bm = bookmaker(league.seed);
+  const season = schedule.season;
+  const record = houseRecord(d.picks.history, season);
+  const all = houseRecord(d.picks.history);
+  const last = d.picks.history.at(-1);
+  const fresh = last && last.season === season && last.week === weeksPlayed;
+  const line = fresh ? houseOnResult(bm, last) : d.board ? houseGreeting(bm, league.seed, season, weeksPlayed + 1, d.board) : bm.bio;
+  const initials = bm.name.split(" ").map((w) => w[0]).join("");
+  return (
+    <Card>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.text, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ color: t.bg, fontWeight: "900" }}>{initials}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: t.text, fontWeight: "800" }}>
+            {bm.name} <Text style={{ color: t.muted, fontWeight: "400" }}>"{bm.nickname}"</Text>
+          </Text>
+          <Text style={{ color: t.muted, fontSize: 12 }}>The house</Text>
+        </View>
+      </View>
+      <Text style={{ color: t.text, marginTop: 8, fontStyle: "italic" }}>"{line}"</Text>
+      <Text style={{ color: t.muted, fontSize: 12, marginTop: 6 }}>
+        You vs the house this season: {record.won}-{record.lost}, {record.net >= 0 ? "+" : ""}
+        {record.net.toLocaleString()} pts{all.won + all.lost > record.won + record.lost ? ` · all time ${all.won}-${all.lost}, ${all.net >= 0 ? "+" : ""}${all.net.toLocaleString()}` : ""}
+      </Text>
+    </Card>
+  );
+}
+
+function Result({ s, quip, theme: t }: { s: SettledSlate; quip: string; theme: Theme }) {
   return (
     <View style={{ paddingVertical: 6 }}>
       <Text style={{ color: s.won ? t.accent : t.text, fontWeight: "700" }}>
         Week {s.week}: {s.won ? `won ${s.payout.toLocaleString()}` : `lost ${s.stake}`} ({s.picks.filter((p) => p.hit).length} of {s.picks.length} hit)
       </Text>
+      <Text style={{ color: t.muted, fontSize: 12, fontStyle: "italic" }}>"{quip}"</Text>
       {s.picks.map((p) => (
         <Text key={p.prop.id} style={{ color: t.muted, fontSize: 12 }}>
           {p.hit ? "✓" : "✗"} {p.side === "over" ? "Over" : "Under"} {p.prop.kind === "player" ? `${p.prop.name} ${p.prop.line}` : p.prop.kind === "total" ? `total ${p.prop.line}` : `home margin ${p.prop.line}`}: {p.value}

@@ -62,3 +62,4 @@ export * from "./game/injuries.ts";
 export * from "./contracts/inseason.ts";
 export * from "./picks/lines.ts";
 export * from "./picks/slates.ts";
+export * from "./picks/house.ts";
