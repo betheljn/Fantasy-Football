@@ -1,6 +1,6 @@
 // Your team's offseason, pulled from the sim's full offseason log: who left,
 // who arrived, the draft, staff changes - plus the league's headline news.
-import { playerOverall, type Award, type Dynasty, type OffseasonLog, type Player } from "@dynasty/sim";
+import { playerOverall, type Award, type Dynasty, type OffseasonLog, type Player, teamPlayers } from "@dynasty/sim";
 
 export interface ReportPlayer {
   id: string;
@@ -56,8 +56,9 @@ export function buildReport(
 ): OffseasonReport {
   const h = after.history.at(-1)!;
   const oldTeam = new Map<string, string>();
-  for (const t of Object.values(before.league.teams)) for (const p of t.roster) oldTeam.set(p.id, t.abbr);
-  const beforeRoster = new Map(before.league.teams[team]!.roster.map((p) => [p.id, p]));
+  // Players on injured reserve were still his (they rejoin in the offseason).
+  for (const t of Object.values(before.league.teams)) for (const p of teamPlayers(t)) oldTeam.set(p.id, t.abbr);
+  const beforeRoster = new Map(teamPlayers(before.league.teams[team]!).map((p) => [p.id, p]));
   const afterRoster = new Map(after.league.teams[team]!.roster.map((p) => [p.id, p]));
   const newTeam = new Map<string, string>();
   for (const t of Object.values(after.league.teams)) for (const p of t.roster) newTeam.set(p.id, t.abbr);

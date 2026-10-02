@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
 import { POSITIONS, BASE_STARTERS, type Position } from "../model/positions.ts";
 import { capHit, deadMoney } from "../model/contract.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
@@ -166,7 +167,9 @@ export function quietOffseason(league: League): League {
   const developed = developLeague(retired.league);
   const draft = runDraft(developed, draftClass, scouting, order);
   const moves = makeRosterMoves(draft.league, { undrafted: draft.undrafted, scouting, order });
-  return { ...moves.league, season: league.season + 1 };
+  const rostered = new Set(allTeams(moves.league).flatMap((t) => t.roster.map((p) => p.id)));
+  const freeAgents = freeAgentPool([...moves.cuts.map((c) => c.player), ...moves.unsigned.map((p) => p.player)], rostered);
+  return { ...moves.league, season: league.season + 1, freeAgents };
 }
 
 /** Bring in-season scouting to draft day: any weeks not scouted get the AI's choices, then the combine. */
@@ -245,7 +248,7 @@ export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } 
       for (const p of t.players) traded.add(p.id);
     }
     const played = playWeek(league, schedule, week, (g) => addGameToSeason(stats, g));
-    league = played.league;
+    league = aiInSeasonMoves(played.league, schedule.season, week).league;
     for (const g of played.games) results.push(g.summary);
   }
   const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
@@ -320,8 +323,8 @@ export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, d
 }
 
 export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoices: StaffChoices = {}): OffseasonState {
-  // Everyone hurt heals over the offseason.
-  const league = healAll(dynasty.league);
+  // Injured reserve rejoins the roster, everyone hurt heals, and last season's free agents leave.
+  const league = healAll(endSeasonMoves(dynasty.league));
   const { season, stats, playoffs } = played;
 
   // The class entering next season was scouted while this season was played.
@@ -462,13 +465,17 @@ export function completeOffseason(
   const contractMoves = [...opened.moves, ...freeAgency.moves, ...settled.moves];
   // Cap cuts leave holes; refill them from the undrafted players left (at the minimum).
   let leftovers = moves.unsigned;
-  for (let pass = 0; pass < 3 && settled.moves.some((m) => m.kind === "cap cut"); pass++) {
+  for (let pass = 0; pass < 8 && settled.moves.some((m) => m.kind === "cap cut"); pass++) {
     const refill = makeRosterMoves(settled.league, { undrafted: leftovers, scouting, order });
     leftovers = refill.unsigned;
     settled = settleCap(refill.league, refill.cuts, next);
     contractMoves.push(...settled.moves);
   }
-  const nextLeague: League = { ...settled.league, season: next };
+  // Who's left unsigned stays available through the season.
+  const capCuts = contractMoves.filter((m) => m.kind === "cap cut").map((m) => m.player);
+  const rostered = new Set(allTeams(settled.league).flatMap((t) => t.roster.map((p) => p.id)));
+  const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
+  const nextLeague: League = { ...settled.league, season: next, freeAgents };
 
   const record: SeasonRecord = {
     season: league.season,

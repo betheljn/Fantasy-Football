@@ -150,7 +150,7 @@ Follow-ups also done: draft-pick trades (next two drafts), uneven trades
 (releases with dead money to fit 72), a draft-week trade window after the
 championship, and tougher AI GMs (contenders hold starters, humans pay more).
 
-### Milestone 9: injuries and in-season moves (current)
+### Milestone 9: injuries and in-season moves (done)
 1. Injuries in games: players in a play can get hurt (age and stamina matter);
    out for the game, a few weeks or the season; the injured sit on game day,
    heal week by week, and are healthy by the offseason; injuries in the event

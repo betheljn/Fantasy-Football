@@ -59,7 +59,14 @@ import {
   type TradeProposal,
   type TradeVerdict,
   aiTradeWeek,
+  aiInSeasonMoves,
+  ensureFreeAgents,
   injuryNews,
+  irProblems,
+  placeOnIR,
+  signFreeAgent,
+  signingProblems,
+  teamPlayers,
   playWeek,
   applyTrade,
   checkTrade,
@@ -153,6 +160,10 @@ export interface DynastyControls {
   /** Reorder your depth chart at a position (regular season only). */
   canEditDepthChart: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
+  /** In-season moves (regular season only): injured reserve and free-agent signings. */
+  canMakeMoves: boolean;
+  placeOnIR: (player: string) => string[];
+  signFreeAgent: (player: string) => string[];
   /** Trades: open from the preseason to the deadline, and in draft week (after the championship); null when closed. */
   tradeWindow: TradeWindow | null;
   canTrade: boolean;
@@ -274,7 +285,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     loadSlot(n)
       .then(({ state: loaded, progress: p }) => {
         setSlot(loaded ? n : null);
-        setState(loaded);
+        // Saves from before in-season free agents get a pool to sign from.
+        setState(loaded && !loaded.dynasty.league.freeAgents ? { ...loaded, dynasty: { ...loaded.dynasty, league: ensureFreeAgents(loaded.dynasty.league) } } : loaded);
         checkpointRef.current = p;
         setRestoring(p);
         if (loaded) queue(() => touchSlot(n, loaded, p).then(setSlotIndex));
@@ -325,7 +337,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const contractPlan = useMemo(() => (offseason && state?.userTeam ? offseasonContractPlan(offseason, state.userTeam) : null), [offseason, state?.userTeam]);
   const playerById = useMemo(() => {
     const m = new Map<string, { player: Player; team: Team }>();
-    if (league) for (const team of allTeams(league)) for (const player of team.roster) m.set(player.id, { player, team });
+    if (league) for (const team of allTeams(league)) for (const player of teamPlayers(team)) m.set(player.id, { player, team });
     return m;
   }, [league]);
 
@@ -388,6 +400,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restoring, state, busy, playoffs]);
 
+  const canMakeMoves = !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
+
   // Trading: preseason through the deadline, and draft week (season over, playoffs done, offseason not begun).
   const tradeWindow = useMemo((): TradeWindow | null => {
     if (!state?.userTeam || !league || offseason || staffStep || state.report || busy) return null;
@@ -434,7 +448,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // The week's games (injured players sit), then injuries move on a week.
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
     const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
-    let league = week_.league;
+    // The AI teams' moves: long injuries to IR, free agents signed (you make your own).
+    const ai = aiInSeasonMoves(week_.league, sched.season, week, new Set([s.userTeam]));
+    for (const abbr of new Set(ai.moves.map((m) => m.team))) lineups = logTeam(lineups, ai.league.teams[abbr]!, week + 1);
+    let league = ai.league;
     const played: GameSummary[] = week_.games.map((g) => g.summary);
     // Trade talks around the league for next week (you're left out: you make your own).
     const traded = new Set(s.trades.flatMap((t) => t.players.map((p) => p.id)));
@@ -452,7 +469,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const allResults = [...s.results, ...played];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -509,7 +526,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [] }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [] }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -686,6 +703,29 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
       const lineups = logTeam(state.lineups ?? startLog(league), updated, state.weeksPlayed + 1);
       persist({ ...state, lineups, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
+    },
+    canMakeMoves,
+    placeOnIR: (id) => {
+      const s = stateRef.current;
+      if (!s || !canMakeMoves) return ["Moves can be made during the regular season."];
+      const league = s.dynasty.league;
+      const problems = irProblems(league.teams[s.userTeam]!, id);
+      if (problems.length > 0) return problems;
+      const done = placeOnIR(league, s.userTeam, id, s.weeksPlayed, true);
+      const lineups = logTeam(s.lineups ?? startLog(league), done.league.teams[s.userTeam]!, s.weeksPlayed + 1);
+      persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, moves: [...(s.moves ?? []), done.move] }, true);
+      return [];
+    },
+    signFreeAgent: (id) => {
+      const s = stateRef.current;
+      if (!s || !canMakeMoves) return ["Moves can be made during the regular season."];
+      const league = s.dynasty.league;
+      const problems = signingProblems(league, league.season, s.userTeam, id);
+      if (problems.length > 0) return problems;
+      const done = signFreeAgent(league, league.season, s.userTeam, id, s.weeksPlayed, true);
+      const lineups = logTeam(s.lineups ?? startLog(league), done.league.teams[s.userTeam]!, s.weeksPlayed + 1);
+      persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, moves: [...(s.moves ?? []), done.move] }, true);
+      return [];
     },
     tradeWindow,
     canTrade: tradeWindow !== null,

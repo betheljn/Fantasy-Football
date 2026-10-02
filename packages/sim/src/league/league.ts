@@ -1,3 +1,4 @@
+import type { Player } from "../model/player.ts";
 import { assignStaffContracts } from "../contracts/staffcontracts.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
 // The league: 50 teams, one per state, in two conferences of five
@@ -31,6 +32,8 @@ export interface League {
   teams: Record<string, Team>;
   /** Draft picks that changed hands: pick id ("draft:round:original team") -> owner. */
   pickOwners?: Readonly<Record<string, string>>;
+  /** Free agents available during the season (nobody signed them in the offseason). */
+  freeAgents?: Player[];
 }
 
 /** Fixed geography: which states play in which division. */

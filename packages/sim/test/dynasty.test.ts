@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiInSeasonMoves,
   aiTradeWeek,
   playWeek,
   draftWeekTrades,
@@ -129,7 +130,7 @@ describe("playing a season week by week", () => {
       league = talks.league;
       for (const t of talks.trades) for (const p of t.players) traded.add(p.id);
       const played = playWeek(league, schedule, week, (g) => addGameToSeason(stats, g));
-      league = played.league;
+      league = aiInSeasonMoves(played.league, schedule.season, week).league;
       for (const g of played.games) results.push(g.summary);
     }
     const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };

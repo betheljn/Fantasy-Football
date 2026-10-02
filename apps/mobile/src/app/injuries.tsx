@@ -3,7 +3,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { allTeams, backLabel, injuryLabel, injuryReport, playerOverall, teamName, type InjuryNews, type InjuryReportEntry } from "@dynasty/sim";
+import { IR_MIN_WEEKS, ROSTER_MAX, allTeams, backLabel, formatMoney, injuryLabel, injuryReport, playerOverall, teamName, type InjuryNews, type InjuryReportEntry } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -20,6 +20,10 @@ export default function InjuriesScreen() {
   // Newest week first; within a week, the longest absences first.
   const news = [...(d.save?.injuryNews ?? [])].sort((a, b) => b.week - a.week || b.weeks - a.weeks || b.overall - a.overall);
   const seasonOver = weeksPlayed >= schedule.weeks;
+  const reserve = league.teams[userTeam]!.reserve ?? [];
+  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const moves = [...(d.save?.moves ?? [])].reverse();
 
   return (
     <>
@@ -41,9 +45,59 @@ export default function InjuriesScreen() {
         {seasonOver ? <Text style={{ color: t.muted }}>As the regular season ended. Everyone is healthy again by the offseason.</Text> : null}
 
         {view === "mine" ? (
+          <>
+            <Card>
+              <SectionTitle>{teamName(league.teams[userTeam]!)}</SectionTitle>
+              {mine.length === 0 ? <Text style={{ color: t.muted }}>Nobody hurt. Enjoy it.</Text> : null}
+              {mine.map((e) => (
+                <View key={e.player.id}>
+                  <ReportRow e={e} theme={t} />
+                  {d.canMakeMoves && e.injury.weeks >= IR_MIN_WEEKS ? (
+                    <Pressable onPress={() => setMessage(d.placeOnIR(e.player.id).join(" ") || `${e.player.firstName} ${e.player.lastName} is on injured reserve for the season.`)} accessibilityRole="button" style={{ alignSelf: "flex-start", marginLeft: 36, marginBottom: 6 }}>
+                      <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Place on injured reserve (out for the season, frees a roster spot)</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+              {message ? <Text style={{ color: t.text, fontWeight: "700", marginTop: 6 }}>{message}</Text> : null}
+              <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>
+                Roster {league.teams[userTeam]!.roster.length} of {ROSTER_MAX}. Players out {IR_MIN_WEEKS}+ weeks can go on injured reserve to free a spot for a free agent.
+              </Text>
+              {d.canMakeMoves ? (
+                <Pressable onPress={() => router.push("/freeagents")} accessibilityRole="button" style={{ marginTop: 8 }}>
+                  <Text style={{ color: t.accent, fontWeight: "700" }}>Free agents ›</Text>
+                </Pressable>
+              ) : null}
+            </Card>
+            {reserve.length > 0 ? (
+              <Card>
+                <SectionTitle>Injured reserve</SectionTitle>
+                {reserve.map((p) => (
+                  <View key={p.id} style={{ flexDirection: "row", gap: 8, paddingVertical: 3 }}>
+                    <Text style={{ width: 28, color: t.muted }}>{p.position}</Text>
+                    <Text style={{ flex: 1, color: t.text }}>
+                      {p.firstName} {p.lastName} <Text style={{ color: t.muted, fontSize: 12 }}>{p.injury?.type}</Text>
+                    </Text>
+                    <Text style={{ color: t.muted, fontSize: 12 }}>Back next season</Text>
+                  </View>
+                ))}
+              </Card>
+            ) : null}
+          </>
+        ) : null}
+
+        {view === "news" && moves.length > 0 ? (
           <Card>
-            <SectionTitle>{teamName(league.teams[userTeam]!)}</SectionTitle>
-            {mine.length === 0 ? <Text style={{ color: t.muted }}>Nobody hurt. Enjoy it.</Text> : mine.map((e) => <ReportRow key={e.player.id} e={e} theme={t} />)}
+            <SectionTitle>Signings and injured reserve</SectionTitle>
+            {moves.slice(0, 30).map((m, i) => (
+              <View key={`${m.player}-${i}`} style={{ flexDirection: "row", gap: 8, paddingVertical: 4 }}>
+                <Text style={{ width: 40, color: t.muted, fontSize: 12 }}>Wk {m.week}</Text>
+                <Swatch abbr={m.team} />
+                <Text style={{ flex: 1, color: m.team === userTeam ? t.text : t.muted, fontSize: 13, fontWeight: m.team === userTeam ? "700" : "400" }}>
+                  {m.team} {m.kind === "signed" ? `signs ${m.position} ${m.name} (${m.overall}) for ${formatMoney(m.salary ?? 0)}` : `puts ${m.position} ${m.name} (${m.overall}) on injured reserve`}
+                </Text>
+              </View>
+            ))}
           </Card>
         ) : null}
 

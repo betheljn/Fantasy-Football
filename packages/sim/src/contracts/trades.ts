@@ -432,7 +432,7 @@ export function judgeTrade(league: League, w: TradeWindow, t: TradeProposal, abb
 function tradedTeam(team: Team, out: readonly Player[], inc: readonly Player[], keepOrder = false): Team {
   const gone = new Set(out.map((p) => p.id));
   const roster = team.roster.filter((p) => !gone.has(p.id));
-  const used = new Set(roster.map((p) => p.jersey));
+  const used = new Set([...roster, ...(team.reserve ?? [])].map((p) => p.jersey));
   for (const p of inc) {
     const jersey = used.has(p.jersey) ? pickJersey(new Rng(`jersey:${team.abbr}:${p.id}`), p.position, used) : p.jersey;
     used.add(jersey);
@@ -464,7 +464,7 @@ function releasePlayers(team: Team, released: readonly Player[], league: League,
 }
 
 /** Keep a hand-set depth chart: departures removed, arrivals slotted in by overall. */
-function mergeDepthChart(chart: DepthChart, roster: readonly Player[]): DepthChart {
+export function mergeDepthChart(chart: DepthChart, roster: readonly Player[]): DepthChart {
   const byId = new Map(roster.map((p) => [p.id, p]));
   const auto = buildDepthChart(roster);
   const out = {} as DepthChart;

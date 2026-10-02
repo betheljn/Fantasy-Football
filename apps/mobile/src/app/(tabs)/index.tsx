@@ -254,8 +254,9 @@ function InjuriesCard({ data }: { data: LeagueData }) {
           ))}
         </View>
       ) : null}
-      <View style={{ flexDirection: "row", marginTop: 10 }}>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
         <Button label="Injury report" onPress={() => router.push("/injuries")} theme={t} small />
+        {d.canMakeMoves ? <Button label="Free agents" onPress={() => router.push("/freeagents")} theme={t} small /> : null}
       </View>
     </Card>
   );

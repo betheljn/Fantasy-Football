@@ -94,7 +94,9 @@ export function marketIndex(teams: readonly Team[], cap: number, season: number)
 
 /** Total cap hits on the roster for `season`, plus the dead money and earned incentives charged to it. */
 export function payroll(team: Team, season: number): number {
-  const players = team.roster.reduce((s, p) => s + (p.contract ? capHit(p.contract, season) : 0), 0);
+  let players = team.roster.reduce((s, p) => s + (p.contract ? capHit(p.contract, season) : 0), 0);
+  // Injured reserve still counts.
+  for (const p of team.reserve ?? []) players += p.contract ? capHit(p.contract, season) : 0;
   return players + (team.cap?.deadMoney ?? 0) + (team.cap?.incentives ?? 0) + (team.cap?.floorPayment ?? 0);
 }
 

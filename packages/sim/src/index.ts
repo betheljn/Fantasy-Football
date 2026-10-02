@@ -59,3 +59,4 @@ export * from "./contracts/staffcontracts.ts";
 export * from "./save/compact.ts";
 export * from "./contracts/trades.ts";
 export * from "./game/injuries.ts";
+export * from "./contracts/inseason.ts";

@@ -18,6 +18,8 @@ export interface Team {
   depthChart: DepthChart;
   /** Coaches and front office. Optional: without staff, the team plays with neutral, average-staff behavior. */
   staff?: TeamStaff;
+  /** Injured reserve: out for the season, off the 72-man roster, still under contract. */
+  reserve?: Player[];
   /** Cap bookkeeping for the current season (absent = nothing carried over). */
   cap?: TeamCap;
   /** Staff buyouts still being paid: each remaining season of a fired staff member's deal, $K. */

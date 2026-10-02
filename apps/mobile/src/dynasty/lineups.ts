@@ -3,7 +3,7 @@
 // (trades, releases), your depth chart, and who sat out hurt (saved with each
 // game). So the save keeps each team's roster at the start of the season and
 // again whenever it changes, plus anyone released mid-season.
-import { buildDepthChart, withOut, type DepthChart, type GameSummary, type League, type Player, type PlayerId, type Team, type TradeRecord } from "@dynasty/sim";
+import { buildDepthChart, teamPlayers, withOut, type DepthChart, type GameSummary, type League, type Player, type PlayerId, type Team, type TradeRecord } from "@dynasty/sim";
 
 /** A team's roster (and depth chart, if it isn't simply by rating) from `week`'s games on. */
 export interface LineupEntry {
@@ -58,7 +58,7 @@ export function logTeam(log: LineupLog, team: Team, week: number): LineupLog {
 export function replayTeams(log: LineupLog | undefined, league: League, game: GameSummary): { home: Team; away: Team } | null {
   if (!log) return null;
   const byId = new Map<PlayerId, Player>();
-  for (const t of Object.values(league.teams)) for (const p of t.roster) byId.set(p.id, p);
+  for (const t of Object.values(league.teams)) for (const p of teamPlayers(t)) byId.set(p.id, p);
   for (const p of log.departed) if (!byId.has(p.id)) byId.set(p.id, p);
   const build = (abbr: string): Team | null => {
     const entry = [...log.entries].reverse().find((e) => e.team === abbr && e.week <= game.week);
