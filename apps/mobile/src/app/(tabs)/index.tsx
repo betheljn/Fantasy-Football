@@ -224,17 +224,20 @@ function TradesCard({ data }: { data: LeagueData }) {
   const router = useRouter();
   const trades = d.save?.trades ?? [];
   const weeksLeft = TRADE_DEADLINE_WEEK - data.weeksPlayed;
+  const w = d.tradeWindow;
   return (
     <Card>
-      <SectionTitle>Trades</SectionTitle>
+      <SectionTitle>{w?.week === 0 ? "Draft-week trades" : "Trades"}</SectionTitle>
       <Text style={{ color: t.muted }}>
-        {d.canTrade
-          ? weeksLeft === 1
-            ? `Deadline: this is the last week to trade (after week ${TRADE_DEADLINE_WEEK}'s games, trading closes).`
-            : `Deadline: after week ${TRADE_DEADLINE_WEEK} (${weeksLeft} weeks left).`
-          : "The trade deadline has passed. Trading opens again next season."}
+        {w?.week === 0
+          ? `Trade players and picks before the offseason, with the draft order set. The other teams make their moves when you start the offseason.`
+          : w
+            ? weeksLeft === 1
+              ? `Deadline: this is the last week to trade (after week ${TRADE_DEADLINE_WEEK}'s games, trading closes).`
+              : `Deadline: after week ${TRADE_DEADLINE_WEEK} (${weeksLeft} weeks left).`
+            : "The trade deadline has passed. Trading reopens in draft week, after the championship."}
       </Text>
-      {d.canTrade ? (
+      {w ? (
         <View style={{ flexDirection: "row", marginTop: 10 }}>
           <Button label="Make a trade" onPress={() => router.push("/trade")} theme={t} />
         </View>
@@ -244,7 +247,7 @@ function TradesCard({ data }: { data: LeagueData }) {
           <Text style={{ color: t.text, fontWeight: "700" }}>Around the league</Text>
           {[...trades].reverse().slice(0, 5).map((tr, i) => (
             <Text key={i} style={{ color: tr.teams.includes(data.userTeam) ? t.text : t.muted, fontSize: 13 }}>
-              Wk {tr.week} · {tradeLine(tr)}
+              {tr.week === 0 ? "Draft week" : `Wk ${tr.week}`} · {tradeLine(tr)}
             </Text>
           ))}
           {trades.length > 5 ? <Text style={{ color: t.muted, fontSize: 12 }}>{trades.length} trades this season.</Text> : null}
@@ -254,14 +257,17 @@ function TradesCard({ data }: { data: LeagueData }) {
   );
 }
 
-/** "MI gets WR J. Smith (72); OH gets CB K. Lee (68)". */
+/** "MI gets WR J. Smith (72), 2037 Rd 3; OH gets CB K. Lee (68)" (plus who was released). */
 function tradeLine(tr: TradeRecord): string {
-  const side = (gets: string, from: string) =>
-    `${gets} gets ${tr.players
-      .filter((p) => p.from === from)
-      .map((p) => `${p.position} ${p.name} (${p.overall})`)
-      .join(", ")}`;
-  return `${side(tr.teams[0], tr.teams[1])}; ${side(tr.teams[1], tr.teams[0])}`;
+  const side = (gets: string, from: string) => {
+    const items = [
+      ...tr.players.filter((p) => p.from === from).map((p) => `${p.position} ${p.name} (${p.overall})`),
+      ...(tr.picks ?? []).filter((p) => p.from === from).map((p) => `${p.draft} Rd ${p.round}${p.original !== from ? ` (${p.original})` : ""}`),
+    ];
+    return `${gets} gets ${items.join(", ")}`;
+  };
+  const released = (tr.released ?? []).map((r) => `${r.team} releases ${r.position} ${r.name}`);
+  return [`${side(tr.teams[0], tr.teams[1])}; ${side(tr.teams[1], tr.teams[0])}`, ...released].join("; ");
 }
 
 function ScoutingCard({ data }: { data: LeagueData }) {

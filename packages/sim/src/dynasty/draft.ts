@@ -28,6 +28,8 @@ export interface DraftPick {
   /** Overall pick number (1-350). */
   overall: number;
   team: string;
+  /** The team the pick originally belonged to, when it was traded. */
+  via?: string;
   player: Player;
   /** Where the consensus board had him, and where this team's own board did. */
   publicRank: number;
@@ -130,8 +132,10 @@ export function* draftSteps(
   };
 
   for (let round = 1; round <= DRAFT_ROUNDS; round++) {
-    for (const [i, team] of order.entries()) {
+    for (const [i, original] of order.entries()) {
       if (available.size === 0) break;
+      // A traded pick is made by its new owner.
+      const team = league.pickOwners?.[`${draftClass.season}:${round}:${original}`] ?? original;
       const roster = rosters.get(team)!;
       let chosen: BoardEntry;
       if (humans.has(team)) {
@@ -187,6 +191,7 @@ export function* draftSteps(
         pick: i + 1,
         overall: picks.length + 1,
         team,
+        ...(team !== original ? { via: original } : {}),
         player,
         publicRank: p.boardRank,
         teamRank: chosen.rank,
@@ -203,7 +208,8 @@ export function* draftSteps(
     season: draftClass.season,
     order,
     picks,
-    league: { ...league, teams },
+    // Picks in this draft are used up.
+    league: { ...league, teams, pickOwners: Object.fromEntries(Object.entries(league.pickOwners ?? {}).filter(([id]) => Number(id.split(":")[0]) > draftClass.season)) },
     undrafted: [...available].map((id) => byId.get(id)!),
   };
 }

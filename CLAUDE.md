@@ -136,7 +136,7 @@ decision goes through the sim's rules (cap, player mood, scouting knowledge).
 4. Roster: cuts to 72 and the depth chart
 5. Staff: fire and hire coaches and executives within the staff budget
 
-### Milestone 8: phone-ready, then trades (current)
+### Milestone 8: phone-ready, then trades (done)
 From the "beyond the league" plan: make the game solid on a real phone first,
 then add trades. (Injuries, then picks, come after.)
 1. Phone performance: measure the sim at phone speed and make every heavy step
@@ -145,6 +145,10 @@ then add trades. (Injuries, then picks, come after.)
    closing the app, a compact save format, more than one save slot
 3. Trades: AI player valuation (rating, age, contract, cap fit), a trade screen
    with cap checks, AI-to-AI trades, a trade deadline
+
+Follow-ups also done: draft-pick trades (next two drafts), uneven trades
+(releases with dead money to fit 72), a draft-week trade window after the
+championship, and tougher AI GMs (contenders hold starters, humans pay more).
 
 After each step: run it, show sample output, and stop for review.
 

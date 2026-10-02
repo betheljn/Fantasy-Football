@@ -29,6 +29,8 @@ export interface League {
   conferences: Conference[];
   /** Team abbr -> team. */
   teams: Record<string, Team>;
+  /** Draft picks that changed hands: pick id ("draft:round:original team") -> owner. */
+  pickOwners?: Readonly<Record<string, string>>;
 }
 
 /** Fixed geography: which states play in which division. */

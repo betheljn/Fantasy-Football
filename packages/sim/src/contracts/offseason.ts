@@ -60,12 +60,20 @@ function withRoster(team: Team, roster: Player[], cap?: TeamCap): Team {
   return { ...team, roster, depthChart: buildDepthChart(roster), ...(cap ? { cap } : {}) };
 }
 
-/** Each team's draft picks (overall numbers) from the draft order. */
-function picksFor(order: string[]): Map<string, number[]> {
+/** Each team's draft picks (overall numbers) from the draft order, going to whoever owns each pick now. */
+function picksFor(order: string[], league: League, draft: number): Map<string, number[]> {
   const picks = new Map<string, number[]>();
   for (let round = 0; round * order.length < DRAFT_PICKS; round++)
-    order.forEach((t, i) => picks.set(t, [...(picks.get(t) ?? []), round * order.length + i + 1]));
+    order.forEach((t, i) => {
+      const owner = league.pickOwners?.[`${draft}:${round + 1}:${t}`] ?? t;
+      picks.set(owner, [...(picks.get(owner) ?? []), round * order.length + i + 1]);
+    });
   return picks;
+}
+
+/** Dead money from mid-season releases that comes due in `season`. */
+function pendingDead(team: Team, season: number): number {
+  return (team.cap?.pendingDeadMoney ?? []).filter((d) => d.season === season).reduce((s, d) => s + d.amount, 0);
 }
 
 /**
@@ -152,7 +160,7 @@ function openYearContext(played: League, league: League, triggers: IncentiveTrig
     capNow: salaryCap(league.seed, season),
     capNext,
     index: marketIndex(allTeams(league), capNext, next),
-    picks: picksFor(order),
+    picks: picksFor(order, league, next),
     firstRound: order.length,
     triggers,
   };
@@ -172,7 +180,7 @@ function teamBudget(ctx: OpenYearContext, before: Team, team: Team) {
   // Budget for re-signing: the cap, minus what's committed, the rookie class and a cushion.
   const rookieBill = (ctx.picks.get(team.abbr) ?? []).reduce((s, pk) => s + rookieScale(pk, ctx.capNext), 0);
   const budget = ctx.capNext + rollover - incentives - rookieBill - PLANNING_BUFFER * ctx.capNext;
-  const committed = team.roster.filter((p) => continuing(p, ctx.next)).reduce((s, p) => s + capHit(p.contract!, ctx.next), 0);
+  const committed = team.roster.filter((p) => continuing(p, ctx.next)).reduce((s, p) => s + capHit(p.contract!, ctx.next), 0) + pendingDead(team, ctx.next);
   return { rollover, incentives, rookieBill, budget, committed };
 }
 
@@ -291,7 +299,8 @@ export function openContractYear(played: League, league: League, triggers: Incen
       roster = roster.map((q) => (q.id === p.id ? { ...q, contract: deal } : q));
       moves.push({ kind: "extended", team: abbr, player: p, contract: deal });
     }
-    teams[abbr] = withRoster(team, roster, { rollover, deadMoney: accelerated, incentives });
+    const later = (team.cap?.pendingDeadMoney ?? []).filter((d) => d.season > next);
+    teams[abbr] = withRoster(team, roster, { rollover, deadMoney: accelerated + pendingDead(team, next), incentives, ...(later.length > 0 ? { pendingDeadMoney: later } : {}) });
   }
   return { league: { ...league, teams }, freeAgents, moves, marketIndex: index };
 }

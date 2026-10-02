@@ -33,6 +33,8 @@ export interface TeamCap {
   readonly incentives?: number;
   /** Shortfall below the cap floor, paid out to the roster and charged to the cap, $K. */
   readonly floorPayment?: number;
+  /** Dead money already owed in later seasons (from players released mid-season), $K. */
+  readonly pendingDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number }>;
 }
 
 export function teamName(team: Team): string {

@@ -9,7 +9,7 @@ import { generateLeague, allTeams, teamRatings, type League } from "../league/le
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
 import { playGame, type SeasonResult } from "../league/season.ts";
-import { aiTradeWeek, type TradeRecord } from "../contracts/trades.ts";
+import { aiTradeWeek, draftWeekWindow, seasonWindow, type TradeRecord } from "../contracts/trades.ts";
 import { simulatePlayoffs, type PlayoffResult } from "../league/playoffs.ts";
 import { divisionStandings, type DivisionStandings, type TeamRecord } from "../league/standings.ts";
 import { PLAYER_STAT_KEYS, type PlayerStatKey } from "../stats/boxscore.ts";
@@ -194,7 +194,17 @@ const fullName = (p: Player) => `${p.firstName} ${p.lastName}`;
 /** Play one season and its offseason. Returns the dynasty ready for the next season. */
 export function advanceSeason(dynasty: Dynasty): Dynasty {
   const played = playSeason(dynasty);
-  return finishSeason({ ...dynasty, league: played.league }, played).dynasty;
+  const traded = new Set((played.trades ?? []).flatMap((t) => t.players.map((p) => p.id)));
+  const draftWeek = draftWeekTrades(played.league, played.playoffs, new Set(), traded);
+  return finishSeason({ ...dynasty, league: draftWeek.league }, { ...played, trades: [...(played.trades ?? []), ...draftWeek.trades] }).dynasty;
+}
+
+/**
+ * Draft week: once the playoffs are over, AI teams (all but `humans`) make a
+ * round of trades, with the draft order known. Run it before the offseason.
+ */
+export function draftWeekTrades(league: League, playoffs: PlayoffResult, humans: ReadonlySet<string> = new Set(), traded: ReadonlySet<PlayerId> = new Set()): { league: League; trades: TradeRecord[] } {
+  return aiTradeWeek(league, draftWeekWindow(league, draftOrder(playoffs)), humans, traded);
 }
 
 /** This season's schedule (division slots come from last season's finish). */
@@ -227,7 +237,7 @@ export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } 
   const traded = new Set<PlayerId>();
   const results = [];
   for (let week = 1; week <= schedule.weeks; week++) {
-    const talks = aiTradeWeek(league, schedule.season, week, new Set(), traded);
+    const talks = aiTradeWeek(league, seasonWindow(league, week - 1), new Set(), traded);
     league = talks.league;
     for (const t of talks.trades) {
       trades.push(t);
