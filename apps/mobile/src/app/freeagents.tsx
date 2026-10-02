@@ -88,14 +88,14 @@ export default function FreeAgentsScreen() {
             return (
               <View key={p.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
                 <Text style={{ width: 28, color: t.muted }}>{p.position}</Text>
-                <View style={{ flex: 1 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => router.push(`/player/${p.id}`)} accessibilityRole="link">
                   <Text style={{ color: t.text, fontWeight: "600" }} numberOfLines={1}>
                     {p.firstName} {p.lastName}
                   </Text>
                   <Text style={{ color: t.muted, fontSize: 12 }}>
                     age {p.age} · {p.archetype} · {formatMoney(cost)} for the season
                   </Text>
-                </View>
+                </Pressable>
                 <Text style={{ width: 26, textAlign: "right", color: t.text, fontWeight: "800" }}>{ovr}</Text>
                 <Pressable onPress={() => sign(p.id, `${p.firstName} ${p.lastName}`)} disabled={blocked} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 32, borderRadius: 8, justifyContent: "center", backgroundColor: t.accent, opacity: blocked ? 0.35 : 1 }}>
                   <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 13 }}>Sign</Text>

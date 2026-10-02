@@ -1,6 +1,7 @@
 // A player card: identity, persona, contract, season stats, and every rating by group.
 import { Stack, useLocalSearchParams } from "expo-router";
-import { ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   DEV_TRAIT_NAMES,
   PRIORITY_NAMES,
@@ -13,9 +14,14 @@ import {
   playerOverall,
   teamName,
   topPriorities,
-  type RatingGroup, injuryLabel } from "@dynasty/sim";
+  type RatingGroup,
+  capHit,
+  formatMoney,
+  inSeasonContract,
+  injuryLabel,
+} from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../../components/ui";
-import { useLeague } from "../../league/LeagueProvider";
+import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
 
 const GROUPS: RatingGroup[] = ["Physical", "Mental", "Passing", "Ball Carrier", "Receiving", "Blocking", "Defense", "Special Teams"];
@@ -24,10 +30,15 @@ const STATE_NAME = new Map(STATES.map(([name, abbr]) => [abbr, name]));
 export default function PlayerScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { playerById, stats } = useLeague();
-  const found = playerById.get(id ?? "");
-  if (!found) return <Text style={{ padding: 16, color: t.text }}>Unknown player.</Text>;
-  const { player: p, team } = found;
+  const d = useDynasty();
+  const { playerById, stats, league } = useLeague();
+  const [signed, setSigned] = useState<string | null>(null);
+  // On a team, or one of the free agents available this season.
+  const onTeam = playerById.get(id ?? "");
+  const free = onTeam ? undefined : league.freeAgents?.find((x) => x.id === id);
+  if (!onTeam && !free) return <Text style={{ padding: 16, color: t.text }}>{signed ?? "Unknown player."}</Text>;
+  const p = onTeam?.player ?? free!;
+  const team = onTeam?.team ?? null;
   const who = persona(p);
   const season = stats.players.get(p.id);
   const key = new Set(keyAttributes(p));
@@ -44,17 +55,22 @@ export default function PlayerScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 20, fontWeight: "800", color: t.text }}>
-                #{p.jersey} {p.firstName} {p.lastName}
+                {team ? `#${p.jersey} ` : ""}
+                {p.firstName} {p.lastName}
               </Text>
               <Text style={{ color: t.muted }}>
                 {p.position}
                 {p.archetype ? ` · ${p.archetype}` : ""} · age {p.age}
               </Text>
               {p.injury ? <Text style={{ color: t.score, fontWeight: "700" }}>Injured: {injuryLabel(p.injury)}</Text> : null}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
-                <Swatch abbr={team.abbr} />
-                <Text style={{ color: t.muted }}>{teamName(team)}</Text>
-              </View>
+              {team ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <Swatch abbr={team.abbr} />
+                  <Text style={{ color: t.muted }}>{teamName(team)}</Text>
+                </View>
+              ) : (
+                <Text style={{ color: t.muted, marginTop: 2 }}>Free agent</Text>
+              )}
             </View>
           </View>
           <Text style={{ color: t.muted, marginTop: 10 }}>
@@ -62,6 +78,24 @@ export default function PlayerScreen() {
           </Text>
           <Text style={{ color: t.muted, marginTop: 2 }}>Cares most about {topPriorities(who).map((k) => PRIORITY_NAMES[k]).join(" and ")}</Text>
           {p.contract ? <Text style={{ color: t.text, marginTop: 8 }}>{formatContract(p.contract)}</Text> : null}
+          {free ? (
+            <View style={{ marginTop: 8, gap: 6 }}>
+              <Text style={{ color: t.text }}>Signs for {formatMoney(capHit(inSeasonContract(free, league, league.season), league.season))} for the rest of the season (one year).</Text>
+              {d.canMakeMoves ? (
+                <Pressable
+                  onPress={() => {
+                    const problems = d.signFreeAgent(free.id);
+                    setSigned(problems.length > 0 ? problems.join(" ") : `Signed ${free.firstName} ${free.lastName}.`);
+                  }}
+                  accessibilityRole="button"
+                  style={{ alignSelf: "flex-start", paddingHorizontal: 14, height: 36, borderRadius: 8, justifyContent: "center", backgroundColor: t.accent }}
+                >
+                  <Text style={{ color: t.onAccent, fontWeight: "800" }}>Sign him</Text>
+                </Pressable>
+              ) : null}
+              {signed ? <Text style={{ color: t.score, fontWeight: "700" }}>{signed}</Text> : null}
+            </View>
+          ) : null}
         </Card>
 
         {statLine ? (
