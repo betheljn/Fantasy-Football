@@ -160,6 +160,20 @@ championship, and tougher AI GMs (contenders hold starters, humans pay more).
 3. In-season moves: injured reserve, and signing free agents to fill spots
    (you and the AI), within the cap and the 72-man roster
 
+### Milestone 10: picks (current, solo play)
+Over/unders on the games you're not coaching, for points only (no money, never
+for sale). From the "beyond the league" plan; online leagues and the server
+come later.
+1. Lines: about 8 featured games a week (not yours) are each simulated 60-100
+   times on throwaway seeds (never the real seed), in the background; the
+   middle result sets the total, the spread and player props (passing,
+   rushing and receiving yards)
+2. Slates and points: pick 2-6 props for a points multiplier; settled when the
+   week is played; a points balance and history in the save
+3. Your own games: off the board, except overs on your own players
+4. Picks screen: this week's board, your slate, results; the house (an AI
+   bookmaker with a personality) as your opponent
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style
