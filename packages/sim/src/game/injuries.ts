@@ -5,8 +5,8 @@
 // Injured players sit on game day; teams fill in from the depth chart. Every
 // injury is recorded on the play it happened, so the feed and replays show it.
 import type { PlayEvent } from "../play/events.ts";
-import type { Player, PlayerId } from "../model/player.ts";
-import { POSITIONS, type Position } from "../model/positions.ts";
+import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
+import { BASE_STARTERS, POSITIONS, type Position } from "../model/positions.ts";
 import type { Team } from "../model/team.ts";
 import type { League } from "../league/league.ts";
 import { Rng } from "../rng.ts";
@@ -236,4 +236,70 @@ export function healAll(league: League): League {
       : t;
   }
   return { ...league, teams };
+}
+
+/** One injured player on a report. */
+export interface InjuryReportEntry {
+  player: Player;
+  team: string;
+  injury: PlayerInjury;
+  /** Starting for his team when healthy (top of the depth chart). */
+  starter: boolean;
+  /** First week he's back, with `weeksPlayed` weeks played (null: out for the season). */
+  returnWeek: number | null;
+}
+
+/** The week a player is back, with `weeksPlayed` weeks played (null: out for the season). */
+export function returnWeek(injury: { weeks: number }, weeksPlayed: number): number | null {
+  return injury.weeks >= SEASON_ENDING ? null : weeksPlayed + 1 + injury.weeks;
+}
+
+/** Everyone hurt (on one team, or the whole league), starters and longest absences first. */
+export function injuryReport(league: League, weeksPlayed: number, team?: string): InjuryReportEntry[] {
+  const out: InjuryReportEntry[] = [];
+  for (const t of Object.values(league.teams)) {
+    if (team && t.abbr !== team) continue;
+    for (const p of t.roster) {
+      if (!p.injury) continue;
+      const rank = t.depthChart[p.position].indexOf(p.id);
+      out.push({ player: p, team: t.abbr, injury: p.injury, starter: rank >= 0 && rank < BASE_STARTERS[p.position], returnWeek: returnWeek(p.injury, weeksPlayed) });
+    }
+  }
+  return out.sort((a, b) => Number(b.starter) - Number(a.starter) || b.injury.weeks - a.injury.weeks || a.player.id.localeCompare(b.player.id));
+}
+
+/** An injury worth a headline: who, how bad, and whether he starts. */
+export interface InjuryNews {
+  week: number;
+  team: string;
+  player: PlayerId;
+  name: string;
+  position: Position;
+  overall: number;
+  type: string;
+  weeks: number;
+  starter: boolean;
+}
+
+/** This week's injuries that matter (a starter or a good player, out at least a week), worst first. */
+export function injuryNews(league: League, injuries: readonly Injury[], week: number): InjuryNews[] {
+  const news: InjuryNews[] = [];
+  for (const i of injuries) {
+    if (i.weeks < 1) continue;
+    const t = league.teams[i.team];
+    const p = t?.roster.find((x) => x.id === i.player);
+    if (!t || !p) continue;
+    const rank = t.depthChart[p.position].indexOf(p.id);
+    const starter = rank >= 0 && rank < BASE_STARTERS[p.position];
+    const ovr = playerOverall(p);
+    if (!starter && ovr < 70) continue;
+    news.push({ week, team: t.abbr, player: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, overall: ovr, type: i.type, weeks: i.weeks, starter });
+  }
+  return news.sort((a, b) => b.weeks - a.weeks || b.overall - a.overall);
+}
+
+/** "Back week 9", "Back next season" or "Out for the season" (`seasonWeeks`: regular-season weeks). */
+export function backLabel(returnWeek: number | null, seasonWeeks: number): string {
+  if (returnWeek === null) return "Out for the season";
+  return returnWeek > seasonWeeks ? "Back next season" : `Back week ${returnWeek}`;
 }

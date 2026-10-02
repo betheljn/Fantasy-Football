@@ -8,6 +8,9 @@ import {
   PLAYOFF_ROUNDS,
   ROUND_NAMES,
   STATES,
+  backLabel,
+  injuryLabel,
+  injuryReport,
   TRADE_DEADLINE_WEEK,
   type TradeRecord,
   allTeams,
@@ -191,6 +194,8 @@ function SeasonHub({ data }: { data: LeagueData }) {
 
       {d.phase === "season" ? <ScoutingCard data={data} /> : null}
 
+      {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <InjuriesCard data={data} /> : null}
+
       {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <TradesCard data={data} /> : null}
 
       {playoffs ? <Playoffs data={data} /> : null}
@@ -215,6 +220,44 @@ function SeasonHub({ data }: { data: LeagueData }) {
       <History data={data} />
       <DangerZone />
     </ScrollView>
+  );
+}
+
+function InjuriesCard({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const mine = useMemo(() => injuryReport(data.league, data.weeksPlayed, data.userTeam), [data.league, data.weeksPlayed, data.userTeam]);
+  const lastWeek = (d.save?.injuryNews ?? []).filter((n) => n.week === data.weeksPlayed && n.team !== data.userTeam).slice(0, 3);
+  return (
+    <Card>
+      <SectionTitle>Injuries</SectionTitle>
+      {mine.length === 0 ? <Text style={{ color: t.muted }}>Your team is healthy.</Text> : null}
+      {mine.slice(0, 5).map((e) => (
+        <View key={e.player.id} style={{ flexDirection: "row", gap: 8, paddingVertical: 2 }}>
+          <Text style={{ width: 28, color: t.muted }}>{e.player.position}</Text>
+          <Text style={{ flex: 1, color: t.text, fontWeight: e.starter ? "700" : "400" }} numberOfLines={1}>
+            {e.player.firstName} {e.player.lastName} <Text style={{ color: t.muted, fontWeight: "400", fontSize: 12 }}>{e.injury.type}</Text>
+          </Text>
+          <Text style={{ color: e.returnWeek === null ? t.score : t.muted, fontSize: 12 }}>{backLabel(e.returnWeek, data.schedule.weeks)}</Text>
+        </View>
+      ))}
+      {mine.length > 5 ? <Text style={{ color: t.muted, fontSize: 12 }}>and {mine.length - 5} more</Text> : null}
+      {lastWeek.length > 0 ? (
+        <View style={{ marginTop: 8, gap: 3 }}>
+          <Text style={{ color: t.text, fontWeight: "700" }}>Around the league</Text>
+          {lastWeek.map((n) => (
+            <Text key={n.player} style={{ color: t.muted, fontSize: 13 }}>
+              {n.team} {n.starter ? "starting " : ""}
+              {n.position} {n.name}: {injuryLabel(n)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      <View style={{ flexDirection: "row", marginTop: 10 }}>
+        <Button label="Injury report" onPress={() => router.push("/injuries")} theme={t} small />
+      </View>
+    </Card>
   );
 }
 

@@ -7,6 +7,9 @@ import {
   beginOffseason,
   gameDayTeam,
   healAll,
+  injuryNews,
+  injuryReport,
+  returnWeek,
   playSeason,
   playWeek,
   seasonSchedule,
@@ -105,4 +108,28 @@ describe("between games", () => {
     const off = beginOffseason({ ...DYNASTY, league: played.league }, played);
     expect(allTeams(off.developed).some((t) => t.roster.some((p) => p.injury))).toBe(false);
   }, 30_000);
+});
+
+describe("the injury report", () => {
+  it("lists everyone hurt with when they're back, starters first", () => {
+    const report = injuryReport(FOUR.league, 4);
+    expect(report.length).toBe(allTeams(FOUR.league).reduce((n, t) => n + t.roster.filter((p) => p.injury).length, 0));
+    const firstBench = report.findIndex((e) => !e.starter);
+    if (firstBench >= 0) expect(report.slice(firstBench).every((e) => !e.starter)).toBe(true);
+    for (const e of report) expect(e.returnWeek).toBe(e.injury.weeks >= SEASON_ENDING ? null : 5 + e.injury.weeks);
+    const team = report[0]!.team;
+    expect(injuryReport(FOUR.league, 4, team).every((e) => e.team === team)).toBe(true);
+    expect(returnWeek({ weeks: 2 }, 4)).toBe(7);
+  });
+
+  it("news covers starters and good players out a week or more", () => {
+    const before = weeks(3).league;
+    const hurt = FOUR.games.filter((g) => g.summary.week === 4).flatMap((g) => g.result.injuries);
+    const news = injuryNews(before, hurt, 4);
+    for (const n of news) {
+      expect(n.weeks).toBeGreaterThanOrEqual(1);
+      expect(n.starter || n.overall >= 70).toBe(true);
+    }
+    expect(news.length).toBeLessThanOrEqual(hurt.length);
+  });
 });

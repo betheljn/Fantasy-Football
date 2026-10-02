@@ -8,6 +8,8 @@ import {
   formatMoney,
   formatRecord,
   payroll,
+  backLabel,
+  injuryReport,
   outLabel,
   playerOverall,
   salaryCap,
@@ -15,6 +17,7 @@ import {
   teamName,
   type StaffMember,
 } from "@dynasty/sim";
+import { useMemo } from "react";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
@@ -23,8 +26,9 @@ export default function TeamScreen() {
   const t = useTheme();
   const router = useRouter();
   const { abbr } = useLocalSearchParams<{ abbr: string }>();
-  const { league, schedule, results, standings, rankings, userTeam } = useLeague();
+  const { league, schedule, results, standings, rankings, userTeam, weeksPlayed } = useLeague();
   const team = league.teams[abbr ?? ""];
+  const injured = useMemo(() => (team ? injuryReport(league, weeksPlayed, team.abbr) : []), [league, weeksPlayed, team]);
   if (!team) return <Text style={{ padding: 16, color: t.text }}>Unknown team.</Text>;
 
   const rec = standings.flatMap((d) => d.teams).find((rt) => rt.team === team.abbr)?.record;
@@ -105,6 +109,21 @@ export default function TeamScreen() {
             );
           })}
         </Card>
+
+        {injured.length > 0 ? (
+          <Card>
+            <SectionTitle>Injuries</SectionTitle>
+            {injured.map((e) => (
+              <View key={e.player.id} style={{ flexDirection: "row", gap: 8, paddingVertical: 3 }}>
+                <Text style={{ width: 28, color: t.muted }}>{e.player.position}</Text>
+                <Text style={{ flex: 1, color: t.text, fontWeight: e.starter ? "700" : "400" }} numberOfLines={1}>
+                  {e.player.firstName} {e.player.lastName} <Text style={{ color: t.muted, fontSize: 12, fontWeight: "400" }}>{e.injury.type}</Text>
+                </Text>
+                <Text style={{ color: e.returnWeek === null ? t.score : t.muted, fontSize: 12 }}>{backLabel(e.returnWeek, schedule.weeks)}</Text>
+              </View>
+            ))}
+          </Card>
+        ) : null}
 
         <Card>
           <SectionTitle>Roster</SectionTitle>

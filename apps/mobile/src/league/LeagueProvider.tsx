@@ -59,6 +59,7 @@ import {
   type TradeProposal,
   type TradeVerdict,
   aiTradeWeek,
+  injuryNews,
   playWeek,
   applyTrade,
   checkTrade,
@@ -432,6 +433,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     let lineups = s.lineups ?? startLog(s.dynasty.league);
     // The week's games (injured players sit), then injuries move on a week.
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
+    const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
     let league = week_.league;
     const played: GameSummary[] = week_.games.map((g) => g.summary);
     // Trade talks around the league for next week (you're left out: you make your own).
@@ -450,7 +452,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const allResults = [...s.results, ...played];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -507,7 +509,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [] }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
