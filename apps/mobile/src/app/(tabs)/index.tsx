@@ -193,6 +193,8 @@ function SeasonHub({ data }: { data: LeagueData }) {
         </Card>
       ) : null}
 
+      {(d.save?.news ?? []).length > 0 && (d.phase === "season" || d.phase === "playoffs" || d.phase === "complete") ? <HeadlinesCard data={data} /> : null}
+
       {d.phase === "season" ? <ScoutingCard data={data} /> : null}
 
       {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <InjuriesCard data={data} /> : null}
@@ -221,6 +223,33 @@ function SeasonHub({ data }: { data: LeagueData }) {
       <History data={data} />
       <DangerZone />
     </ScrollView>
+  );
+}
+
+/** The latest week's top stories: your game first, then the biggest around the league. */
+function HeadlinesCard({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const all = d.save?.news ?? [];
+  const week = Math.max(...all.map((s) => s.week));
+  const latest = all.filter((s) => s.week === week);
+  const recap = latest.find((s) => s.kind === "recap" && s.teams.includes(data.userTeam));
+  const top = latest.filter((s) => !s.local).sort((a, b) => b.importance - a.importance).slice(0, 3);
+  return (
+    <Card>
+      <SectionTitle>Week {week} headlines</SectionTitle>
+      {recap ? <Text style={{ color: t.text, fontWeight: "800", marginBottom: 6 }}>{recap.headline}</Text> : null}
+      {top.map((s) => (
+        <View key={s.id} style={{ flexDirection: "row", gap: 6, paddingVertical: 3 }}>
+          <Text style={{ color: t.accent }}>•</Text>
+          <Text style={{ flex: 1, color: t.text }}>{s.headline}</Text>
+        </View>
+      ))}
+      <View style={{ flexDirection: "row", marginTop: 8 }}>
+        <Button label="All the news" onPress={() => router.push("/news")} theme={t} small />
+      </View>
+    </Card>
   );
 }
 

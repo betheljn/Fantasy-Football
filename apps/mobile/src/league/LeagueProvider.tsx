@@ -60,6 +60,9 @@ import {
   type TradeVerdict,
   aiTradeWeek,
   aiInSeasonMoves,
+  localFeed,
+  nationalFeed,
+  weeklyNews,
   buildBoxScore,
   boardGames,
   isOwnGame,
@@ -522,9 +525,15 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     }
     const dynasty = { ...s.dynasty, league };
     const allResults = [...s.results, ...played];
+    // The week's news: the national feed and everything about your team.
+    const rankBefore = computeRankings(s.dynasty.league, s.results);
+    const rankAfter = computeRankings(league, allResults, rankBefore);
+    const stories = weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam });
+    const national = nationalFeed(stories);
+    const kept = [...national, ...localFeed(stories, s.userTeam).filter((x) => !national.includes(x))];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -581,7 +590,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [] }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [] }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);

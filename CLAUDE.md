@@ -174,6 +174,17 @@ come later.
 4. Picks screen: this week's board, your slate, results; the house (an AI
    bookmaker with a personality) as your opponent
 
+### Milestone 11: media (current)
+The league's story told back to you, from the event log.
+1. News: each week's stories (upsets, thrillers, routs, big games, streaks,
+   rankings, star injuries, trades, the MVP race), ranked by size; a national
+   feed and your team's local feed (your recap and a look at the next game)
+2. The weekly radio show: three recurring hosts with set personalities (the
+   stats nerd, the hot-take artist, the former player), a written script each
+   week, and on-air picks from the board with their records kept
+3. Follow or fade: add a host's pick to your slate; the show brags or eats
+   crow about last week
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style
