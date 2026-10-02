@@ -61,8 +61,10 @@ import {
   aiTradeWeek,
   aiInSeasonMoves,
   buildBoxScore,
-  featuredGames,
+  boardGames,
+  isOwnGame,
   linesSteps,
+  ownPicks,
   settleSlate,
   slateProblems,
   topUp,
@@ -169,10 +171,14 @@ export interface DynastyControls {
   finishCuts: (cuts: ReadonlySet<string>) => void;
   /** Reorder your depth chart at a position (regular season only). */
   canEditDepthChart: boolean;
+  /** Your depth chart is locked: you have picks on your own players this week. */
+  depthLocked: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
   /** Picks: your points and slates; the board for the coming week (worked out on request, with progress). */
   picks: PicksState;
   board: GameLines[] | null;
+  /** The board is missing your own game (it's worked out again). */
+  boardNeedsOwn: boolean;
   boardProgress: number | null;
   loadBoard: () => void;
   placeSlate: (picks: SlatePick[], stake: number) => string[];
@@ -213,6 +219,14 @@ export function useDynasty(): DynastyControls {
 const yieldToUi = () => new Promise<void>((r) => setTimeout(r, 0));
 
 const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, board: null, open: [], history: [] });
+
+/** Your game this week is missing from the board (worked out again after a depth-chart change). */
+function needsOwnLines(s: SaveState | null, schedule: Schedule | null): boolean {
+  const lines = boardFor(s, schedule);
+  if (!s || !schedule || !lines) return false;
+  const plays = schedule.games.some((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam));
+  return plays && !lines.some((l) => isOwnGame(l.game, s.userTeam));
+}
 
 /** The board for the coming week, if it's been worked out. */
 function boardFor(s: SaveState | null, schedule: Schedule | null): GameLines[] | null {
@@ -425,6 +439,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   }, [restoring, state, busy, playoffs]);
 
   const [boardProgress, setBoardProgress] = useState<number | null>(null);
+  // With picks riding on your own players this week, your depth chart is locked until it's played.
+  const depthLocked = !!state && (state.picks?.open ?? []).some((x) => x.week === state.weeksPlayed + 1 && ownPicks(x.picks, state.userTeam).length > 0);
   const boardJob = useRef<object | null>(null);
 
   const canMakeMoves = !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
@@ -734,24 +750,33 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     rosterPlan: rosterPlanValue,
     finishCuts: (cuts) => completeWith(cuts),
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
-    canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver,
+    canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
+    depthLocked,
     setDepthChart: (pos, ids) => {
-      if (!state || offseason || !state.userTeam || seasonOver) return;
+      if (!state || offseason || !state.userTeam || seasonOver || depthLocked) return;
       const league = state.dynasty.league;
       const team = league.teams[state.userTeam]!;
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
       const lineups = logTeam(state.lineups ?? startLog(league), updated, state.weeksPlayed + 1);
-      persist({ ...state, lineups, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
+      // Your game's lines were set on the old depth chart: they're worked out again.
+      const p = state.picks;
+      const picks = p?.board ? { ...p, board: { ...p.board, lines: p.board.lines.filter((l) => !isOwnGame(l.game, state.userTeam)) } } : p;
+      persist({ ...state, lineups, ...(picks ? { picks } : {}), dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
     },
     picks: state?.picks ?? newPicks(),
     board: boardFor(state, schedule),
+    boardNeedsOwn: needsOwnLines(state, schedule),
     boardProgress,
     loadBoard: () => {
       const s = stateRef.current;
-      if (!s || !schedule || seasonOver || !s.userTeam || boardFor(s, schedule) || boardJob.current) return;
+      if (!s || !schedule || seasonOver || !s.userTeam || boardJob.current) return;
+      const existing = boardFor(s, schedule);
+      const own = needsOwnLines(s, schedule);
+      if (existing && !own) return;
       const week = s.weeksPlayed + 1;
-      const games = featuredGames(s.dynasty.league, schedule, week, new Set([s.userTeam]));
-      const steps = linesSteps(s.dynasty.league, games);
+      // The whole board, or just your game again (after a depth-chart change).
+      const games = existing ? boardGames(s.dynasty.league, schedule, week, s.userTeam).filter((g) => isOwnGame(g, s.userTeam)) : boardGames(s.dynasty.league, schedule, week, s.userTeam);
+      const steps = linesSteps(s.dynasty.league, games, undefined, s.userTeam);
       const token = {};
       boardJob.current = token;
       setBoardProgress(0);
@@ -769,7 +794,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         // Only if nothing moved on meanwhile (the week wasn't played).
         if (!now || now.weeksPlayed + 1 !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
         const p = now.picks ?? newPicks();
-        persist({ ...now, picks: { ...p, board: { season: schedule.season, week, lines: r.value } } });
+        const lines = existing && p.board ? [...r.value, ...p.board.lines] : r.value;
+        persist({ ...now, picks: { ...p, board: { season: schedule.season, week, lines } } });
       };
       setTimeout(step, 30);
     },
@@ -777,7 +803,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const s = stateRef.current;
       if (!s || !schedule || !boardFor(s, schedule)) return ["The board isn't open."];
       const p = s.picks ?? newPicks();
-      const problems = slateProblems(picks, stake, p.balance);
+      const ownGames = new Set(schedule.games.filter((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam)).map((g) => g.id));
+      const problems = slateProblems(picks, stake, p.balance, s.userTeam, ownGames);
       if (problems.length > 0) return problems;
       const slate: Slate = { id: `${schedule.season}-${s.weeksPlayed + 1}-${p.history.length + p.open.length + 1}`, season: schedule.season, week: s.weeksPlayed + 1, picks, stake };
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);

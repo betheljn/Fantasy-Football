@@ -27,7 +27,9 @@ export default function DepthChartScreen() {
     <>
       <Stack.Screen options={{ title: `${team.abbr} depth chart` }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {!d.canEditDepthChart ? (
+        {d.depthLocked ? (
+          <Text style={{ color: t.score, fontWeight: "700" }}>Locked until this week is played: you have picks riding on your own players.</Text>
+        ) : !d.canEditDepthChart ? (
           <Text style={{ color: t.score, fontWeight: "700" }}>The depth chart can be changed during the regular season.</Text>
         ) : (
           <Text style={{ color: t.muted }}>Starters are highlighted. Use the arrows to move a player up or down; games use your order right away.</Text>

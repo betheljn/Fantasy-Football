@@ -49,9 +49,22 @@ export interface SettledSlate extends Omit<Slate, "picks"> {
   payout: number;
 }
 
-/** What's wrong with a slate (empty = it can be placed). */
-export function slateProblems(picks: readonly SlatePick[], stake: number, balance: number): string[] {
+/** Picks on your own players (allowed: overs only). */
+export function ownPicks(picks: readonly SlatePick[], own: string | undefined): SlatePick[] {
+  return own ? picks.filter((p) => p.prop.team === own) : [];
+}
+
+/**
+ * What's wrong with a slate (empty = it can be placed). `own` is your team:
+ * on your own games only overs on your own players are allowed.
+ */
+export function slateProblems(picks: readonly SlatePick[], stake: number, balance: number, own?: string, ownGames: ReadonlySet<string> = new Set()): string[] {
   const problems: string[] = [];
+  for (const p of picks) {
+    if (!ownGames.has(p.prop.game)) continue;
+    if (p.prop.kind !== "player" || p.prop.team !== own) problems.push("Your own games are off the board, except overs on your own players.");
+    else if (p.side !== "over") problems.push("On your own players, only overs.");
+  }
   const { minPicks, maxPicks, perGame, minStake } = SLATE_RULES;
   if (picks.length < minPicks) problems.push(`Pick at least ${minPicks}.`);
   if (picks.length > maxPicks) problems.push(`Pick at most ${maxPicks}.`);
@@ -61,7 +74,7 @@ export function slateProblems(picks: readonly SlatePick[], stake: number, balanc
   if ([...byGame.values()].some((n) => n > perGame)) problems.push(`At most ${perGame} picks from one game.`);
   if (!Number.isInteger(stake) || stake < minStake) problems.push(`Play at least ${minStake} points.`);
   if (stake > balance) problems.push("Not enough points.");
-  return problems;
+  return [...new Set(problems)];
 }
 
 /** What a winning slate pays: the stake times the multiplier for its size. */

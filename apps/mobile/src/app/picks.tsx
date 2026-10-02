@@ -12,7 +12,7 @@ import { useTheme, type Theme } from "../theme";
 export default function PicksScreen() {
   const t = useTheme();
   const d = useDynasty();
-  const { weeksPlayed, schedule } = useLeague();
+  const { weeksPlayed, schedule, userTeam } = useLeague();
   const [chosen, setChosen] = useState<SlatePick[]>([]);
   const [stake, setStake] = useState("50");
   const [message, setMessage] = useState<{ text: string; good: boolean } | null>(null);
@@ -21,9 +21,9 @@ export default function PicksScreen() {
 
   // Work out the board when the screen opens (it takes a few seconds on a phone).
   useEffect(() => {
-    if (open && !d.board) d.loadBoard();
+    if (open && (!d.board || d.boardNeedsOwn)) d.loadBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, week, d.board === null]);
+  }, [open, week, d.board === null, d.boardNeedsOwn]);
 
   const toggle = (prop: Prop, side: PickSide) => {
     setMessage(null);
@@ -107,7 +107,8 @@ export default function PicksScreen() {
             </View>
           </Card>
         ) : null}
-        {d.board?.map((g) => <GameBoard key={g.game.id} lines={g} chosen={chosen} onPick={toggle} theme={t} />)}
+        {d.boardNeedsOwn ? <Text style={{ color: t.muted }}>Setting the lines for your game again (your depth chart changed)…</Text> : null}
+        {d.board?.map((g) => <GameBoard key={g.game.id} lines={g} own={g.game.home === userTeam || g.game.away === userTeam} chosen={chosen} onPick={toggle} theme={t} />)}
 
         {recent.length > 0 ? (
           <Card>
@@ -130,10 +131,13 @@ function pickText(p: SlatePick, board: GameLines[] | null): string {
   return `${p.side === "over" ? "Over" : "Under"} · ${propLabel(p.prop, home, away)}`;
 }
 
-function GameBoard({ lines, chosen, onPick, theme: t }: { lines: GameLines; chosen: SlatePick[]; onPick: (p: Prop, s: PickSide) => void; theme: Theme }) {
+function GameBoard({ lines, own, chosen, onPick, theme: t }: { lines: GameLines; own: boolean; chosen: SlatePick[]; onPick: (p: Prop, s: PickSide) => void; theme: Theme }) {
   const { game } = lines;
   return (
-    <Card>
+    <Card style={own ? { borderColor: t.accent, borderWidth: 1 } : undefined}>
+      {own ? (
+        <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12, marginBottom: 4 }}>YOUR GAME · overs on your own players only (your depth chart locks once you pick)</Text>
+      ) : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <Swatch abbr={game.away} />
         <Text style={{ color: t.text, fontWeight: "800" }}>{game.away}</Text>
@@ -147,7 +151,7 @@ function GameBoard({ lines, chosen, onPick, theme: t }: { lines: GameLines; chos
           <View key={p.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
             <Text style={{ flex: 1, color: t.text, fontSize: 13 }}>{p.kind === "spread" ? "Spread" : propLabel(p, game.home, game.away)}</Text>
             <Side label={sideLabel(p, "over", game.home, game.away)} on={side === "over"} onPress={() => onPick(p, "over")} theme={t} />
-            <Side label={sideLabel(p, "under", game.home, game.away)} on={side === "under"} onPress={() => onPick(p, "under")} theme={t} />
+            {own ? null : <Side label={sideLabel(p, "under", game.home, game.away)} on={side === "under"} onPress={() => onPick(p, "under")} theme={t} />}
           </View>
         );
       })}

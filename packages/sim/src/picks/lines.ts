@@ -147,10 +147,12 @@ function* gameLinesSteps(league: League, game: ScheduledGame, sims: number): Gen
 }
 
 /**
- * Lines for the featured games, a few simulations at a time so an app can
- * show progress and stay responsive (yields the share done, 0-1).
+ * Lines for these games, a few simulations at a time so an app can show
+ * progress and stay responsive (yields the share done, 0-1). A game of
+ * `own` (your team) keeps only the props on your own players: nothing on
+ * the result or the other side, so you never have a reason to lose.
  */
-export function* linesSteps(league: League, games: readonly ScheduledGame[], sims = PICKS_RULES.sims): Generator<number, GameLines[], void> {
+export function* linesSteps(league: League, games: readonly ScheduledGame[], sims = PICKS_RULES.sims, own?: string): Generator<number, GameLines[], void> {
   const out: GameLines[] = [];
   for (const [i, g] of games.entries()) {
     const steps = gameLinesSteps(league, g, sims);
@@ -159,9 +161,23 @@ export function* linesSteps(league: League, games: readonly ScheduledGame[], sim
       yield (i + r.value / sims) / games.length;
       r = steps.next();
     }
-    out.push(r.value);
+    out.push(own && (g.home === own || g.away === own) ? ownGameLines(r.value, own) : r.value);
   }
   return out;
+}
+
+/** Your own game's board: just your players' props (to be taken over only). */
+export function ownGameLines(lines: GameLines, own: string): GameLines {
+  return { ...lines, props: lines.props.filter((p) => p.kind === "player" && p.team === own) };
+}
+
+/** Is this one of `own`'s games? */
+export const isOwnGame = (game: Pick<ScheduledGame, "home" | "away">, own: string) => game.home === own || game.away === own;
+
+/** The week's board: the featured games, plus your own game (your players' overs only) if you play. */
+export function boardGames(league: League, schedule: Schedule, week: number, own: string): ScheduledGame[] {
+  const mine = schedule.games.find((g) => g.week === week && isOwnGame(g, own));
+  return [...(mine ? [mine] : []), ...featuredGames(league, schedule, week, new Set([own]))];
 }
 
 /** "BUF -3.5" style label for a spread, from the home team's side. */

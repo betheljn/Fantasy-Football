@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   SLATE_RULES,
   allTeams,
+  boardGames,
+  ownGameLines,
   buildBoxScore,
   featuredGames,
   gameLines,
@@ -63,5 +65,30 @@ describe("settling", () => {
   it("tops a near-empty balance back up each week", () => {
     expect(topUp(3)).toBe(SLATE_RULES.floor);
     expect(topUp(500)).toBe(500);
+  });
+});
+
+describe("your own games", () => {
+  const own = allTeams(DYNASTY.league)[0]!.abbr;
+  const mine = SCHEDULE.games.find((g) => g.week === 1 && (g.home === own || g.away === own))!;
+  const lines = ownGameLines(gameLines(DYNASTY.league, mine, 20), own);
+  const ownGames = new Set([mine.id]);
+
+  it("are on the board with only your own players' props", () => {
+    expect(boardGames(DYNASTY.league, SCHEDULE, 1, own)[0]!.id).toBe(mine.id);
+    expect(lines.props.length).toBeGreaterThan(0);
+    for (const p of lines.props) {
+      expect(p.kind).toBe("player");
+      expect(p.team).toBe(own);
+    }
+  });
+
+  it("allow overs on your players, never unders (or anything else from your game)", () => {
+    const other = pick(0, 0);
+    const over: SlatePick = { prop: lines.props[0]!, side: "over" };
+    expect(slateProblems([over, other], 50, 1000, own, ownGames)).toEqual([]);
+    expect(slateProblems([{ ...over, side: "under" }, other], 50, 1000, own, ownGames).join(" ")).toMatch(/only overs/);
+    const full = gameLines(DYNASTY.league, mine, 20).props.find((p) => p.kind === "total")!;
+    expect(slateProblems([{ prop: full, side: "over" }, other], 50, 1000, own, ownGames).join(" ")).toMatch(/off the board/);
   });
 });
