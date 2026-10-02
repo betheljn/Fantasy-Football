@@ -53,13 +53,17 @@ export const MARKET_CURVE = { floorOverall: 48, topOverall: 92, power: 1.8 };
  * development trait (never hidden potential).
  */
 export function marketValue(player: Player, cap: number, index = 1): number {
-  const min = minimumSalary(cap);
   const trait = player.devTraitRevealed ? { normal: 0, impact: 1, star: 2, elite: 3 }[player.devTrait] : 0;
-  const ovr = playerOverall(player) + trait;
+  return marketValueAt(player.position, playerOverall(player) + trait, player.age, cap, index);
+}
+
+/** Market value for a player of this position, overall and age (see marketValue). */
+export function marketValueAt(position: Position, ovr: number, age: number, cap: number, index = 1): number {
+  const min = minimumSalary(cap);
   const { floorOverall, topOverall, power } = MARKET_CURVE;
   const f = Math.max(0, Math.min(1.1, (ovr - floorOverall) / (topOverall - floorOverall)));
-  const ageFactor = player.age <= 29 ? 1 : Math.max(0.35, 1 - 0.09 * (player.age - 29));
-  const top = TOP_OF_MARKET[player.position] * cap;
+  const ageFactor = age <= 29 ? 1 : Math.max(0.35, 1 - 0.09 * (age - 29));
+  const top = TOP_OF_MARKET[position] * cap;
   return Math.max(min, Math.round(((min + (top - min) * f ** power) * ageFactor * index) / 10) * 10);
 }
 

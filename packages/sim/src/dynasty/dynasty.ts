@@ -8,7 +8,8 @@ import { ROSTER_MAX, starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
-import { simulateSeason, type SeasonResult } from "../league/season.ts";
+import { playGame, type SeasonResult } from "../league/season.ts";
+import { aiTradeWeek, type TradeRecord } from "../contracts/trades.ts";
 import { simulatePlayoffs, type PlayoffResult } from "../league/playoffs.ts";
 import { divisionStandings, type DivisionStandings, type TeamRecord } from "../league/standings.ts";
 import { PLAYER_STAT_KEYS, type PlayerStatKey } from "../stats/boxscore.ts";
@@ -192,7 +193,8 @@ const fullName = (p: Player) => `${p.firstName} ${p.lastName}`;
 
 /** Play one season and its offseason. Returns the dynasty ready for the next season. */
 export function advanceSeason(dynasty: Dynasty): Dynasty {
-  return finishSeason(dynasty, playSeason(dynasty)).dynasty;
+  const played = playSeason(dynasty);
+  return finishSeason({ ...dynasty, league: played.league }, played).dynasty;
 }
 
 /** This season's schedule (division slots come from last season's finish). */
@@ -207,13 +209,39 @@ export interface PlayedSeason {
   playoffs: PlayoffResult;
   /** Scouting of next year's class done during the season (e.g. with a user's weekly choices); AI scouting if absent. */
   scouting?: ScoutingState;
+  /** Trades made during the season. */
+  trades?: TradeRecord[];
 }
 
-/** Play the whole season at once. An app can instead play it week by week (same games, same seeds). */
-export function playSeason(dynasty: Dynasty): PlayedSeason {
+/**
+ * Play the whole season at once, week by week: trade talks before each week
+ * up to the deadline, then the week's games. Returns the season and the
+ * league as it ended (rosters changed by trades). An app can instead play it
+ * week by week itself (same trades, games and seeds).
+ */
+export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } {
   const stats = createSeasonStats();
-  const season = simulateSeason(dynasty.league, { schedule: seasonSchedule(dynasty), onGame: (g) => addGameToSeason(stats, g) });
-  return { season, stats, playoffs: simulatePlayoffs(dynasty.league, season) };
+  const schedule = seasonSchedule(dynasty);
+  let league = dynasty.league;
+  const trades: TradeRecord[] = [];
+  const traded = new Set<PlayerId>();
+  const results = [];
+  for (let week = 1; week <= schedule.weeks; week++) {
+    const talks = aiTradeWeek(league, schedule.season, week, new Set(), traded);
+    league = talks.league;
+    for (const t of talks.trades) {
+      trades.push(t);
+      for (const p of t.players) traded.add(p.id);
+    }
+    for (const g of schedule.games) {
+      if (g.week !== week) continue;
+      const { summary, result } = playGame(league, g);
+      addGameToSeason(stats, result);
+      results.push(summary);
+    }
+  }
+  const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
+  return { season, stats, playoffs: simulatePlayoffs(league, season), trades, league };
 }
 
 /** Everything the offseason did, in full (history keeps only the highlights). */

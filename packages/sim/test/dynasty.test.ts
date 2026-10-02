@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiTradeWeek,
   addGameToSeason,
   advanceScoutingWeek,
   advanceSeason,
@@ -117,15 +118,21 @@ describe("playing a season week by week", () => {
     const schedule = seasonSchedule(START);
     const stats = createSeasonStats();
     const results = [];
+    let league = START.league;
+    const traded = new Set<string>();
     for (let week = 1; week <= schedule.weeks; week++) {
+      // Trade talks before the week, as the app does.
+      const talks = aiTradeWeek(league, schedule.season, week, new Set(), traded);
+      league = talks.league;
+      for (const t of talks.trades) for (const p of t.players) traded.add(p.id);
       for (const g of schedule.games.filter((x) => x.week === week)) {
-        const { summary, result } = playGame(START.league, g);
+        const { summary, result } = playGame(league, g);
         addGameToSeason(stats, result);
         results.push(summary);
       }
     }
-    const season = { season: schedule.season, schedule, results, standings: divisionStandings(START.league, results) };
-    const { dynasty, log } = finishSeason(START, { season, stats, playoffs: simulatePlayoffs(START.league, season) });
+    const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
+    const { dynasty, log } = finishSeason({ ...START, league }, { season, stats, playoffs: simulatePlayoffs(league, season) });
     expect(dynasty.history).toEqual(ONE.history);
     expect(dynasty.league).toEqual(ONE.league);
     expect(log.draft).toHaveLength(350);

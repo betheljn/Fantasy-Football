@@ -18,7 +18,8 @@ export const ROSTER_POSITION_MAX: Record<Position, number> = {
   QB: 4, RB: 7, WR: 13, TE: 7, OL: 17, DL: 14, LB: 11, CB: 11, S: 8, K: 2, P: 2, LS: 2,
 };
 
-const TRAIT_GROWTH_GUESS: Record<DevTrait, number> = { normal: 1, impact: 1.3, star: 1.6, elite: 2 };
+/** How fast teams expect a player with each (revealed) trait to improve, relative to normal. */
+export const TRAIT_GROWTH_GUESS: Record<DevTrait, number> = { normal: 1, impact: 1.3, star: 1.6, elite: 2 };
 
 export interface RosterMove {
   team: string;

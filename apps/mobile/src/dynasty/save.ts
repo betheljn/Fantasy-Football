@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type StaffSlot } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type StaffSlot, type TradeRecord } from "@dynasty/sim";
 import type { OffseasonReport } from "./report";
 
 export const SAVE_VERSION = 3;
@@ -30,6 +30,8 @@ export interface SaveState {
   scouting: ScoutingState | null;
   /** Your scouting points for the coming week (empty = your scouts choose). */
   scoutPlan: ScoutAssignment[];
+  /** Trades made this season (yours and the AI's), oldest first. */
+  trades: TradeRecord[];
 }
 
 /**
@@ -62,6 +64,8 @@ export function serialize(state: SaveState): string {
 export function deserialize(text: string): SaveState | null {
   try {
     const state = fromSaveJson<SaveState>(text);
+    // Saves from before trades.
+    state.trades ??= [];
     // Version 1 saves predate scouting; they pick it up from the next week played.
     if (state.version === 1) return { ...state, version: SAVE_VERSION, scouting: null, scoutPlan: [] };
     // Version 2 is the same data in plain JSON.
