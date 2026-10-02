@@ -60,6 +60,16 @@ import {
   type TradeVerdict,
   aiTradeWeek,
   aiInSeasonMoves,
+  buildBoxScore,
+  featuredGames,
+  linesSteps,
+  settleSlate,
+  slateProblems,
+  topUp,
+  SLATE_RULES,
+  type GameLines,
+  type Slate,
+  type SlatePick,
   ensureFreeAgents,
   injuryNews,
   irProblems,
@@ -80,7 +90,7 @@ import {
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
-import { SAVE_VERSION, type OffseasonProgress, type SaveState, type SlotInfo } from "../dynasty/save";
+import { SAVE_VERSION, type OffseasonProgress, type PicksState, type SaveState, type SlotInfo } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 
 export const PLAYOFF_ROUND_COUNT = 4;
@@ -160,6 +170,12 @@ export interface DynastyControls {
   /** Reorder your depth chart at a position (regular season only). */
   canEditDepthChart: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
+  /** Picks: your points and slates; the board for the coming week (worked out on request, with progress). */
+  picks: PicksState;
+  board: GameLines[] | null;
+  boardProgress: number | null;
+  loadBoard: () => void;
+  placeSlate: (picks: SlatePick[], stake: number) => string[];
   /** In-season moves (regular season only): injured reserve and free-agent signings. */
   canMakeMoves: boolean;
   placeOnIR: (player: string) => string[];
@@ -195,6 +211,14 @@ export function useDynasty(): DynastyControls {
 }
 
 const yieldToUi = () => new Promise<void>((r) => setTimeout(r, 0));
+
+const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, board: null, open: [], history: [] });
+
+/** The board for the coming week, if it's been worked out. */
+function boardFor(s: SaveState | null, schedule: Schedule | null): GameLines[] | null {
+  const b = s?.picks?.board;
+  return b && schedule && b.season === schedule.season && b.week === s!.weeksPlayed + 1 ? b.lines : null;
+}
 
 export function LeagueProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SaveState | null>(null);
@@ -400,6 +424,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restoring, state, busy, playoffs]);
 
+  const [boardProgress, setBoardProgress] = useState<number | null>(null);
+  const boardJob = useRef<object | null>(null);
+
   const canMakeMoves = !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
 
   // Trading: preseason through the deadline, and draft week (season over, playoffs done, offseason not begun).
@@ -448,6 +475,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // The week's games (injured players sit), then injuries move on a week.
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
     const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
+    // Settle this week's slates, then the weekly top-up.
+    const before = s.picks ?? newPicks();
+    const due = before.open.filter((x) => x.week === week && x.season === sched.season);
+    const needed = new Set(due.flatMap((x) => x.picks.map((p) => p.prop.game)));
+    const boxes = new Map(week_.games.filter((g) => needed.has(g.summary.id)).map((g) => [g.summary.id, { summary: g.summary, box: buildBoxScore(g.result) }]));
+    const settled = due.map((x) => settleSlate(x, boxes));
+    const picks: PicksState = {
+      balance: topUp(before.balance + settled.reduce((n, x) => n + x.payout, 0)),
+      board: null,
+      open: before.open.filter((x) => !(x.week === week && x.season === sched.season)),
+      history: [...before.history, ...settled],
+    };
     // The AI teams' moves: long injuries to IR, free agents signed (you make your own).
     const ai = aiInSeasonMoves(week_.league, sched.season, week, new Set([s.userTeam]));
     for (const abbr of new Set(ai.moves.map((m) => m.team))) lineups = logTeam(lineups, ai.league.teams[abbr]!, week + 1);
@@ -469,7 +508,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const allResults = [...s.results, ...played];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -703,6 +742,46 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
       const lineups = logTeam(state.lineups ?? startLog(league), updated, state.weeksPlayed + 1);
       persist({ ...state, lineups, dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
+    },
+    picks: state?.picks ?? newPicks(),
+    board: boardFor(state, schedule),
+    boardProgress,
+    loadBoard: () => {
+      const s = stateRef.current;
+      if (!s || !schedule || seasonOver || !s.userTeam || boardFor(s, schedule) || boardJob.current) return;
+      const week = s.weeksPlayed + 1;
+      const games = featuredGames(s.dynasty.league, schedule, week, new Set([s.userTeam]));
+      const steps = linesSteps(s.dynasty.league, games);
+      const token = {};
+      boardJob.current = token;
+      setBoardProgress(0);
+      const step = () => {
+        if (boardJob.current !== token) return;
+        const r = steps.next();
+        if (!r.done) {
+          setBoardProgress(r.value);
+          setTimeout(step, 0);
+          return;
+        }
+        boardJob.current = null;
+        setBoardProgress(null);
+        const now = stateRef.current;
+        // Only if nothing moved on meanwhile (the week wasn't played).
+        if (!now || now.weeksPlayed + 1 !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
+        const p = now.picks ?? newPicks();
+        persist({ ...now, picks: { ...p, board: { season: schedule.season, week, lines: r.value } } });
+      };
+      setTimeout(step, 30);
+    },
+    placeSlate: (picks, stake) => {
+      const s = stateRef.current;
+      if (!s || !schedule || !boardFor(s, schedule)) return ["The board isn't open."];
+      const p = s.picks ?? newPicks();
+      const problems = slateProblems(picks, stake, p.balance);
+      if (problems.length > 0) return problems;
+      const slate: Slate = { id: `${schedule.season}-${s.weeksPlayed + 1}-${p.history.length + p.open.length + 1}`, season: schedule.season, week: s.weeksPlayed + 1, picks, stake };
+      persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
+      return [];
     },
     canMakeMoves,
     placeOnIR: (id) => {

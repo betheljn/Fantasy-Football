@@ -176,3 +176,14 @@ export function propLabel(prop: Prop, home: string, away: string): string {
   if (prop.kind === "spread") return `Spread: ${spreadLabel(prop, home, away)}`;
   return `${prop.position} ${prop.name} ${PROP_STAT_NAMES[prop.stat!]} ${prop.line}`;
 }
+
+/**
+ * How one side of a prop reads: "Over" / "Under", or for a spread, the team
+ * you're backing ("NY +0.5" is the over on a home margin of -0.5).
+ */
+export function sideLabel(prop: Prop, side: "over" | "under", home: string, away: string): string {
+  if (prop.kind !== "spread") return side === "over" ? "Over" : "Under";
+  const l = Math.abs(prop.line);
+  if (side === "over") return `${home} ${prop.line > 0 ? "-" : "+"}${l}`;
+  return `${away} ${prop.line > 0 ? "+" : "-"}${l}`;
+}
