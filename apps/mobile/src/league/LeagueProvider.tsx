@@ -62,6 +62,10 @@ import {
   aiInSeasonMoves,
   localFeed,
   nationalFeed,
+  addToRecords,
+  emptyRecords,
+  gradeHostPicks,
+  radioShow,
   weeklyNews,
   buildBoxScore,
   boardGames,
@@ -95,7 +99,7 @@ import {
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
-import { SAVE_VERSION, type OffseasonProgress, type PicksState, type SaveState, type SlotInfo } from "../dynasty/save";
+import { SAVE_VERSION, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 
 export const PLAYOFF_ROUND_COUNT = 4;
@@ -220,6 +224,8 @@ export function useDynasty(): DynastyControls {
 }
 
 const yieldToUi = () => new Promise<void>((r) => setTimeout(r, 0));
+
+const newRadio = (): RadioState => ({ shows: [], records: emptyRecords(), last: [] });
 
 const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, board: null, open: [], history: [] });
 
@@ -497,9 +503,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // Settle this week's slates, then the weekly top-up.
     const before = s.picks ?? newPicks();
     const due = before.open.filter((x) => x.week === week && x.season === sched.season);
-    const needed = new Set(due.flatMap((x) => x.picks.map((p) => p.prop.game)));
+    const onAir = (s.radio?.shows ?? []).find((x) => x.season === sched.season && x.week === week);
+    const needed = new Set([...due.flatMap((x) => x.picks.map((p) => p.prop.game)), ...(onAir?.picks ?? []).map((p) => p.prop.game)]);
     const boxes = new Map(week_.games.filter((g) => needed.has(g.summary.id)).map((g) => [g.summary.id, { summary: g.summary, box: buildBoxScore(g.result) }]));
     const settled = due.map((x) => settleSlate(x, boxes));
+    // The hosts' picks are graded too.
+    const graded = onAir ? gradeHostPicks(onAir.picks, boxes) : [];
+    const radioBefore = s.radio ?? newRadio();
+    const radio = { ...radioBefore, records: addToRecords(radioBefore.records, graded), last: graded };
     const picks: PicksState = {
       balance: topUp(before.balance + settled.reduce((n, x) => n + x.payout, 0)),
       board: null,
@@ -533,7 +544,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const kept = [...national, ...localFeed(stories, s.userTeam).filter((x) => !national.includes(x))];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -590,7 +601,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [] }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio() }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -804,7 +815,22 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         if (!now || now.weeksPlayed + 1 !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
         const p = now.picks ?? newPicks();
         const lines = existing && p.board ? [...r.value, ...p.board.lines] : r.value;
-        persist({ ...now, picks: { ...p, board: { season: schedule.season, week, lines } } });
+        // The radio show for the week is written off the board (once).
+        const radio = now.radio ?? newRadio();
+        const show = radio.shows.some((x) => x.season === schedule.season && x.week === week)
+          ? null
+          : radioShow({
+              leagueSeed: now.dynasty.league.seed,
+              season: schedule.season,
+              week,
+              board: lines,
+              stats: now.stats,
+              stories: (now.news ?? []).filter((x) => x.week === week - 1 && !x.local).sort((a, b) => b.importance - a.importance),
+              lastWeek: radio.last,
+              records: radio.records,
+              own: now.userTeam,
+            });
+        persist({ ...now, picks: { ...p, board: { season: schedule.season, week, lines } }, ...(show ? { radio: { ...radio, shows: [...radio.shows, show] } } : {}) });
       };
       setTimeout(step, 30);
     },

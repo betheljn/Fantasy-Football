@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -45,6 +45,14 @@ export interface SaveState {
   picks?: PicksState;
   /** This season's news: each week's national feed and your team's stories. */
   news?: Story[];
+  /** The radio show: this season's shows, the hosts' records, and last week's graded picks. */
+  radio?: RadioState;
+}
+
+export interface RadioState {
+  shows: RadioShow[];
+  records: HostRecords;
+  last: GradedHostPick[];
 }
 
 export interface PicksState {

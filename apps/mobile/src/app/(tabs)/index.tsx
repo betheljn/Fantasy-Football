@@ -163,6 +163,7 @@ function SeasonHub({ data }: { data: LeagueData }) {
         <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
           <Button label="Team page" onPress={() => router.push(`/team/${userTeam}`)} theme={t} small />
           {d.phase === "season" ? <Button label={`Picks · ${d.picks.balance.toLocaleString()} pts`} onPress={() => router.push("/picks")} theme={t} small /> : null}
+          {d.phase === "season" ? <Button label="Radio" onPress={() => router.push("/radio")} theme={t} small /> : null}
         </View>
       </Card>
 
