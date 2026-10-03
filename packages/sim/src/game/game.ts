@@ -4,7 +4,7 @@ import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
 import { simulateKickoff } from "../play/kickoff.ts";
 import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
-import { driveSteps, simulateConversion, type CoachCall, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
+import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
@@ -96,6 +96,8 @@ export function startCoachedGame(home: Team, away: Team, seed: number | string, 
     calls: [],
     answer(call) {
       if (!game.prompt) throw new Error("The game is over");
+      // A bad answer is turned away before it reaches the game, which carries on waiting.
+      checkAnswer(game.prompt, call);
       game.calls.push(call ?? null);
       advance(steps.next(call));
     },
@@ -205,7 +207,13 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       record(ko, quarter, clock, injuries.check(ko));
 
       if (ko.touchdown) {
-        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr));
+        let two: boolean | undefined;
+        if (options.coach === receiving.abbr) {
+          const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length };
+          answers.push(answer ?? null);
+          two = tryAnswer(answer);
+        }
+        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two);
         record(conv, quarter, clock);
         pending = { kind: "kickoff", kickingTeam: receiving.abbr };
         if (quarter >= 5) otPossessed.add(receiving.abbr); // a return TD counts as a possession

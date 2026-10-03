@@ -1,68 +1,106 @@
 import { describe, expect, it } from "vitest";
-import { Rng, generateTeams, personnelOptions, pointsForEvent, simulateGame, startCoachedGame, type CoachCall, type GameResult, type Personnel, type Team } from "../src/index.ts";
+import {
+  Rng,
+  TIMEOUT_WINDOW,
+  generateTeams,
+  halfSecondsLeft,
+  packageOptions,
+  personnelOptions,
+  pointsForEvent,
+  simulateGame,
+  startCoachedGame,
+  type CoachCall,
+  type GamePrompt,
+  type GameResult,
+  type Team,
+} from "../src/index.ts";
 
 const [HOME, AWAY] = generateTeams(new Rng("coached-test"), 2) as [Team, Team];
 
+type Picker = (prompt: GamePrompt, rng: Rng) => CoachCall | undefined;
+
 /** Play a coached game to the end, answering each prompt with `pick` (undefined = the coaches' call). */
-function coach(seed: string, team: string, pick: (options: CoachCall["call"][], rng: Rng, groups: Personnel[]) => CoachCall | undefined): GameResult {
+function coach(seed: string, team: string, pick: Picker, home = HOME, away = AWAY): { result: GameResult; prompts: GamePrompt[] } {
   const rng = new Rng(`${seed}:picks`);
-  const game = startCoachedGame(HOME, AWAY, seed, team);
-  let snaps = 0;
+  const game = startCoachedGame(home, away, seed, team);
+  const prompts: GamePrompt[] = [];
   while (game.prompt) {
-    game.answer(pick(game.prompt.options, rng, game.prompt.personnelOptions));
-    if (++snaps > 400) throw new Error("runaway game");
+    prompts.push(game.prompt);
+    game.answer(pick(game.prompt, rng));
+    if (prompts.length > 1000) throw new Error("runaway game");
   }
-  return game.result!;
+  return { result: game.result!, prompts };
 }
+
+/** Say exactly what the coaches would. */
+const echo: Picker = (p) => {
+  switch (p.kind) {
+    case "offense":
+      return { call: p.suggestion, personnel: p.formation.personnel, set: p.formation.set };
+    case "defense":
+      return { package: p.formation.package, coverage: p.formation.coverage, blitz: p.formation.blitzers.length };
+    case "timeout":
+      return { timeout: p.suggestion };
+    case "try":
+      return { try: p.suggestion };
+  }
+};
+
+/** Any legal call. */
+const random: Picker = (p, rng) => {
+  switch (p.kind) {
+    case "offense":
+      return { call: rng.pick(p.options), ...(rng.chance(0.5) ? { personnel: rng.pick(p.personnelOptions), set: rng.pick(["shotgun", "under_center"] as const) } : {}) };
+    case "defense":
+      return { package: rng.pick(p.packageOptions), coverage: rng.pick(p.coverageOptions), blitz: rng.int(0, p.maxBlitz) };
+    case "timeout":
+      return { timeout: rng.chance(0.5) };
+    case "try":
+      return { try: rng.chance(0.5) ? "two_point" : "kick" };
+  }
+};
 
 const withoutCoach = ({ coached: _c, ...rest }: GameResult) => rest;
 
 describe("coached games", () => {
-  it("pause only for the coached team's snaps on offense", () => {
-    const game = startCoachedGame(HOME, AWAY, "pause", HOME.abbr);
-    expect(game.prompt).not.toBeNull();
-    let n = 0;
-    while (game.prompt) {
-      expect(game.prompt.team).toBe(HOME.abbr);
-      expect(game.prompt.options).toContain(game.prompt.suggestion);
-      expect(game.prompt.options).toEqual(expect.arrayContaining(["run", "pass", "kneel"]));
-      game.answer();
-      n++;
+  it("pause only for the coached team's own calls", () => {
+    const { prompts } = coach("pause", HOME.abbr, () => undefined);
+    for (const p of prompts) expect(p.team).toBe(HOME.abbr);
+    const kinds = new Set(prompts.map((p) => p.kind));
+    expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try"]));
+    for (const p of prompts) if (p.kind === "offense") expect(p.options).toContain(p.suggestion);
+    // Timeouts come up only late in a half (or when the head coach would call one), with the clock running and one to spend.
+    for (const p of prompts.filter((x) => x.kind === "timeout")) {
+      expect(p.suggestion || halfSecondsLeft(p.situation) <= TIMEOUT_WINDOW).toBe(true);
+      expect(p.clockRunning).toBe(true);
+      expect(p.timeouts.own).toBeGreaterThan(0);
     }
-    // Every offensive call HOME made in the plain game was put to the coach.
-    expect(n).toBeGreaterThan(40);
-    expect(game.result!.coached!.calls).toHaveLength(n);
   });
 
-  it("taking every suggestion plays the same game as nobody coaching", () => {
+  it("taking (or repeating) every suggestion plays the same game as nobody coaching", () => {
     for (const seed of ["a", "b", "c", "d"]) {
       const plain = simulateGame(HOME, AWAY, seed);
-      expect(withoutCoach(coach(seed, HOME.abbr, () => undefined))).toEqual(plain);
-      expect(withoutCoach(coach(seed, AWAY.abbr, () => undefined))).toEqual(plain);
+      for (const team of [HOME.abbr, AWAY.abbr]) {
+        expect(withoutCoach(coach(seed, team, () => undefined).result)).toEqual(plain);
+        expect(withoutCoach(coach(seed, team, echo).result)).toEqual(plain);
+      }
     }
   });
 
   it("the same calls give the same game, replayed or picked up halfway", () => {
-    const pick = (options: CoachCall["call"][], rng: Rng) => ({ call: rng.pick(options.filter((o) => o === "run" || o === "pass")) });
-    const played = coach("replay", HOME.abbr, pick);
+    const { result: played } = coach("replay", HOME.abbr, random);
     const calls = played.coached!.calls;
     expect(simulateGame(HOME, AWAY, "replay", { coach: HOME.abbr, calls })).toEqual(played);
-    // Close the app halfway: start again from the answers so far, then finish with the rest.
     const half = Math.floor(calls.length / 2);
     const resumed = startCoachedGame(HOME, AWAY, "replay", HOME.abbr, {}, calls.slice(0, half));
     for (const c of calls.slice(half)) resumed.answer(c ?? undefined);
     expect(resumed.result).toEqual(played);
-    // Different calls, different game.
     expect(withoutCoach(played)).not.toEqual(simulateGame(HOME, AWAY, "replay"));
   });
 
   it("any legal call keeps the game sound", () => {
     for (let i = 0; i < 25; i++) {
-      const g = coach(`fuzz-${i}`, i % 2 ? HOME.abbr : AWAY.abbr, (options, rng, groups) => ({
-        call: rng.pick(options),
-        ...(rng.chance(0.5) ? { personnel: rng.pick(groups), set: rng.pick(["shotgun", "under_center"] as const) } : {}),
-      }));
-      // The score is exactly the sum of the plays' points.
+      const { result: g } = coach(`fuzz-${i}`, i % 2 ? HOME.abbr : AWAY.abbr, random);
       const total: Record<string, number> = { [HOME.abbr]: 0, [AWAY.abbr]: 0 };
       for (const p of g.plays) for (const [t, pts] of Object.entries(pointsForEvent(p.event))) total[t]! += pts;
       expect(total).toEqual(g.score);
@@ -70,32 +108,61 @@ describe("coached games", () => {
     }
   });
 
-  it("refuses a call that isn't open", () => {
+  it("refuses a call that isn't open, or an answer to a different question", () => {
     const game = startCoachedGame(HOME, AWAY, "refuse", HOME.abbr);
-    while (game.prompt && game.prompt.situation.down === 4) game.answer();
-    expect(game.prompt!.options).not.toContain("punt");
+    while (game.prompt && !(game.prompt.kind === "offense" && game.prompt.situation.down < 4)) game.answer();
+    expect(game.prompt!.kind === "offense" && game.prompt!.options.includes("punt")).toBe(false);
     expect(() => game.answer({ call: "punt" })).toThrow();
+    expect(() => game.answer({ timeout: true })).toThrow();
+    // Turned away, the game is still waiting on the same snap, and carries on.
+    expect(game.prompt!.kind).toBe("offense");
+    game.answer({ call: "run" });
+    while (game.prompt) game.answer();
+    expect(game.result!.coached!.calls[0]).toEqual({ call: "run" });
   });
 
-  it("lines up in the formation you call, and the defense sees it", () => {
-    const g = coach("formation", HOME.abbr, (options) => ({ call: options.includes("run") ? "run" : options[0]!, personnel: "21", set: "under_center" }));
-    const mine = g.plays.map((p) => p.event).filter((e) => (e.kind === "run" || e.kind === "pass") && e.offense === HOME.abbr && e.start.down > 0);
+  it("lines up in the formation you call on offense", () => {
+    const { result: g } = coach("formation", HOME.abbr, (p) => (p.kind === "offense" ? { call: p.options.includes("run") ? "run" : p.options[0]!, personnel: "21", set: "under_center" } : undefined));
+    const mine = g.plays.map((p) => p.event).filter((e) => (e.kind === "run" || e.kind === "pass") && e.offense === HOME.abbr);
     expect(mine.length).toBeGreaterThan(30);
-    for (const e of mine) if ("formation" in e && e.formation) expect([e.formation.offense.personnel, e.formation.offense.set]).toEqual(["21", "under_center"]);
+    for (const e of mine) if (e.kind === "run" || e.kind === "pass") expect([e.formation.offense.personnel, e.formation.offense.set]).toEqual(["21", "under_center"]);
   });
 
-  it("only offers personnel the depth chart can fill", () => {
+  it("lines up in the defense you call", () => {
+    const { result: g, prompts } = coach("defense", HOME.abbr, (p) => (p.kind === "defense" ? { package: "nickel", coverage: "cover_0", blitz: 2 } : undefined));
+    expect(prompts.filter((p) => p.kind === "defense").length).toBeGreaterThan(30);
+    const theirs = g.plays.map((p) => p.event).filter((e) => (e.kind === "run" || e.kind === "pass") && e.offense === AWAY.abbr);
+    for (const e of theirs) {
+      if (e.kind !== "run" && e.kind !== "pass") continue;
+      expect([e.formation.defense.package, e.formation.defense.coverage, e.formation.defense.blitzers.length]).toEqual(["nickel", "cover_0", 2]);
+    }
+  });
+
+  it("calls your timeouts and your tries", () => {
+    const { result: g, prompts } = coach("clock", HOME.abbr, (p) => (p.kind === "timeout" ? { timeout: true } : p.kind === "try" ? { try: "two_point" } : undefined));
+    const asked = prompts.filter((p) => p.kind === "timeout").length;
+    expect(asked).toBeGreaterThan(0);
+    const mine = g.plays.map((p) => p.event).filter((e) => e.kind === "timeout" && e.team === HOME.abbr);
+    expect(mine.length).toBeGreaterThan(0);
+    const tries = g.plays.map((p) => p.event).filter((e) => e.kind === "conversion" && e.team === HOME.abbr);
+    expect(tries.length).toBe(prompts.filter((p) => p.kind === "try").length);
+    for (const e of tries) if (e.kind === "conversion") expect(e.method).toBe("two_point");
+  });
+
+  it("only offers personnel and packages the depth chart can fill", () => {
     expect(personnelOptions(HOME)).toEqual(["10", "11", "12", "13", "21"]);
-    const thin: Team = { ...HOME, depthChart: { ...HOME.depthChart, TE: HOME.depthChart.TE.slice(0, 2) } };
+    const thin: Team = { ...HOME, depthChart: { ...HOME.depthChart, TE: HOME.depthChart.TE.slice(0, 2), CB: HOME.depthChart.CB.slice(0, 3) } };
     expect(personnelOptions(thin)).not.toContain("13");
+    expect(packageOptions(thin)).not.toContain("dime");
     const game = startCoachedGame(thin, AWAY, "thin", thin.abbr);
+    while (game.prompt && game.prompt.kind !== "offense") game.answer();
     expect(() => game.answer({ call: "run", personnel: "13" })).toThrow();
   });
 
   it("hands a drive to the coordinator", () => {
     const game = startCoachedGame(HOME, AWAY, "auto", HOME.abbr);
     const first = game.prompt!.drive;
-    game.answer({ call: "pass" });
+    game.answer();
     const before = game.calls.length;
     game.autoDrive();
     expect(game.prompt === null || game.prompt.drive !== first).toBe(true);

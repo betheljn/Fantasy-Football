@@ -10,7 +10,20 @@ import { simulatePass } from "../play/pass.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
 import { chooseDefense, chooseOffense } from "./scheme.ts";
-import { buildOffense, PERSONNEL, type OffenseFormation, type OffenseSet, type Personnel } from "../play/formation.ts";
+import {
+  buildDefense,
+  buildOffense,
+  COVERAGES,
+  PACKAGES,
+  PERSONNEL,
+  pickBlitzers,
+  type Coverage,
+  type DefenseFormation,
+  type DefensePackage,
+  type OffenseFormation,
+  type OffenseSet,
+  type Personnel,
+} from "../play/formation.ts";
 import { clockMistakeChance } from "../play/coaching.ts";
 import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
@@ -59,20 +72,25 @@ export interface DriveInput {
   homeTeam?: string;
   /** Checks each play for injuries; the hurt leave the field for the next snap. */
   injuries?: InjuryTracker;
-  /** A team whose calls are made by a person: the drive pauses before each of its snaps on offense. */
+  /** A team whose calls are made by a person: the drive pauses for its calls (see SnapPrompt). */
   coach?: string;
 }
 
-/** A coached team's turn to call a play: the situation, what its coaches would call, and what it may call. */
-export interface SnapPrompt {
-  kind: "offense";
+/** What every pause shows: whose call it is and the state of the game. */
+interface PromptBase {
   team: string;
   opponent: string;
+  /** The down, distance and spot of the snap (from the offense's side), or of the try. */
   situation: Situation;
   /** Coached team's score minus the opponent's. */
   margin: number;
   clockRunning: boolean;
   timeouts: { own: number; opponent: number };
+}
+
+/** On offense: the play, and the personnel and alignment to run it from. */
+export interface OffensePrompt extends PromptBase {
+  kind: "offense";
   /** The personnel and alignment the coaches sent in (answering nothing keeps it). */
   formation: OffenseFormation;
   /** Personnel groups the depth chart can fill. */
@@ -82,11 +100,127 @@ export interface SnapPrompt {
   options: PlayCall[];
 }
 
-/** A person's answer to a prompt: the play, and optionally a different personnel group or alignment. */
-export interface CoachCall {
+/** On defense, before the opponent's run or pass: how to line up against what they sent in. */
+export interface DefensePrompt extends PromptBase {
+  kind: "defense";
+  /** What the offense lined up in. */
+  offense: { personnel: Personnel; set: OffenseSet };
+  /** The coordinator's call (answering nothing keeps it). */
+  formation: DefenseFormation;
+  packageOptions: DefensePackage[];
+  coverageOptions: Coverage[];
+  /** Most extra rushers that may be sent. */
+  maxBlitz: number;
+}
+
+/** Late in a half with the clock running: stop it with a timeout? */
+export interface TimeoutPrompt extends PromptBase {
+  kind: "timeout";
+  /** Whether the head coach would call one. */
+  suggestion: boolean;
+}
+
+/** After your touchdown: kick the extra point or go for two. */
+export interface TryPrompt extends PromptBase {
+  kind: "try";
+  suggestion: TryChoice;
+}
+
+export type TryChoice = "kick" | "two_point";
+
+/** A pause in a coached game, waiting on a call. */
+export type SnapPrompt = OffensePrompt | DefensePrompt | TimeoutPrompt | TryPrompt;
+
+/** Answer to an OffensePrompt: the play, and optionally a different personnel group or alignment. */
+export interface OffenseCall {
   call: PlayCall;
   personnel?: Personnel;
   set?: OffenseSet;
+}
+/** Answer to a DefensePrompt: anything left out keeps the coordinator's call. */
+export interface DefenseCall {
+  package?: DefensePackage;
+  coverage?: Coverage;
+  /** Extra rushers (0 to maxBlitz). */
+  blitz?: number;
+}
+export interface TimeoutCall {
+  timeout: boolean;
+}
+export interface TryCall {
+  try: TryChoice;
+}
+/** A person's answer to a prompt (undefined anywhere = the coaches' call). */
+export type CoachCall = OffenseCall | DefenseCall | TimeoutCall | TryCall;
+
+/** Timeouts are put to the coach in the last this-many seconds of a half (and whenever the head coach would call one). */
+export const TIMEOUT_WINDOW = 120;
+/** Most extra rushers a coach may send. */
+export const MAX_BLITZ = 2;
+
+function wrongAnswer(kind: SnapPrompt["kind"]): never {
+  throw new Error(`That isn't an answer to a ${kind} call`);
+}
+
+/** Throw if `answer` isn't a legal answer to `prompt` (undefined always is: the coaches' call). */
+export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): void {
+  if (!answer) return;
+  switch (prompt.kind) {
+    case "offense": {
+      if (!("call" in answer)) wrongAnswer("offense");
+      if (!prompt.options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
+      const personnel = answer.personnel ?? prompt.formation.personnel;
+      if (personnel !== prompt.formation.personnel && !prompt.personnelOptions.includes(personnel)) throw new Error(`Can't line up in ${personnel} personnel`);
+      return;
+    }
+    case "defense": {
+      if ("call" in answer || "timeout" in answer || "try" in answer) wrongAnswer("defense");
+      const d = answer as DefenseCall;
+      if (d.package && d.package !== prompt.formation.package && !prompt.packageOptions.includes(d.package)) throw new Error(`Can't line up in ${d.package}`);
+      if (d.coverage && !prompt.coverageOptions.includes(d.coverage)) throw new Error(`No such coverage: ${d.coverage}`);
+      if (d.blitz !== undefined && (!Number.isInteger(d.blitz) || d.blitz < 0 || d.blitz > prompt.maxBlitz)) throw new Error(`Can't send ${d.blitz} blitzers`);
+      return;
+    }
+    case "timeout":
+      if (!("timeout" in answer)) wrongAnswer("timeout");
+      return;
+    case "try":
+      if (!("try" in answer) || (answer.try !== "kick" && answer.try !== "two_point")) wrongAnswer("try");
+      return;
+  }
+}
+
+/** Defensive packages a team can put on the field (enough at each position on its depth chart). */
+export function packageOptions(team: Team): DefensePackage[] {
+  const have = (pos: "DL" | "LB" | "CB" | "S") => team.depthChart[pos].length;
+  return (Object.keys(PACKAGES) as DefensePackage[]).filter((k) => {
+    const n = PACKAGES[k];
+    return have("DL") >= n.dl && have("LB") >= n.lb && have("CB") >= n.cb && have("S") >= n.s;
+  });
+}
+
+/** The try's situation: a two-point snap from the 2. */
+const TRY_SITUATION = (quarter: number, clock: number): Situation => ({ quarter, clock, down: 1, distance: 2, yardline: 98 });
+
+/** The pause before a coached team's try. */
+export function tryPrompt(team: Team, opponent: string, quarter: number, clock: number, marginAfterTd: number, timeouts: Record<string, number>): TryPrompt {
+  return {
+    kind: "try",
+    team: team.abbr,
+    opponent,
+    situation: TRY_SITUATION(quarter, clock),
+    margin: marginAfterTd,
+    clockRunning: false,
+    timeouts: { own: timeouts[team.abbr] ?? 0, opponent: timeouts[opponent] ?? 0 },
+    suggestion: goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness) ? "two_point" : "kick",
+  };
+}
+
+/** Read a try answer (undefined = the coaches' call). */
+export function tryAnswer(answer: CoachCall | undefined): boolean | undefined {
+  if (!answer) return undefined;
+  if (!("try" in answer)) wrongAnswer("try");
+  return answer.try === "two_point";
 }
 
 /** Personnel groups a team can put on the field (enough backs, tight ends and receivers on its depth chart). */
@@ -189,6 +323,20 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     defenseTimeouts: timeouts[def]!,
   });
 
+  /** The common part of a pause, from `team`'s side. */
+  const base = (team: string) => {
+    const opponent = team === off ? def : off;
+    const m = margin();
+    return {
+      team,
+      opponent,
+      situation: { quarter, clock, down, distance, yardline },
+      margin: team === off ? m : -m,
+      clockRunning,
+      timeouts: { own: timeouts[team]!, opponent: timeouts[opponent]! },
+    };
+  };
+
   const finish = (result: DriveResultType, next: NextPossession): DriveResult => {
     // Plays wiped out by an accepted penalty don't count as plays or yards.
     const scrimmage = plays.filter(
@@ -212,10 +360,11 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
   };
 
   /** The try after a touchdown by `team` (offense or defense); the TD itself is already recorded. */
-  const conversion = (team: Team, other: Team) => {
+  const conversion = function* (team: Team, other: Team): Generator<SnapPrompt, void, CoachCall | undefined> {
     const marginAfterTd =
       input.score[team.abbr]! + points[team.abbr]! - (input.score[other.abbr]! + points[other.abbr]!);
-    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd), clock);
+    const two = input.coach === team.abbr ? tryAnswer(yield tryPrompt(team, other.abbr, quarter, clock, marginAfterTd, timeouts)) : undefined;
+    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two), clock);
   };
 
   for (;;) {
@@ -228,18 +377,14 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       const groups = personnelOptions(offense);
       const answer = yield {
         kind: "offense",
-        team: off,
-        opponent: def,
-        situation: { ...cc.situation },
-        margin: cc.margin,
-        clockRunning,
-        timeouts: { own: timeouts[off]!, opponent: timeouts[def]! },
+        ...base(off),
         formation: offenseFormation,
         personnelOptions: groups,
         suggestion: call,
         options,
       };
       if (answer) {
+        if (!("call" in answer)) wrongAnswer("offense");
         if (!options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
         call = answer.call;
         const personnel = answer.personnel ?? offenseFormation.personnel;
@@ -253,12 +398,38 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       }
     }
     const scrimmageCall = call === "run" || call === "pass";
+    let defenseFormation = scrimmageCall ? chooseDefense(rng, defense, cc, offenseFormation) : undefined;
+    if (defenseFormation && input.coach === def) {
+      const answer = yield {
+        kind: "defense",
+        ...base(def),
+        offense: { personnel: offenseFormation.personnel, set: offenseFormation.set },
+        formation: defenseFormation,
+        packageOptions: packageOptions(defense),
+        coverageOptions: Object.keys(COVERAGES) as Coverage[],
+        maxBlitz: MAX_BLITZ,
+      };
+      if (answer) {
+        if (!("package" in answer || "coverage" in answer || "blitz" in answer) && Object.keys(answer).length > 0) wrongAnswer("defense");
+        const d = answer as DefenseCall;
+        const pkg = d.package ?? defenseFormation.package;
+        const coverage = d.coverage ?? defenseFormation.coverage;
+        const blitz = d.blitz ?? defenseFormation.blitzers.length;
+        if (pkg !== defenseFormation.package || coverage !== defenseFormation.coverage || blitz !== defenseFormation.blitzers.length) {
+          if (!packageOptions(defense).includes(pkg)) throw new Error(`Can't line up in ${pkg}`);
+          if (!(coverage in COVERAGES)) throw new Error(`No such coverage: ${coverage}`);
+          if (!Number.isInteger(blitz) || blitz < 0 || blitz > MAX_BLITZ) throw new Error(`Can't send ${blitz} blitzers`);
+          const front = buildDefense(defense, pkg, coverage);
+          defenseFormation = buildDefense(defense, pkg, coverage, pickBlitzers(rng, front, blitz));
+        }
+      }
+    }
     const ctx: PlayContext = {
       offense,
       defense,
       situation: cc.situation,
       homeField,
-      ...(scrimmageCall ? { formations: { offense: offenseFormation, defense: chooseDefense(rng, defense, cc, offenseFormation) } } : {}),
+      ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
     };
 
     // Pre-snap foul: no play, walk it off, snap again. The clock is left alone.
@@ -291,7 +462,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
 
     if (event.kind === "punt") {
       if (event.touchdown) {
-        conversion(defense, offense);
+        yield* conversion(defense, offense);
         return finish("punt_return_touchdown", { kind: "kickoff", kickingTeam: def });
       }
       if (event.safety) return finish("safety", { kind: "free_kick", kickingTeam: off });
@@ -312,13 +483,13 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     } else if (event.kind === "run" || event.kind === "pass") {
       if (event.turnover) {
         if (event.turnover.touchdown) {
-          conversion(defense, offense);
+          yield* conversion(defense, offense);
           return finish("defensive_touchdown", { kind: "kickoff", kickingTeam: def });
         }
         return finish("turnover", { kind: "scrimmage", team: def, yardline: event.turnover.endYardline });
       }
       if (event.touchdown) {
-        conversion(offense, defense);
+        yield* conversion(offense, defense);
         return finish("touchdown", { kind: "kickoff", kickingTeam: off });
       }
       if (event.safety) {
@@ -352,6 +523,15 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       const callerTeam = caller === "offense" ? offense : caller === "defense" ? defense : undefined;
       const miss = clockMistakeChance(callerTeam);
       if (caller && miss > 0 && rng.chance(miss)) caller = null;
+      // A coached team decides its own timeouts late in a half (unless the other side just stopped the clock).
+      const side = input.coach === off ? "offense" : input.coach === def ? "defense" : null;
+      if (side && caller !== (side === "offense" ? "defense" : "offense") && timeouts[input.coach!]! > 0 && clock > 0 && (caller === side || halfSecondsLeft(next.situation) <= TIMEOUT_WINDOW)) {
+        const answer = yield { kind: "timeout", ...base(input.coach!), suggestion: caller === side };
+        if (answer) {
+          if (!("timeout" in answer)) wrongAnswer("timeout");
+          caller = answer.timeout ? side : null;
+        }
+      }
       if (caller) {
         const team = caller === "offense" ? off : def;
         timeouts[team]! -= 1;
@@ -416,9 +596,11 @@ export function simulateConversion(
   quarter: number,
   clock: number,
   marginAfterTd: number,
+  /** A coach's call; otherwise the head coach goes by the chart. */
+  twoPoint?: boolean,
 ): ConversionEvent {
   const base = { kind: "conversion" as const, offense: team.abbr, defense: other.abbr, team: team.abbr, duration: 0 };
-  if (goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness)) {
+  if (twoPoint ?? goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness)) {
     const start: Situation = { quarter, clock, down: 1, distance: 2, yardline: 98 };
     const ctx: PlayContext = { offense: team, defense: other, situation: start };
     const play = rng.chance(0.6) ? simulatePass(rng, ctx) : simulateRun(rng, ctx);
