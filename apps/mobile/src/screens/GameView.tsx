@@ -1,9 +1,13 @@
-// Watch a game: live scoreboard, the 2D field, the play's result, playback
-// controls, and below it the play-by-play and box score - all kept in step with
-// the play on the field, so nothing ahead is given away.
-import { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { lookupFor, type GameResult, type Team } from "@dynasty/sim";
+// Watch a game: the scoreboard in both teams' colors, the win-chance bar, the
+// 2D field, the play's result and playback controls; below it the pregame tale
+// of the tape, the play-by-play (or just the big plays), the leaders and the
+// box score, and at the final whistle a recap. All kept in step with the play
+// on the field, so nothing ahead is given away.
+import { useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
+import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
 import { teamColor, uniform } from "../field/colors";
@@ -12,16 +16,21 @@ import { buildFeed, type FeedRow } from "../game/feed";
 import { boxScoreAfter, lineScoreAfter, scoreAfter } from "../game/live";
 import { prepareGame } from "../game/playback";
 import { useTheme, type Theme } from "../theme";
+import { Leaders, Pregame, Recap, Scoreboard, WinBar, type GameContext } from "./game/parts";
+
+type Tab = "preview" | "plays" | "leaders" | "box" | "recap";
 
 /** Watch one finished game (the sim has already decided it; this only replays it). */
-export function GameView({ game, home, away }: { game: GameResult; home: Team; away: Team }) {
+export function GameView({ game, home, away, context, finish }: { game: GameResult; home: Team; away: Team; context?: GameContext; finish?: { label: string; onPress: () => void } }) {
   const theme = useTheme();
   const s = styles(theme);
-  const [tab, setTab] = useState<"plays" | "box">("plays");
-  const { who, feed, plays } = useMemo(() => {
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>("preview");
+  const [bigOnly, setBigOnly] = useState(false);
+  const { who, feed, plays, wp } = useMemo(() => {
     const who = lookupFor(home, away);
-    return { who, feed: buildFeed(game, who), plays: prepareGame(game, who) };
-  }, [game, home, away]);
+    return { who, feed: buildFeed(game, who), plays: prepareGame(game, who), wp: winChances(game, pregameEdge(home, away, context?.neutralSite)) };
+  }, [game, home, away, context?.neutralSite]);
 
   const pb = usePlayback(plays);
   const play = pb.play;
@@ -31,12 +40,21 @@ export function GameView({ game, home, away }: { game: GameResult; home: Team; a
 
   const score = scoreAfter(game, revealed);
   const line = useMemo(() => lineScoreAfter(game, revealed), [game, revealed]);
-  const box = useMemo(() => (tab === "box" ? boxScoreAfter(game, revealed) : null), [game, revealed, tab]);
-  const visibleFeed = useMemo(() => feed.filter((r) => r.index <= revealed).reverse(), [feed, revealed]);
+  const box = useMemo(() => (tab === "box" || tab === "leaders" || tab === "recap" ? boxScoreAfter(game, revealed) : null), [game, revealed, tab]);
+  const visibleFeed = useMemo(() => feed.filter((r) => r.index <= revealed && (!bigOnly || (r.kind === "play" && r.big))).reverse(), [feed, revealed, bigOnly]);
+  const chance = revealed < 0 ? wp.pregame : wp.after[revealed]!;
+  // The tabs follow the game: the preview before kickoff, the plays once it starts, the recap at the end.
+  const started = revealed >= 0;
+  useEffect(() => {
+    if (atEnd) setTab("recap");
+    else if (started && (tab === "preview" || tab === "recap")) setTab("plays");
+    else if (!started && tab !== "preview") setTab("preview");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atEnd, started]);
 
   const { width: winW, height: winH } = useWindowDimensions();
   const fieldW = Math.min(winW - 32, 480);
-  const fieldH = Math.round(Math.max(200, Math.min(fieldW * 1.1, winH * 0.36)));
+  const fieldH = Math.round(Math.max(200, Math.min(fieldW * 1.1, winH * 0.3)));
 
   const jumpTo = (index: number) => {
     const to = plays.findIndex((p) => p.index >= index);
@@ -49,7 +67,7 @@ export function GameView({ game, home, away }: { game: GameResult; home: Team; a
     const current = play?.index === item.index && pb.done;
     return (
       <Pressable onPress={() => jumpTo(item.index)} accessibilityRole="button" accessibilityHint="Replay this play on the field">
-        <View style={[s.play, item.scoring && s.scoring, current && s.current]}>
+        <View style={[s.play, item.big && s.big, item.scoring && s.scoring, current && s.current]}>
           <View style={s.playHead}>
             <Text style={s.clock}>{item.clock}</Text>
             <Text style={s.team}>{item.team}</Text>
@@ -68,18 +86,16 @@ export function GameView({ game, home, away }: { game: GameResult; home: Team; a
   return (
     <View style={s.screen}>
 
-      <View style={s.scoreboard}>
-        <TeamScore abbr={game.away} score={score[game.away]!} hasBall={!atEnd && play?.offense === game.away} theme={theme} />
-        <View style={s.status}>
-          <Text style={s.statusMain}>{atEnd ? `Final${game.overtime ? "/OT" : ""}` : (play?.clock ?? "")}</Text>
-          <Text style={s.statusSub} numberOfLines={1}>
-            {atEnd ? "" : play?.situation || " "}
-          </Text>
-        </View>
-        <TeamScore abbr={game.home} score={score[game.home]!} hasBall={!atEnd && play?.offense === game.home} theme={theme} right />
-      </View>
+      <Scoreboard
+        game={game}
+        score={score}
+        possession={atEnd || !play ? null : play.offense}
+        status={atEnd ? `Final${game.overtime ? " OT" : ""}` : !started ? (context?.title ?? "Kickoff") : (play?.clock ?? "")}
+        sub={atEnd ? (context?.title ?? "") : !started ? "Press play" : play?.situation || " "}
+      />
+      <WinBar game={game} home={chance} />
 
-      {play ? (
+      {play && tab !== "recap" ? (
         <View style={s.fieldWrap}>
           <FieldView
             play={play}
@@ -93,9 +109,11 @@ export function GameView({ game, home, away }: { game: GameResult; home: Team; a
         </View>
       ) : null}
 
+      {tab === "recap" ? null : (
       <Text style={s.caption} numberOfLines={3}>
         {!play ? "" : pb.done ? play.caption : pb.playing ? "…" : `${play.offense} ball${play.situation ? `, ${play.situation}` : ""}. Press play.`}
       </Text>
+      )}
 
       <View style={s.controls}>
         <Control label="◀︎" hint="Previous play" onPress={pb.prev} theme={theme} />
@@ -105,39 +123,47 @@ export function GameView({ game, home, away }: { game: GameResult; home: Team; a
         <Control label="Final" hint="Skip to the end of the game" onPress={pb.toEnd} theme={theme} />
       </View>
 
-      <View style={s.tabs}>
-        {(["plays", "box"] as const).map((v) => (
-          <Pressable key={v} onPress={() => setTab(v)} style={[s.tab, tab === v && s.tabOn]} accessibilityRole="tab" accessibilityState={{ selected: tab === v }}>
-            <Text style={[s.tabText, tab === v && s.tabTextOn]}>{v === "plays" ? "Plays" : "Box score"}</Text>
-          </Pressable>
-        ))}
+      <View style={{ marginHorizontal: 12, marginTop: 10 }}>
+        <Segmented
+          options={[
+            ...(atEnd ? [{ key: "recap" as const, label: "Recap" }] : started ? [] : [{ key: "preview" as const, label: "Preview" }]),
+            { key: "plays" as const, label: "Plays" },
+            { key: "leaders" as const, label: "Leaders" },
+            { key: "box" as const, label: "Box" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </View>
 
       <View style={s.bottom}>
-        {tab === "plays" ? (
-          visibleFeed.length > 0 ? (
-            <FlatList inverted data={visibleFeed} keyExtractor={(r) => r.key} renderItem={renderRow} contentContainerStyle={s.feed} initialNumToRender={20} />
-          ) : (
-            <Text style={s.empty}>Plays appear here as they happen.</Text>
-          )
+        {tab === "preview" ? (
+          <ScrollView>
+            <Pregame home={home} away={away} context={context} chance={wp.pregame} />
+          </ScrollView>
+        ) : tab === "recap" && box ? (
+          <ScrollView>
+            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} />
+          </ScrollView>
+        ) : tab === "leaders" && box ? (
+          <ScrollView>
+            <Leaders game={game} box={box} who={who} onPlayer={(id) => router.push(`/player/${id}`)} />
+          </ScrollView>
+        ) : tab === "plays" ? (
+          <View style={{ flex: 1 }}>
+            <Pressable onPress={() => setBigOnly(!bigOnly)} accessibilityRole="switch" accessibilityState={{ checked: bigOnly }} style={{ alignSelf: "flex-end", marginRight: 16, marginTop: 6, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ color: bigOnly ? theme.accent : theme.muted, fontWeight: "700", fontSize: 12 }}>{bigOnly ? "★ Big plays only" : "☆ Big plays only"}</Text>
+            </Pressable>
+            {visibleFeed.length > 0 ? (
+              <FlatList inverted data={visibleFeed} keyExtractor={(r) => r.key} renderItem={renderRow} contentContainerStyle={s.feed} initialNumToRender={20} />
+            ) : (
+              <Text style={s.empty}>{bigOnly && started ? "No big plays yet." : "Plays appear here as they happen."}</Text>
+            )}
+          </View>
         ) : box ? (
           <BoxScoreView game={game} box={box} line={line} who={who} />
         ) : null}
       </View>
-    </View>
-  );
-}
-
-function TeamScore({ abbr, score, hasBall, theme, right }: { abbr: string; score: number; hasBall: boolean; theme: Theme; right?: boolean }) {
-  const dot = <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: hasBall ? theme.accent : "transparent" }} />;
-  return (
-    <View style={{ flexDirection: right ? "row-reverse" : "row", alignItems: "center", gap: 8, minWidth: 96 }}>
-      <View style={{ width: 6, height: 30, borderRadius: 3, backgroundColor: teamColor(abbr) }} />
-      <View style={{ alignItems: right ? "flex-end" : "flex-start" }}>
-        <Text style={{ fontSize: 13, fontWeight: "700", color: theme.muted }}>{abbr}</Text>
-        <Text style={{ fontSize: 26, fontWeight: "800", color: theme.text, fontVariant: ["tabular-nums"] }}>{score}</Text>
-      </View>
-      {dot}
     </View>
   );
 }
@@ -180,6 +206,7 @@ const styles = (t: Theme) =>
     drive: { marginTop: 6, marginBottom: 4, fontSize: 12, color: t.muted },
     play: { paddingVertical: 7, paddingHorizontal: 10, marginBottom: 4, backgroundColor: t.card, borderRadius: 8, borderWidth: 1, borderColor: "transparent" },
     scoring: { backgroundColor: t.scoreBg },
+    big: { borderLeftWidth: 3, borderLeftColor: t.gold },
     current: { borderColor: t.accent },
     playHead: { flexDirection: "row", gap: 8, marginBottom: 2 },
     clock: { fontSize: 12, color: t.muted, fontVariant: ["tabular-nums"] },

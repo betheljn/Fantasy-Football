@@ -18,6 +18,7 @@ export * from "./drive/drive.ts";
 export * from "./play/kickoff.ts";
 export * from "./play/scoring.ts";
 export * from "./game/game.ts";
+export * from "./game/winprob.ts";
 export * from "./stats/boxscore.ts";
 export * from "./feed/gamebook.ts";
 export * from "./play/penalties.ts";

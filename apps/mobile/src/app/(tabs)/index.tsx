@@ -266,11 +266,15 @@ function NextUp({ data }: { data: LeagueData }) {
       ) : (
         <Text style={{ color: t.text, fontSize: 17, fontWeight: "700" }}>Bye week: your team rests.</Text>
       )}
-      <Button label={upcoming ? `Play week ${nextWeek}` : `Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} primary />
+      {upcoming ? (
+        <Button label="Play your game" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} primary />
+      ) : (
+        <Button label={`Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} primary />
+      )}
       <View style={{ flexDirection: "row", gap: 8 }}>
         {upcoming ? (
           <View style={{ flex: 1 }}>
-            <Button label="Watch your game" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} small />
+            <Button label={`Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} small />
           </View>
         ) : null}
         <View style={{ flex: 1 }}>

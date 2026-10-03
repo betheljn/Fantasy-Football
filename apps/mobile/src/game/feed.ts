@@ -15,7 +15,7 @@ import {
 export type FeedRow =
   | { kind: "period"; key: string; index: number; label: string }
   | { kind: "drive"; key: string; index: number; team: string; text: string }
-  | { kind: "play"; key: string; index: number; team: string; clock: string; situation: string; text: string; scoring: boolean; score: string };
+  | { kind: "play"; key: string; index: number; team: string; clock: string; situation: string; text: string; scoring: boolean; score: string; big: boolean };
 
 const PERIOD_NAMES = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 const SCRIMMAGE = new Set(["run", "pass", "kneel", "spike", "punt", "field_goal", "penalty"]);
@@ -45,6 +45,7 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
       text: describeGamePlay(p, who),
       scoring: Object.keys(pointsForEvent(e)).length > 0,
       score: `${game.away} ${p.score[game.away]} – ${game.home} ${p.score[game.home]}`,
+      big: isBigPlay(p.event),
     });
     // The drive's summary only after its last play, so it never gives away how a drive ends.
     const ending = driveEnd.get(i + 1);
@@ -59,4 +60,15 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
     }
   });
   return rows;
+}
+
+/** A play worth seeing again: points, a turnover, a sack, or 20+ yards. */
+export function isBigPlay(e: GameResult["plays"][number]["event"]): boolean {
+  if (Object.keys(pointsForEvent(e)).length > 0) return true;
+  if (e.kind === "run" || e.kind === "pass") {
+    if (e.turnover || e.fumble?.lost) return true;
+    if (e.kind === "pass" && e.outcome === "sack") return true;
+    return e.yardsGained >= 20;
+  }
+  return e.kind === "punt" || e.kind === "kickoff" ? !!(e as { touchdown?: boolean }).touchdown : false;
 }
