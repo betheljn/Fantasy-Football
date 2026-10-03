@@ -1,6 +1,6 @@
 // The league as the server holds it: the dynasty (in the sim's compact save
 // format) and who runs which team. Built and changed only by the sim.
-import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamRatings, toSaveJson, type Dynasty } from "@dynasty/sim";
+import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamRatings, toSaveJson, type Dynasty, type OffseasonStage, type StagedChoices } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 
 export const STATE_VERSION = 1;
@@ -14,6 +14,8 @@ export interface LeagueState {
   /** Regular-season weeks played this season, and everything played so far. */
   weeksPlayed: number;
   progress: SeasonProgress;
+  /** The offseason, while it's on: the stage friends' calls are due for, and everyone's calls so far. */
+  offseason?: { stage: OffseasonStage; choices: StagedChoices };
 }
 
 export function newLeagueState(seed: string): LeagueState {

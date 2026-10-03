@@ -12,12 +12,15 @@ const REASON: Record<string, string> = { fired: "fired", retired: "retired", "co
 export function StaffScreen(props: {
   overview: { budget: number; committed: number; seats: StaffSeat[] };
   onConfirm: (fire: ReadonlySet<StaffSlot>, renew: ReadonlySet<StaffSlot>) => void;
+  /** Online: your earlier call, and the button's words. */
+  initial?: { fire: readonly StaffSlot[]; renew: readonly StaffSlot[] };
+  confirmLabel?: string;
 }) {
   const t = useTheme();
   const { overview } = props;
-  const [fire, setFire] = useState<Set<StaffSlot>>(new Set());
+  const [fire, setFire] = useState<Set<StaffSlot>>(() => new Set(props.initial?.fire ?? []));
   // Expiring deals are renewed unless you say otherwise.
-  const [renew, setRenew] = useState<Set<StaffSlot>>(() => new Set(overview.seats.filter((x) => x.expiring).map((x) => x.slot)));
+  const [renew, setRenew] = useState<Set<StaffSlot>>(() => new Set(props.initial?.renew ?? overview.seats.filter((x) => x.expiring).map((x) => x.slot)));
   const flip = (set: Set<StaffSlot>, setter: (s: Set<StaffSlot>) => void, slot: StaffSlot) => {
     const n = new Set(set);
     if (n.has(slot)) n.delete(slot);
@@ -73,7 +76,7 @@ export function StaffScreen(props: {
           </Card>
         );
       })}
-      <Primary label={open > 0 ? `Continue to hiring (${open} open)` : "Continue"} onPress={() => props.onConfirm(fire, renew)} theme={t} />
+      <Primary label={props.confirmLabel ?? (open > 0 ? `Continue to hiring (${open} open)` : "Continue")} onPress={() => props.onConfirm(fire, renew)} theme={t} />
     </ScrollView>
   );
 }
@@ -81,10 +84,12 @@ export function StaffScreen(props: {
 export function HireScreen(props: {
   openings: { budget: number; committed: number; openings: StaffOpening[] };
   onConfirm: (picks: ReadonlyMap<StaffSlot, string>) => void;
+  initial?: ReadonlyArray<readonly [StaffSlot, string]>;
+  confirmLabel?: string;
 }) {
   const t = useTheme();
   const { openings } = props;
-  const [picks, setPicks] = useState<Map<StaffSlot, string>>(new Map());
+  const [picks, setPicks] = useState<Map<StaffSlot, string>>(() => new Map(props.initial ?? []));
   const spent = openings.openings.reduce((s, o) => s + (o.candidates.find((c) => c.member.id === picks.get(o.slot))?.ask ?? 0), 0);
   const room = openings.budget - openings.committed - spent;
 
@@ -115,7 +120,7 @@ export function HireScreen(props: {
           theme={t}
         />
       ))}
-      <Primary label="Hire and continue" onPress={() => props.onConfirm(picks)} theme={t} />
+      <Primary label={props.confirmLabel ?? "Hire and continue"} onPress={() => props.onConfirm(picks)} theme={t} />
     </ScrollView>
   );
 }

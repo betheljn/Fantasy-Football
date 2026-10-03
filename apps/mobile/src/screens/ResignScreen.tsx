@@ -7,10 +7,10 @@ import { DEV_TRAIT_NAMES, formatMoney, moodLabel, playerOverall, type ContractPl
 import { Card, SectionTitle } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
-export function ResignScreen({ plan, onDone }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void }) {
+export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
   const t = useTheme();
   const aiPicks = useMemo(() => new Set(plan.offers.filter((o) => o.aiWants).map((o) => o.player.id)), [plan]);
-  const [keep, setKeep] = useState<Set<string>>(aiPicks);
+  const [keep, setKeep] = useState<Set<string>>(() => (initial ? new Set(initial) : aiPicks));
   const toggle = (id: string) =>
     setKeep((k) => {
       const n = new Set(k);
@@ -75,7 +75,7 @@ export function ResignScreen({ plan, onDone }: { plan: ContractPlan; onDone: (ke
         accessibilityRole="button"
         style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
       >
-        <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>Continue to the draft</Text>
+        <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? "Continue to the draft"}</Text>
       </Pressable>
     </ScrollView>
   );

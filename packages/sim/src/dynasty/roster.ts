@@ -1,4 +1,5 @@
 // Offseason roster moves: fill empty positions, then cut down to 72.
+import { teamChoices, type PerTeam } from "../choices.ts";
 import { POSITIONS, type Position } from "../model/positions.ts";
 import { playerOverall, type DevTrait, type Player, type PlayerId } from "../model/player.ts";
 import { ROSTER_MAX, buildDepthChart, validateTeam, type Team } from "../model/team.ts";
@@ -58,6 +59,12 @@ export function keepValue(player: Player, potentialEstimate?: number, style: Kee
   return ovr + growth * style.growth - aging * style.aging + judgmentError;
 }
 
+/** A team's own roster cuts. */
+export interface RosterCuts {
+  team: string;
+  players: ReadonlySet<PlayerId>;
+}
+
 export interface RosterMoveOptions {
   /** Undrafted prospects available to sign. */
   undrafted?: Prospect[];
@@ -65,8 +72,8 @@ export interface RosterMoveOptions {
   scouting?: ScoutingState;
   /** Teams sign undrafted players in this order (e.g. the draft order); default league order. */
   order?: string[];
-  /** A team's own cuts (the user's team), made before anything else; the usual moves then fill around them. */
-  cuts?: { team: string; players: ReadonlySet<PlayerId> };
+  /** Teams' own cuts (yours, or each friend's), made before anything else; the usual moves then fill around them. */
+  cuts?: PerTeam<RosterCuts>;
 }
 
 /**
@@ -93,10 +100,10 @@ export function makeRosterMoves(league: League, opts: RosterMoveOptions = {}): R
     taken.add(id);
     return id;
   };
-  if (opts.cuts) {
-    const roster = rosters.get(opts.cuts.team)!;
-    for (const p of roster.filter((x) => opts.cuts!.players.has(x.id))) cuts.push({ team: opts.cuts.team, player: p });
-    rosters.set(opts.cuts.team, roster.filter((x) => !opts.cuts!.players.has(x.id)));
+  for (const own of teamChoices(opts.cuts).values()) {
+    const roster = rosters.get(own.team)!;
+    for (const p of roster.filter((x) => own.players.has(x.id))) cuts.push({ team: own.team, player: p });
+    rosters.set(own.team, roster.filter((x) => !own.players.has(x.id)));
   }
 
   // Rookies drafted this year are valued on the team's scouting estimate of their ceiling.

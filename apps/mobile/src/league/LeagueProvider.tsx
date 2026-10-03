@@ -127,8 +127,8 @@ import {
   type TradeWindow,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
-import { api } from "../online/api";
-import { saveFromServer } from "../online/save";
+import { api, type OnlineMove } from "../online/api";
+import { saveFromServer, type OnlineOffseason } from "../online/save";
 import { activeOnline, myLeagues, setActiveOnline, type MyLeague } from "../online/store";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
 import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
@@ -264,6 +264,10 @@ export interface DynastyControls {
 
 export interface OnlineSession extends MyLeague {
   team: string;
+  /** Teams friends run. */
+  humans: Record<string, string>;
+  /** The offseason, while it's on (the open stage, and the calls so far). */
+  offseason: OnlineOffseason;
   /** The save version on screen. */
   version: number;
 }
@@ -338,6 +342,49 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   onlineRef.current = online;
   const [onlineError, setOnlineError] = useState<string | null>(null);
   const [onlineOpening, setOnlineOpening] = useState(false);
+  /** Your moves on their way to the server (one at a time, in order); refreshes wait for them. */
+  const movesChain = useRef<Promise<unknown>>(Promise.resolve());
+  const movesPending = useRef(0);
+  /**
+   * Send a move you've just made on the phone to the server. The sim gives the
+   * server the same result; if it says no (the week moved on, say), the
+   * league is fetched again so the phone matches.
+   */
+  const sendMove = (move: OnlineMove) => {
+    const o = onlineRef.current;
+    if (!o) return;
+    movesPending.current++;
+    movesChain.current = movesChain.current
+      .then(() => api.move(o.id, o.token, move))
+      .then(
+        (r) => {
+          if (onlineRef.current?.id !== o.id) return;
+          if (r.done) {
+            setOnline((cur) => (cur && cur.id === o.id ? { ...cur, version: r.saveVersion } : cur));
+            setOnlineError(null);
+          }
+          else {
+            setOnlineError(r.problems[0] ?? "The league turned that move down.");
+            forceRefresh(o);
+          }
+        },
+        (e: Error) => {
+          setOnlineError(`That move didn't reach the league: ${e.message}`);
+          forceRefresh(o);
+        },
+      )
+      .finally(() => movesPending.current--);
+  };
+  /** Fetch the league again whatever its version (after a move was turned down). */
+  const forceRefresh = (o: OnlineSession) => {
+    api.save(o.id, o.token).then(({ text, version }) => {
+      if (onlineRef.current?.id !== o.id) return;
+      const loaded = saveFromServer(text, o.team);
+      setState(loaded.save);
+      setOnline({ ...onlineRef.current, version, humans: loaded.humans, offseason: loaded.offseason });
+    }, () => {});
+  };
+
   /** Close the online league (it won't reopen at launch). */
   const leaveOnline = () => {
     if (!onlineRef.current) return;
@@ -428,8 +475,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     api.save(me.id, me.token).then(({ text, version }) => {
       const loaded = saveFromServer(text, team);
       leaveSlot();
-      setState(loaded);
-      setOnline({ ...me, team, version });
+      setState(loaded.save);
+      setOnline({ ...me, team, version, humans: loaded.humans, offseason: loaded.offseason });
       queue(() => setActiveOnline({ id: me.id, team }));
     });
 
@@ -556,16 +603,16 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const depthLocked = !!state && (state.picks?.open ?? []).some((x) => x.week === state.weeksPlayed + 1 && ownPicks(x.picks, state.userTeam).length > 0);
   const boardJob = useRef<object | null>(null);
 
-  // Online leagues are read-only on the phone for now (the server plays them).
-  const canMakeMoves = !online && !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
+  const canMakeMoves = !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
 
   // Trading: preseason through the deadline, and draft week (season over, playoffs done, offseason not begun).
   const tradeWindow = useMemo((): TradeWindow | null => {
-    if (online || !state?.userTeam || !league || offseason || staffStep || state.report || busy) return null;
+    // (Online, trading closes when the league's offseason opens.)
+    if (!state?.userTeam || !league || offseason || staffStep || state.report || busy || online?.offseason) return null;
     if (!seasonOver) return tradesOpen(state.weeksPlayed) ? seasonWindow(league, state.weeksPlayed) : null;
     if (playoffs && state.playoffRoundsShown >= PLAYOFF_ROUND_COUNT) return draftWeekWindow(league, draftOrder(playoffs));
     return null;
-  }, [online, state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
+  }, [online?.offseason, state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
 
   const phase: Phase =
     busy === "loading" ? "loading"
@@ -858,12 +905,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     },
     refreshOnline: () => {
       const o = onlineRef.current;
-      if (!o) return;
+      // Not while your own moves are on their way (they bring the version up to date).
+      if (!o || movesPending.current > 0) return;
       api.save(o.id, o.token).then(({ text, version }) => {
-        // Only if this league is still the one open and it has moved on.
-        if (onlineRef.current?.id !== o.id || version === onlineRef.current.version) return;
-        setState(saveFromServer(text, o.team));
-        setOnline({ ...o, version });
+        // Only if this league is still the one open, it has moved on, and you haven't moved since.
+        if (onlineRef.current?.id !== o.id || version === onlineRef.current.version || movesPending.current > 0) return;
+        const loaded = saveFromServer(text, o.team);
+        setState(loaded.save);
+        setOnline({ ...onlineRef.current, version, humans: loaded.humans, offseason: loaded.offseason });
       }, () => {});
     },
     newDynasty: () => {
@@ -1032,10 +1081,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     rosterPlan: rosterPlanValue,
     finishCuts: (cuts) => completeWith(cuts),
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
-    canEditDepthChart: !online && !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
+    canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
     depthLocked,
     setDepthChart: (pos, ids) => {
-      if (!state || online || offseason || !state.userTeam || seasonOver || depthLocked) return;
+      if (!state || offseason || !state.userTeam || seasonOver || depthLocked) return;
       const league = state.dynasty.league;
       const team = league.teams[state.userTeam]!;
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };
@@ -1044,6 +1093,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const p = state.picks;
       const picks = p?.board ? { ...p, board: { ...p.board, lines: p.board.lines.filter((l) => !isOwnGame(l.game, state.userTeam)) } } : p;
       persist({ ...state, lineups, ...(picks ? { picks } : {}), dynasty: { ...state.dynasty, league: { ...league, teams: { ...league.teams, [team.abbr]: updated } } } });
+      if (online) sendMove({ kind: "depth", pos, ids });
     },
     picks: state?.picks ?? newPicks(),
     board: boardFor(state, schedule),
@@ -1163,6 +1213,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const done = placeOnIR(league, s.userTeam, id, s.weeksPlayed, true);
       const lineups = logTeam(s.lineups ?? startLog(league), done.league.teams[s.userTeam]!, s.weeksPlayed + 1);
       persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, moves: [...(s.moves ?? []), done.move] }, true);
+      if (online) sendMove({ kind: "ir", player: id });
       return [];
     },
     signFreeAgent: (id) => {
@@ -1174,6 +1225,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const done = signFreeAgent(league, league.season, s.userTeam, id, s.weeksPlayed, true);
       const lineups = logTeam(s.lineups ?? startLog(league), done.league.teams[s.userTeam]!, s.weeksPlayed + 1);
       persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, moves: [...(s.moves ?? []), done.move] }, true);
+      if (online) sendMove({ kind: "sign", player: id });
       return [];
     },
     tradeWindow,
@@ -1182,6 +1234,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const s = stateRef.current;
       const w = tradeWindow;
       if (!s || !w) return { made: false, problems: ["Trading is closed right now."], verdict: null };
+      if (online?.humans[t.to]) return { made: false, problems: ["Trades between friends aren't in online leagues yet."], verdict: null };
       const league = s.dynasty.league;
       const problems = checkTrade(league, w, t);
       if (problems.length > 0) return { made: false, problems, verdict: null };
@@ -1190,6 +1243,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const done = applyTrade(league, w, t, new Set([s.userTeam]));
       const lineups = logTrades(s.lineups ?? startLog(league), league, done.league, [done.record], w.week === 0 ? DRAFT_WEEK : w.week);
       persist({ ...s, lineups, dynasty: { ...s.dynasty, league: done.league }, trades: [...s.trades, done.record], ...(playoffs ? { playoffs } : {}) }, true);
+      if (online) sendMove({ kind: "trade", proposal: t });
       return { made: true, problems: [], verdict };
     },
     frontOffice,

@@ -31,7 +31,7 @@ export default function DepthChartScreen() {
           <Text style={{ color: t.score, fontWeight: "700" }}>Locked until this week is played: you have picks riding on your own players.</Text>
         ) : !d.canEditDepthChart ? (
           <Text style={{ color: t.score, fontWeight: "700" }}>
-            {d.online ? "Online leagues don't take depth-chart changes from the app yet." : "The depth chart can be changed during the regular season."}
+            The depth chart can be changed during the regular season.
           </Text>
         ) : (
           <Text style={{ color: t.muted }}>Starters are highlighted. Use the arrows to move a player up or down; games use your order right away.</Text>

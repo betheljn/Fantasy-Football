@@ -128,4 +128,24 @@ describe("leagues", () => {
     expect(after.weeksPlayed).toBe(3);
     expect(Date.parse(after.deadline)).toBeGreaterThan(later.getTime());
   });
+
+  it("moves: your own team only, saved with a new version", { timeout: 60_000 }, async () => {
+    const { token, league } = (await post("/leagues", { name: "Moves", displayName: "Jai" })).json();
+    made.push(league.id);
+    expect((await post(`/leagues/${league.id}/moves`, { move: { kind: "depth", pos: "QB", ids: [] } }, token)).statusCode).toBe(409); // no team yet
+    await post(`/leagues/${league.id}/claim`, { team: "OH" }, token);
+    const started = (await post(`/leagues/${league.id}/start`, {}, token)).json();
+    const state = decodeState((await get(`/leagues/${league.id}/save`, token)).body);
+    const qbs = [...state.dynasty.league.teams.OH!.depthChart.QB].reverse();
+    const r = (await post(`/leagues/${league.id}/moves`, { move: { kind: "depth", pos: "QB", ids: qbs } }, token)).json();
+    expect(r).toMatchObject({ done: true, problems: [], saveVersion: started.saveVersion + 1 });
+    const after = decodeState((await get(`/leagues/${league.id}/save`, token)).body);
+    expect(after.dynasty.league.teams.OH!.depthChart.QB).toEqual(qbs);
+    // Refused by the rules: no change, the version stays.
+    const bad = (await post(`/leagues/${league.id}/moves`, { move: { kind: "ir", player: qbs[0] } }, token)).json();
+    expect(bad).toMatchObject({ done: false, saveVersion: r.saveVersion });
+    expect(bad.problems).toHaveLength(1);
+    // Not a move at all.
+    expect((await post(`/leagues/${league.id}/moves`, { move: { kind: "cut", player: "x" } }, token)).statusCode).toBe(400);
+  });
 });

@@ -1,6 +1,7 @@
 // Talking to the online-leagues server (apps/server). The server runs the sim
 // for online leagues; the app only asks it for things and shows the answers.
 import Constants from "expo-constants";
+import type { FreeAgentOffer, Position, StaffSlot, TradeProposal, TradeVerdict } from "@dynasty/sim";
 import { Platform } from "react-native";
 
 /**
@@ -36,7 +37,9 @@ export interface OnlineTeam {
   claimedBy: string | null;
 }
 
-export type NextStep = { kind: "week"; week: number } | { kind: "playoffs" } | { kind: "offseason" };
+export type OffseasonStage = "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts";
+/** What the next advance plays: a week, the playoffs, or an offseason stage ("open": draft week ends). */
+export type NextStep = { kind: "week"; week: number } | { kind: "playoffs" } | { kind: "offseason"; stage: "open" | OffseasonStage };
 
 export interface OnlineGame {
   id: string;
@@ -59,6 +62,8 @@ export interface OnlineLeague {
   weekHours: number;
   deadline: string | null;
   next: NextStep | null;
+  /** In the offseason: friends who've made their call for the open stage. */
+  madeCall: string[];
   champion: string | null;
   members: OnlineMember[];
   teams: OnlineTeam[];
@@ -67,7 +72,7 @@ export interface OnlineLeague {
 export type AdvanceSummary =
   | { kind: "week"; season: number; week: number; games: OnlineGame[]; covered: string[]; trades: number; moves: number }
   | { kind: "playoffs"; season: number; champion: string; runnerUp: string }
-  | { kind: "offseason"; season: number; nextSeason: number };
+  | { kind: "offseason"; season: number; done: "open" | OffseasonStage; next: OffseasonStage | null; covered: string[]; nextSeason?: number };
 
 export class ServerError extends Error {
   constructor(
@@ -92,6 +97,41 @@ async function call<T>(method: "GET" | "POST", path: string, body?: object, toke
   const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
   if (!res.ok) throw new ServerError(data.error ?? data.message ?? `The server said ${res.status}`, res.status);
   return data as T;
+}
+
+/** Your own move in an online league (the server checks it against the same rules). */
+export type OnlineMove =
+  | { kind: "depth"; pos: Position; ids: string[] }
+  | { kind: "ir"; player: string }
+  | { kind: "sign"; player: string }
+  | { kind: "trade"; proposal: TradeProposal };
+
+/** Your call for the offseason stage that's open (send it again to change it). */
+export type OffseasonChoice =
+  | { stage: "staff"; fire: StaffSlot[]; renew: StaffSlot[] }
+  | { stage: "hire"; picks: Array<[StaffSlot, string]> }
+  | { stage: "resign"; keep: string[] }
+  | { stage: "draft"; board: string[] }
+  | { stage: "freeagency"; offers: Array<[string, FreeAgentOffer]>; frontOffice: boolean }
+  | { stage: "cuts"; cuts: string[] };
+
+export interface MoveAnswer {
+  done: boolean;
+  problems: string[];
+  verdict?: TradeVerdict;
+  saveVersion: number;
+}
+
+/** A trade one friend offered another. */
+export interface TradeOffer {
+  id: string;
+  from: string;
+  to: string;
+  proposal: TradeProposal;
+  status: "open" | "accepting" | "accepted" | "declined" | "withdrawn" | "expired" | "failed";
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Joined {
@@ -122,6 +162,14 @@ export const api = {
   start: (id: string, token: string) => call<OnlineLeague>("POST", `/leagues/${id}/start`, {}, token),
   ready: (id: string, token: string, ready: boolean) => call<{ advanced: AdvanceSummary | null; league: OnlineLeague }>("POST", `/leagues/${id}/ready`, { ready }, token),
   advance: (id: string, token: string) => call<{ advanced: AdvanceSummary; league: OnlineLeague }>("POST", `/leagues/${id}/advance`, {}, token),
+  move: (id: string, token: string, move: OnlineMove) => call<MoveAnswer>("POST", `/leagues/${id}/moves`, { move }, token),
+  offseason: (id: string, token: string, choice: OffseasonChoice) =>
+    call<{ done: boolean; problems: string[]; saveVersion: number }>("POST", `/leagues/${id}/offseason`, { choice }, token),
+  offers: (id: string, token: string) => call<{ offers: TradeOffer[] }>("GET", `/leagues/${id}/offers`, undefined, token),
+  sendOffer: (id: string, token: string, proposal: TradeProposal) =>
+    call<{ sent: boolean; problems: string[]; offer?: TradeOffer }>("POST", `/leagues/${id}/offers`, { proposal }, token),
+  answerOffer: (id: string, token: string, offerId: string, action: "accept" | "decline" | "withdraw") =>
+    call<{ offer: TradeOffer; problems: string[]; saveVersion?: number }>("POST", `/leagues/${id}/offers/${offerId}`, { action }, token),
   games: (id: string, token: string, week?: number) =>
     call<{ season: number; week: number; games: OnlineGame[] }>("GET", `/leagues/${id}/games${week ? `?week=${week}` : ""}`, undefined, token),
 };

@@ -31,9 +31,11 @@ interface Props {
   onOpen: () => void;
   frontOffice: boolean;
   setFrontOffice: (on: boolean) => void;
+  /** Online: the button's words (your offers go in; free agency opens when the stage closes). */
+  confirmLabel?: string;
 }
 
-export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, frontOffice, setFrontOffice }: Props) {
+export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, frontOffice, setFrontOffice, confirmLabel }: Props) {
   const t = useTheme();
   const [pos, setPos] = useState<Position | "ALL">("ALL");
   const [editing, setEditing] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, front
               accessibilityRole="button"
               style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
             >
-              <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{offers.size > 0 ? `Open free agency (${offers.size} offer${offers.size === 1 ? "" : "s"})` : "Open free agency (no offers)"}</Text>
+              <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? (offers.size > 0 ? `Open free agency (${offers.size} offer${offers.size === 1 ? "" : "s"})` : "Open free agency (no offers)")}</Text>
             </Pressable>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, height: 50 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6, alignItems: "center" }}>

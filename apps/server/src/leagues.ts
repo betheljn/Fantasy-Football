@@ -5,18 +5,18 @@
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
-import type { FastifyInstance, FastifyReply } from "fastify";
-import { advanceLeague, deadlineAfter } from "./advance.ts";
-import { hashToken, memberFor, newInviteCode, newToken } from "./auth.ts";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { advanceLeague, changeLeague, deadlineAfter } from "./advance.ts";
+import { fail, hashToken, newInviteCode, newToken, requireMember } from "./auth.ts";
 import type { Db } from "./db.ts";
+import { applyMove, type Move } from "./moves.ts";
+import { forMember, madeCall } from "./offseason.ts";
+import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState } from "./state.ts";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
-function fail(reply: FastifyReply, code: number, error: string) {
-  return reply.code(code).send({ error });
-}
 
 const gzipped = promisify(gzip);
 const isUniqueClash = (e: unknown) => (e as { code?: string })?.code === "P2002";
@@ -24,14 +24,14 @@ const clean = (s: string) => s.trim().replace(/\s+/g, " ");
 
 export function leagueRoutes(app: FastifyInstance, db: Db) {
   /** Teams, parsed once per league per save version (the dynasty is big). */
-  const cache = new Map<string, { version: number; state: LeagueState; teams: ReturnType<typeof teamList> }>();
+  const cache = new Map<string, { version: number; data: string; state: LeagueState; teams: ReturnType<typeof teamList> }>();
   async function loadState(leagueId: string) {
     const save = await db.leagueSave.findUnique({ where: { leagueId } });
     if (!save) throw new Error(`League ${leagueId} has no save`);
     const hit = cache.get(leagueId);
     if (hit && hit.version === save.version) return hit;
     const state = decodeState(save.data);
-    const entry = { version: save.version, state, teams: teamList(state) };
+    const entry = { version: save.version, data: save.data, state, teams: teamList(state) };
     cache.set(leagueId, entry);
     return entry;
   }
@@ -52,25 +52,15 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       weekHours: league.weekHours,
       deadline: league.deadline?.toISOString() ?? null,
       next: league.phase === "season" ? nextStep(state) : null,
+      /** In the offseason: friends who've made their call for the open stage. */
+      madeCall: madeCall(state),
       champion: state.progress.playoffs?.champion ?? null,
       members: league.members.map((m) => ({ id: m.id, displayName: m.displayName, team: m.team, isCommissioner: m.isCommissioner, ready: m.ready })),
       teams: teams.map((t) => ({ ...t, claimedBy: claimedBy.get(t.abbr) ?? null })),
     };
   }
 
-  /** The signed-in member, if they belong to this league. */
-  async function memberOf(req: Parameters<typeof memberFor>[1], reply: FastifyReply, leagueId: string) {
-    const member = await memberFor(db, req);
-    if (!member) {
-      fail(reply, 401, "Sign in with your league token");
-      return null;
-    }
-    if (member.leagueId !== leagueId) {
-      fail(reply, 403, "You're not in this league");
-      return null;
-    }
-    return member;
-  }
+  const memberOf = (req: FastifyRequest, reply: FastifyReply, leagueId: string) => requireMember(db, req, reply, leagueId);
 
   app.post<{ Body: { name: string; displayName: string; weekHours?: number } }>(
     "/leagues",
@@ -208,6 +198,38 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     return { advanced, league: await view(member.leagueId) };
   });
 
+  /**
+   * Your own move: a depth-chart change, injured reserve, a free-agent signing,
+   * or a trade offer to an AI team (made if their GM accepts). Refused moves
+   * come back with the rule that stopped them (and a trade's verdict).
+   */
+  const moveSchema = {
+    type: "object",
+    required: ["move"],
+    properties: {
+      move: {
+        oneOf: [
+          { type: "object", required: ["kind", "pos", "ids"], properties: { kind: { const: "depth" }, pos: { type: "string", maxLength: 3 }, ids: { type: "array", items: idSchema, maxItems: 72 } } },
+          { type: "object", required: ["kind", "player"], properties: { kind: { enum: ["ir", "sign"] }, player: idSchema } },
+          { type: "object", required: ["kind", "proposal"], properties: { kind: { const: "trade" }, proposal: proposalSchema } },
+        ],
+      },
+    },
+  } as const;
+  app.post<{ Params: { id: string }; Body: { move: Move } }>("/leagues/:id/moves", { schema: { body: moveSchema } }, async (req, reply) => {
+    const member = await memberOf(req, reply, req.params.id);
+    if (!member) return reply;
+    if (!member.team) return fail(reply, 409, "Claim a team first");
+    const team = member.team;
+    const r = await changeLeague(db, member.leagueId, (state, league) => {
+      if (league.phase !== "season") return { state: null, result: { done: false, problems: ["The league hasn't started."] } };
+      const m = applyMove(state, team, req.body.move);
+      return { state: m.state, result: { done: m.state !== null, problems: m.problems, ...(m.verdict ? { verdict: m.verdict } : {}) } };
+    });
+    if (!r) return fail(reply, 409, "The league is busy (a week may be being played): try again");
+    return { ...r.result, saveVersion: r.version };
+  });
+
   /** A week's results (the last week played if none is given). */
   app.get<{ Params: { id: string }; Querystring: { week?: number } }>(
     "/leagues/:id/games",
@@ -225,11 +247,14 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
 
   /** The league's save, for the app to load (the sim's compact format). */
   app.get<{ Params: { id: string } }>("/leagues/:id/save", async (req, reply) => {
-    if (!(await memberOf(req, reply, req.params.id))) return reply;
-    const save = await db.leagueSave.findUniqueOrThrow({ where: { leagueId: req.params.id } });
-    reply.header("content-type", "application/json").header("x-save-version", String(save.version)).header("vary", "accept-encoding");
+    const member = await memberOf(req, reply, req.params.id);
+    if (!member) return reply;
+    const { state, version, data: raw } = await loadState(req.params.id);
+    reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
+    // In the offseason, other friends' calls for the open stage stay private.
+    const data = state.offseason ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
-    if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(save.data));
-    return reply.send(save.data);
+    if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));
+    return reply.send(data);
   });
 }

@@ -9,7 +9,17 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Button, Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
-import { api, type AdvanceSummary, type NextStep, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
+import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
+
+/** Each offseason stage, as friends see it. */
+export const STAGE_NAMES: Record<OffseasonStage, string> = {
+  staff: "staff decisions",
+  hire: "staff hires",
+  resign: "re-signings",
+  draft: "draft boards",
+  freeagency: "free agency",
+  cuts: "roster cuts",
+};
 import { forgetLeague, type MyLeague } from "./store";
 
 const POLL_MS = 15_000;
@@ -188,7 +198,8 @@ function stepLabel(next: NextStep | null, season: number) {
   if (!next) return "";
   if (next.kind === "week") return `${season} season · week ${next.week} next`;
   if (next.kind === "playoffs") return `${season} season · the playoffs next`;
-  return `${season} season over · the offseason next`;
+  if (next.stage === "open") return `${season} season over · draft week (trades open)`;
+  return `${season} offseason · ${STAGE_NAMES[next.stage]} due`;
 }
 
 function untilLabel(deadline: string | null, now: number) {
@@ -241,7 +252,10 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
           onPress={() => act(() => api.ready(me.id, me.token, !self?.ready))}
         />
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          {ready} of {league.members.length} ready: {league.members.map((m) => `${m.displayName}${m.ready ? " ✓" : ""}`).join(", ")}. Anyone not ready when the week is played has the AI handle their injured reserve and signings.
+          {ready} of {league.members.length} ready: {league.members.map((m) => `${m.displayName}${m.ready ? " ✓" : ""}`).join(", ")}.{" "}
+          {league.next?.kind === "offseason" && league.next.stage !== "open"
+            ? `Calls in from: ${league.madeCall.length ? league.madeCall.map((abbr) => memberName(league, league.teams.find((x) => x.abbr === abbr)?.claimedBy ?? null) ?? abbr).join(", ") : "nobody yet"}. Anyone without a call when the stage closes is left to the AI.`
+            : "Anyone not ready when the week is played has the AI handle their injured reserve and signings."}
         </Text>
         {self?.isCommissioner ? <Button label={busy ? "Playing…" : "Play it now (commissioner)"} small disabled={busy} onPress={() => act(() => api.advance(me.id, me.token))} /> : null}
       </Card>
@@ -307,7 +321,12 @@ function JustPlayed({ last, league, friends, theme: t }: { last: AdvanceSummary;
   } else if (last.kind === "playoffs") {
     text = `The ${last.season} playoffs are done: ${teamName(league, last.champion)} beat ${teamName(league, last.runnerUp)} for the title.${friends.has(last.champion) ? " A friend is the champion!" : ""}`;
   } else {
-    text = `The offseason is done (draft, free agency and the spring season, AI calls for now). On to ${last.nextSeason}.`;
+    const covered = last.covered.map((abbr) => memberName(league, league.teams.find((x) => x.abbr === abbr)?.claimedBy ?? null) ?? abbr);
+    const ai = covered.length ? ` The AI made the calls for ${covered.join(", ")}.` : "";
+    text =
+      last.done === "open" ? "Draft week is over and the offseason is open: staff decisions first."
+      : last.next ? `The ${STAGE_NAMES[last.done]} stage is closed.${ai} Next: ${STAGE_NAMES[last.next]}.`
+      : `The offseason is done, and the spring season is played.${ai} On to ${last.nextSeason}.`;
   }
   return (
     <Card>

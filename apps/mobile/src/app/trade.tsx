@@ -1,7 +1,8 @@
 // Trades: pick a team, choose players and draft picks from each side, see the
 // cap and anyone who'd be released to make room, ask what they'd want, and
 // offer the deal. Their GM decides with his own read of the players; the sim
-// checks every rule.
+// checks every rule. In an online league, a deal with a friend's team is sent
+// to them as an offer (they answer it from Trade offers).
 import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -32,6 +33,7 @@ import {
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
+import { api } from "../online/api";
 import { useTheme, type Theme } from "../theme";
 
 export default function TradeScreen() {
@@ -55,7 +57,11 @@ export default function TradeScreen() {
   }
   if (partner) return <Deal partner={partner} window={w} onBack={() => setPartner(null)} />;
 
-  const teams = allTeams(league).filter((x) => x.abbr !== userTeam).sort((a, b) => teamName(a).localeCompare(teamName(b)));
+  // Online, friends' teams come first (they answer offers themselves).
+  const friend = (abbr: string) => !!d.online?.humans[abbr];
+  const teams = allTeams(league)
+    .filter((x) => x.abbr !== userTeam)
+    .sort((a, b) => Number(friend(b.abbr)) - Number(friend(a.abbr)) || teamName(a).localeCompare(teamName(b)));
   return (
     <>
       <Stack.Screen options={{ title: w.week === 0 ? "Draft-week trades" : "Trades" }} />
@@ -73,7 +79,10 @@ export default function TradeScreen() {
               <LinkRow label={`Trade with ${teamName(team)}`} onPress={() => setPartner(team.abbr)}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <Swatch abbr={team.abbr} size={12} />
-                  <Text style={{ flex: 1, color: t.text, fontWeight: "600" }}>{teamName(team)}</Text>
+                  <Text style={{ flex: 1, color: t.text, fontWeight: "600" }}>
+                    {teamName(team)}
+                    {friend(team.abbr) ? <Text style={{ color: t.accent, fontWeight: "400" }}> · a friend's team</Text> : null}
+                  </Text>
                   <Text style={{ color: t.muted, fontVariant: ["tabular-nums"] }}>{rec ? formatRecord(rec) : ""}</Text>
                 </View>
               </LinkRow>
@@ -128,6 +137,9 @@ function Deal({ partner, window: w, onBack }: { partner: string; window: TradeWi
   const releases = any && problems.length === 0 ? tradeReleases(league, w, proposal) : [];
   const room = tradeCapRoom(league, w, proposal, userTeam);
   const capLabel = w.season === league.season ? "Your cap room" : `Your ${w.season} cap room`;
+  const online = d.online;
+  const friend = !!online?.humans[partner];
+  const [sending, setSending] = useState(false);
 
   const toggle = (list: string[], set: (x: string[]) => void, id: string) => {
     setMessage(null);
@@ -147,7 +159,23 @@ function Deal({ partner, window: w, onBack }: { partner: string; window: TradeWi
       setMessage({ text: "Their GM would do it for this.", good: true });
     } else setMessage({ text: "Nothing simple on your side gets this done. Try building an offer yourself.", good: false });
   };
+  const sendToFriend = async () => {
+    if (!online) return;
+    setSending(true);
+    try {
+      const r = await api.sendOffer(online.id, online.token, proposal);
+      if (r.sent) {
+        setMessage({ text: `Offer sent. ${them.abbr} answers it from Trade offers.`, good: true });
+        clear();
+      } else setMessage({ text: r.problems.join(" "), good: false });
+    } catch (e) {
+      setMessage({ text: (e as Error).message, good: false });
+    } finally {
+      setSending(false);
+    }
+  };
   const offer = () => {
+    if (friend) return void sendToFriend();
     const r = d.proposeTrade(proposal);
     if (r.made) {
       setMessage({ text: `Done! ${them.abbr} accepted.${releases.length ? " Releases made to fit 72." : ""}`, good: true });
@@ -187,8 +215,8 @@ function Deal({ partner, window: w, onBack }: { partner: string; window: TradeWi
           ))}
           {message ? <Text style={{ color: message.good ? t.accent : t.score, fontWeight: "700", marginTop: 8 }}>{message.text}</Text> : null}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-            <Btn label="What would they want?" onPress={ask} disabled={get.length + getPicks.length === 0} theme={t} />
-            <Btn label="Offer trade" onPress={offer} disabled={!any || problems.length > 0} theme={t} primary />
+            {friend ? null : <Btn label="What would they want?" onPress={ask} disabled={get.length + getPicks.length === 0} theme={t} />}
+            <Btn label={friend ? (sending ? "Sending…" : "Send offer") : "Offer trade"} onPress={offer} disabled={!any || problems.length > 0 || sending} theme={t} primary />
           </View>
         </Card>
 

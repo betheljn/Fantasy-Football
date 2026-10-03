@@ -221,7 +221,7 @@ A second, smaller season for the players who don't dress on game day.
 2. Coverage and picks: spring stories in the news and on the radio show, and
    a spring board for picks
 
-### Milestone 15: online leagues (current)
+### Milestone 15: online leagues (done)
 Private leagues with friends. Decided: Fastify + Prisma + PostgreSQL in
 apps/server, Postgres in local Docker while building, invite code + display
 name to join (no passwords at first). Ask before installing dependencies.
@@ -238,8 +238,20 @@ name to join (no passwords at first). Ask before installing dependencies.
    (gzipped) and opens it read-only in the hub and tabs (standings, schedule,
    Top 25, teams, players, box scores); the server keeps a lineup log so
    every game replays exactly; unplayed games aren't previewed online
-Still to come: friends' own moves online (depth chart, IR, signings, trades)
-and offseason calls (re-signings, draft, free agency).
+5. Your moves online: depth chart, injured reserve, free-agent signings and
+   trades with AI teams, made on the phone and checked and applied on the
+   server by the same sim rules (one change at a time per league)
+6. Trades between friends: offers sent from the trade screen, answered from
+   Trade offers (accept, decline, withdraw); accepted trades are checked again
+   and made on the server; open offers expire when trading closes
+7. Friends' offseason calls, in stages with ready-ups (staff, hires,
+   re-signings, draft board, free agency, cuts; anyone without a call is
+   left to the AI)
+   7a. Sim: offseason choices for several teams at once; the draft from
+       ranked boards; the staged offseason worked out again from the calls
+   7b. Server: offseason stages, calls per stage (private until it closes)
+   7c. App: each stage's screen for online leagues (worked out on the phone
+       with the same sim code as the server; a ranked draft board)
 
 After each step: run it, show sample output, and stop for review.
 

@@ -29,6 +29,7 @@ model League {
   updatedAt  DateTime @updatedAt
   members    Member[]
   save       LeagueSave?
+  offers     TradeOffer[]
 }
 
 model Member {
@@ -56,4 +57,24 @@ model LeagueSave {
   data      String
   version   Int      @default(1)
   updatedAt DateTime @updatedAt
+}
+
+/// A trade offered by one friend to another: open until the other side accepts
+/// or declines, the sender withdraws it, or the trade window closes.
+model TradeOffer {
+  id        String   @id @default(cuid())
+  leagueId  String
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  fromTeam  String
+  toTeam    String
+  /// The sim's trade proposal (players and picks each way).
+  proposal  Json
+  /// "open", "accepting" (being made), "accepted", "declined", "withdrawn", "expired", or "failed" (no longer valid when accepted).
+  status    String   @default("open")
+  /// Why it expired or failed.
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leagueId, status])
 }

@@ -1,7 +1,7 @@
 // Device tokens: a member gets a random token once (when they create or join a
 // league) and sends it as "Authorization: Bearer <token>". Only its hash is stored.
 import { createHash, randomBytes } from "node:crypto";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "./db.ts";
 
 export function newToken(): string {
@@ -26,4 +26,22 @@ const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export function newInviteCode(): string {
   const bytes = randomBytes(6);
   return [...bytes].map((b) => CODE_CHARS[b % CODE_CHARS.length]).join("");
+}
+
+export function fail(reply: FastifyReply, code: number, error: string) {
+  return reply.code(code).send({ error });
+}
+
+/** The signed-in member, if they belong to this league (otherwise the reply says why, and null). */
+export async function requireMember(db: Db, req: FastifyRequest, reply: FastifyReply, leagueId: string) {
+  const member = await memberFor(db, req);
+  if (!member) {
+    fail(reply, 401, "Sign in with your league token");
+    return null;
+  }
+  if (member.leagueId !== leagueId) {
+    fail(reply, 403, "You're not in this league");
+    return null;
+  }
+  return member;
 }

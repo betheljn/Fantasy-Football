@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { replayTeams, simulateGame } from "@dynasty/sim";
-import { advance, nextStep, openSeason, scheduleOf } from "../src/season.ts";
+import { stagedOffseason } from "@dynasty/sim";
+import { forMember, recordChoice } from "../src/offseason.ts";
+import { advance, nextStep, openSeason, playedSeason, scheduleOf } from "../src/season.ts";
 import { newLeagueState, type LeagueState } from "../src/state.ts";
 
 const humans = { OH: "m1", TX: "m2" };
@@ -36,10 +38,36 @@ describe("online season", () => {
     expect(po.summary.kind).toBe("playoffs");
     s = po.state;
     expect(s.progress.playoffs?.champion).toBeTruthy();
-    expect(nextStep(s)).toEqual({ kind: "offseason" });
-    const off = advance(s, new Set());
-    expect(off.summary).toMatchObject({ kind: "offseason", season: 2031, nextSeason: 2032 });
+    expect(nextStep(s)).toEqual({ kind: "offseason", stage: "open" });
+    // Draft week ends; then a stage at a time, Ohio making some calls and Texas none.
+    s = advance(s, new Set()).state;
+    expect(nextStep(s)).toEqual({ kind: "offseason", stage: "staff" });
+    const order = ["staff", "hire", "resign", "draft", "freeagency", "cuts"] as const;
+    let off = { state: s, summary: null as unknown as ReturnType<typeof advance>["summary"] };
+    for (const [i, stage] of order.entries()) {
+      expect(nextStep(off.state)).toEqual({ kind: "offseason", stage });
+      if (stage === "resign") off.state = recordChoice(off.state, "OH", { stage, keep: [] }).state!;
+      if (stage === "draft") {
+        const late = [...stagedOffseason(off.state.dynasty, playedSeason(off.state), off.state.offseason!.choices, "draft").state!.draftClass.prospects].reverse();
+        off.state = recordChoice(off.state, "OH", { stage, board: [late[0]!.player.id] }).state!;
+        // Texas's copy of the save doesn't show Ohio's board; Ohio's does.
+        expect(forMember(off.state, "TX").offseason!.choices.boards).toEqual({});
+        expect(forMember(off.state, "OH").offseason!.choices.boards?.OH).toEqual([late[0]!.player.id]);
+      }
+      if (stage === "freeagency") {
+        // The draft went by Ohio's board: its first pick is the one prospect on it.
+        const { draft } = stagedOffseason(off.state.dynasty, playedSeason(off.state), off.state.offseason!.choices, "freeagency");
+        expect(draft!.picks.find((p) => p.team === "OH")!.player.id).toBe(off.state.offseason!.choices.boards!.OH![0]);
+      }
+      off = advance(off.state, new Set());
+      expect(off.summary).toMatchObject({ kind: "offseason", done: stage, next: order[i + 1] ?? null });
+      if (stage === "resign") expect((off.summary as { covered: string[] }).covered).toEqual(["TX"]);
+    }
+    expect(off.summary).toMatchObject({ season: 2031, nextSeason: 2032 });
+    // Calls for the wrong stage are turned down.
+    expect(recordChoice(off.state, "OH", { stage: "cuts", cuts: [] }).problems).toHaveLength(1);
     s = off.state;
+    expect(s.offseason).toBeUndefined();
     expect(s.dynasty.league.season).toBe(2032);
     expect(s.weeksPlayed).toBe(0);
     expect(s.progress.results).toHaveLength(0);

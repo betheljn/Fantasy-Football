@@ -5,6 +5,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { advanceOverdue } from "./advance.ts";
 import type { Db } from "./db.ts";
 import { leagueRoutes } from "./leagues.ts";
+import { offerRoutes } from "./offers.ts";
+import { offseasonRoutes } from "./offseason.ts";
 
 export interface AppOptions {
   db: Db;
@@ -43,6 +45,8 @@ export function buildApp({ db, logger = false, sweepEveryMs }: AppOptions): Fast
   });
 
   leagueRoutes(app, db);
+  offerRoutes(app, db);
+  offseasonRoutes(app, db);
 
   let sweep: NodeJS.Timeout | undefined;
   if (sweepEveryMs) {

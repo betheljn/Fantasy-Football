@@ -7,9 +7,9 @@ import { POSITIONS, formatMoney, type Position, type RosterPlan, type RosterPlan
 import { Card, SectionTitle } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
-export function CutsScreen({ plan, onDone }: { plan: RosterPlan; onDone: (cuts: ReadonlySet<string>) => void }) {
+export function CutsScreen({ plan, onDone, initial, confirmLabel }: { plan: RosterPlan; onDone: (cuts: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
   const t = useTheme();
-  const [cuts, setCuts] = useState<Set<string>>(() => new Set(plan.aiCuts));
+  const [cuts, setCuts] = useState<Set<string>>(() => new Set(initial ?? plan.aiCuts));
   const toggle = (id: string) =>
     setCuts((c) => {
       const n = new Set(c);
@@ -74,7 +74,7 @@ export function CutsScreen({ plan, onDone }: { plan: RosterPlan; onDone: (cuts: 
         accessibilityRole="button"
         style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: ok ? t.accent : t.border, opacity: pressed ? 0.7 : 1 })}
       >
-        <Text style={{ color: ok ? t.onAccent : t.muted, fontWeight: "800", fontSize: 16 }}>{ok ? "Finish the offseason" : "Fix the roster to continue"}</Text>
+        <Text style={{ color: ok ? t.onAccent : t.muted, fontWeight: "800", fontSize: 16 }}>{ok ? (confirmLabel ?? "Finish the offseason") : "Fix the roster to continue"}</Text>
       </Pressable>
     </ScrollView>
   );

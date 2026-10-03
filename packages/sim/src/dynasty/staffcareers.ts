@@ -1,6 +1,7 @@
 // Staff careers: records, Coach of the Year, retirements, firings, poaching
 // and hiring. Runs once per offseason, before the draft (so a new GM drafts
 // and a new head coach shapes development).
+import { teamChoices, type PerTeam } from "../choices.ts";
 import { clampRating } from "../model/ratings.ts";
 import {
   staffOverall,
@@ -235,8 +236,9 @@ export function staffReleases(
   pool: readonly StaffMember[],
   careersIn: Map<string, StaffCareer>,
   lastSeasonPct: Map<string, number> = new Map(),
-  decisions?: StaffDecisions,
+  decisions?: PerTeam<StaffDecisions>,
 ): StaffReleases {
+  const decided = teamChoices(decisions);
   const season = league.season;
   const rng = new Rng(`${league.seed}:${season}:staff`);
   const careers = new Map(careersIn);
@@ -357,7 +359,8 @@ export function staffReleases(
       const others = SLOTS.filter((o) => o !== slot).reduce((sum, o) => sum + (s[o]?.contract && s[o]!.contract!.through >= next ? s[o]!.contract!.salary : 0), 0);
       const owed = deadMoney.get(t.abbr)!.filter((d) => d.season === next).reduce((sum, d) => sum + d.amount, 0);
       const affordable = staffAsk(m, capNext, reputation(careers.get(m.id), m.role)) <= budget - others - owed;
-      const keep = decisions?.team === t.abbr ? decisions.renew.has(slot) : doingWell && affordable && rng.chance(0.9);
+      const mine = decided.get(t.abbr);
+      const keep = mine ? mine.renew.has(slot) : doingWell && affordable && rng.chance(0.9);
       if (keep) {
         const renewed = { ...m, contract: staffContract(rng, m, next, capNext, reputation(careers.get(m.id), m.role)) } as StaffMember;
         (s as Record<Slot, StaffMember>)[slot] = renewed;
@@ -365,11 +368,12 @@ export function staffReleases(
       } else release(slot, m, "contract expired");
     }
 
-    if (decisions?.team === t.abbr) {
+    const own = decided.get(t.abbr);
+    if (own) {
       // Your calls: only the seats you chose to clear.
       for (const slot of SLOTS) {
         const m = s[slot];
-        if (m && decisions.fire.has(slot)) release(slot, m, "fired");
+        if (m && own.fire.has(slot)) release(slot, m, "fired");
       }
       continue;
     }
@@ -470,8 +474,11 @@ export function staffCandidates(rel: StaffReleases, team: string): { budget: num
   return { budget: rel.budget, committed: committedFor(rel, team), openings };
 }
 
-/** Fill every open seat (yours first, with your picks), then age everyone a year. */
-export function staffHiring(rel: StaffReleases, hires?: StaffHires): StaffOffseasonResult {
+/**
+ * Fill every open seat (yours first, with your picks; with several teams'
+ * picks, in draft order), then age everyone a year.
+ */
+export function staffHiring(rel: StaffReleases, hires?: PerTeam<StaffHires>): StaffOffseasonResult {
   const { league, order, season, next, capNext, budget, rng, careers, staffs, deadMoney, renewals, letGo, offenseRank, defenseRank } = rel;
   const coty = rel.coty;
   const newPool = rel.pool;
@@ -498,13 +505,13 @@ export function staffHiring(rel: StaffReleases, hires?: StaffHires): StaffOffsea
     }
   };
 
-  // Your picks first, so nobody else takes them.
-  if (hires) {
-    const { openings } = staffCandidates(rel, hires.team);
-    for (const [slot, id] of hires.picks) {
+  // Your picks first, so nobody else takes them (several teams: in draft order).
+  for (const own of [...teamChoices(hires).values()].sort(byOrder)) {
+    const { openings } = staffCandidates(rel, own.team);
+    for (const [slot, id] of own.picks) {
       const opening = openings.find((o) => o.slot === slot);
       const chosen = opening?.candidates.find((c) => c.member.id === id);
-      const vi = vacancies.findIndex((v) => v.team === hires.team && v.slot === slot);
+      const vi = vacancies.findIndex((v) => v.team === own.team && v.slot === slot);
       if (!opening || !chosen || vi < 0) continue;
       const [v] = vacancies.splice(vi, 1);
       place(v!, { m: chosen.member, from: chosen.from, ...(chosen.currentTeam && chosen.currentSlot ? { source: { team: chosen.currentTeam, slot: chosen.currentSlot } } : {}) });

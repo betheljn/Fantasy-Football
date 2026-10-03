@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { teamChoices, type PerTeam } from "../choices.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
 import { closeSeasonBooks, startLeagueBusiness, type SeasonFinances, type TeamBusiness } from "../business/business.ts";
 import { hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
@@ -26,7 +27,7 @@ import { developLeague } from "./development.ts";
 import { generateDraftClass, type DraftClass } from "./draftclass.ts";
 import { draftOrder, draftSteps, runDraft, type DraftPick, type DraftResult, type DraftTurn } from "./draft.ts";
 import { processRetirements, type Retiree, type RetirementResult } from "./retirement.ts";
-import { ROSTER_MIN, ROSTER_POSITION_MAX, makeRosterMoves } from "./roster.ts";
+import { ROSTER_MIN, ROSTER_POSITION_MAX, makeRosterMoves, type RosterCuts } from "./roster.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
 import {
   contractPlan,
@@ -334,10 +335,10 @@ export interface OffseasonState {
   freeAgency?: { draft: DraftResult; result: FreeAgencyResult };
 }
 
-/** Your team's calls for the rest of the offseason (anything left out is the AI's). */
+/** Your team's calls (or several teams') for the rest of the offseason (anything left out is the AI's). */
 export interface OffseasonChoices {
-  resign?: ResignChoices;
-  freeAgency?: FreeAgencyChoices;
+  resign?: PerTeam<ResignChoices>;
+  freeAgency?: PerTeam<FreeAgencyChoices>;
 }
 
 /** A team's re-signing picture at this point of the offseason. */
@@ -345,14 +346,14 @@ export function offseasonContractPlan(state: OffseasonState, team: string): Cont
   return contractPlan(state.dynasty.league, state.developed, state.triggers, state.order, team);
 }
 
-/** Your calls on your own staff this offseason (anything left out is the AI's). */
+/** Your calls on your own staff this offseason, or several teams' (anything left out is the AI's). */
 export interface StaffChoices {
-  decisions?: StaffDecisions;
-  hires?: StaffHires;
+  decisions?: PerTeam<StaffDecisions>;
+  hires?: PerTeam<StaffHires>;
 }
 
 /** The staff offseason after departures (with your decisions), before hiring: for listing your candidates. */
-export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, decisions?: StaffDecisions): StaffReleases {
+export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, decisions?: PerTeam<StaffDecisions>): StaffReleases {
   const league = dynasty.league;
   return staffReleases(league, played.season.results, played.playoffs, draftOrder(played.playoffs), dynasty.staffPool, dynasty.staffCareers, dynasty.lastWinPct, decisions);
 }
@@ -409,7 +410,7 @@ export function finishOffseason(state: OffseasonState, choices: OffseasonChoices
 }
 
 /** Settle expiring contracts (with a team's own re-signing calls, if given). The draft comes next. */
-export function resolveContracts(state: OffseasonState, resign?: ResignChoices): OffseasonState {
+export function resolveContracts(state: OffseasonState, resign?: PerTeam<ResignChoices>): OffseasonState {
   return { ...state, contracts: openContractYear(state.dynasty.league, state.developed, state.triggers, state.order, resign) };
 }
 
@@ -417,6 +418,24 @@ export function resolveContracts(state: OffseasonState, resign?: ResignChoices):
 export function offseasonDraft(state: OffseasonState, humans: ReadonlySet<string>): Generator<DraftTurn, DraftResult, PlayerId> {
   if (!state.contracts) throw new Error("Resolve contracts before the draft");
   return draftSteps(state.contracts.league, state.draftClass, state.scouting, state.order, humans);
+}
+
+/**
+ * The whole draft at once, with each team in `boards` taking the first
+ * prospect still available on its own ranked board (and, if the board runs
+ * out, the best left on its scouting board). Teams without a board pick as the
+ * AI does. Needs resolveContracts first.
+ */
+export function draftWithBoards(state: OffseasonState, boards: ReadonlyMap<string, readonly PlayerId[]>): DraftResult {
+  const steps = offseasonDraft(state, new Set(boards.keys()));
+  let r = steps.next();
+  while (!r.done) {
+    const turn = r.value;
+    const left = new Set(turn.board.map((e) => e.prospect.player.id));
+    const pick = (boards.get(turn.team) ?? []).find((id) => left.has(id)) ?? turn.board[0]!.prospect.player.id;
+    r = steps.next(pick);
+  }
+  return r.value;
 }
 
 /** After the draft: free agency, roster moves, the cap, and the season's record. */
@@ -429,7 +448,7 @@ export function offseasonFreeAgencyPlan(state: OffseasonState, draft: DraftResul
 }
 
 /** Sign the draft class and run free agency (with a team's own offers, if given). Roster cuts come next. */
-export function runOffseasonFreeAgency(state: OffseasonState, draft: DraftResult, choices?: FreeAgencyChoices): OffseasonState {
+export function runOffseasonFreeAgency(state: OffseasonState, draft: DraftResult, choices?: PerTeam<FreeAgencyChoices>): OffseasonState {
   const opened = state.contracts;
   if (!opened) throw new Error("Resolve contracts before free agency");
   const next = state.dynasty.league.season + 1;
@@ -485,9 +504,9 @@ export function offseasonRosterPlan(state: OffseasonState, team: string): Roster
 export function completeOffseason(
   state: OffseasonState,
   draft: DraftResult,
-  freeAgencyChoices?: FreeAgencyChoices,
-  /** A team's own roster cuts (the user's); everyone else's are the AI's. */
-  cutChoices?: { team: string; players: ReadonlySet<PlayerId> },
+  freeAgencyChoices?: PerTeam<FreeAgencyChoices>,
+  /** Teams' own roster cuts (yours, or each friend's); everyone else's are the AI's. */
+  cutChoices?: PerTeam<RosterCuts>,
 ): { dynasty: Dynasty; log: OffseasonLog } {
   const s = state.freeAgency ? state : runOffseasonFreeAgency(state, draft, freeAgencyChoices);
   const { dynasty, played, awards, standings, careers, order, staff, records, retired, scouting } = s;
@@ -516,8 +535,8 @@ export function completeOffseason(
   const nextLeague: League = { ...settled.league, season: next, freeAgents };
 
   // Close the books: every team's season finances, cash and fans.
-  // Your team (the one making its own cuts and offers) runs its own business.
-  const humans = new Set([cutChoices?.team, freeAgencyChoices?.team].filter((x): x is string => !!x));
+  // Your team (any team making its own cuts and offers) runs its own business.
+  const humans = new Set([...teamChoices(cutChoices).keys(), ...teamChoices(freeAgencyChoices).keys()]);
   const books = closeSeasonBooks(league, dynasty.business ?? startLeagueBusiness(league), league.season, played.season.results, records, dynasty.lastWinPct ?? new Map(), humans);
   const finances: Record<string, SeasonFinances[]> = {};
   for (const [abbr, f] of Object.entries(books.finances)) finances[abbr] = [...(dynasty.finances?.[abbr] ?? []), f].slice(-5);

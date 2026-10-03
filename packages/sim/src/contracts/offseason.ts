@@ -2,6 +2,7 @@
 // deals (re-sign, fifth-year option or release), early extensions for young
 // stars, rookie deals for draft picks, a simple free agency, dead money for
 // cuts, and cap cuts for any team still over the hard cap.
+import { teamChoices, type PerTeam } from "../choices.ts";
 import type { Position } from "../model/positions.ts";
 import { capHit, contractYear, deadMoney, finalSeason, type Contract } from "../model/contract.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
@@ -232,10 +233,12 @@ export function contractPlan(played: League, league: League, triggers: Incentive
  * Close out season S and open S+1's books. `played` is the league as season S
  * was played (for unused cap and incentives); `league` is the same league after
  * retirements and development. Teams handle expiring deals in draft order; a
- * team given `choices` keeps exactly the players it chose (if they agree and fit).
+ * team given `choices` (one team's or several) keeps exactly the players it
+ * chose (if they agree and fit).
  */
-export function openContractYear(played: League, league: League, triggers: IncentiveTriggers, order: string[], choices?: ResignChoices): OpenYearResult {
+export function openContractYear(played: League, league: League, triggers: IncentiveTriggers, order: string[], choices?: PerTeam<ResignChoices>): OpenYearResult {
   const ctx = openYearContext(played, league, triggers, order);
+  const chosen = teamChoices(choices);
   const { next, capNext, index } = ctx;
   const rng = new Rng(`${league.seed}:${next}:contracts`);
   const moves: ContractMove[] = [];
@@ -258,7 +261,8 @@ export function openContractYear(played: League, league: League, triggers: Incen
 
     for (const p of expiringPlayers(team, next)) {
       const offer = resignOffer(ctx, team, p);
-      const keep = choices?.team === abbr ? choices.keep.has(p.id) : offer.aiWants;
+      const mine = chosen.get(abbr);
+      const keep = mine ? mine.keep.has(p.id) : offer.aiWants;
       if (!keep) {
         release(p, "released");
         continue;
@@ -386,7 +390,7 @@ function freeAgentOrder(pool: readonly Player[], capNext: number): Player[] {
  * Free agency: the best free agents first. Every team that wants him (he'd be
  * among its top players at the position) and can afford him makes an offer:
  * more when he'd start for them, less when he's coming home (the hometown
- * discount). A team given `choices` bids only its own offers. He signs where
+ * discount). A team given `choices` (one team's or several) bids only its own offers. He signs where
  * he'd be happiest: money, winning, playing time, the head coach and home,
  * weighted by what he cares about.
  */
@@ -396,8 +400,9 @@ export function runFreeAgency(
   next: number,
   index = 1,
   winPct: ReadonlyMap<string, number> = new Map(),
-  choices?: FreeAgencyChoices,
+  choices?: PerTeam<FreeAgencyChoices>,
 ): FreeAgencyResult {
+  const chosen = teamChoices(choices);
   const rng = new Rng(`${league.seed}:${next}:freeagency`);
   const capNext = salaryCap(league.seed, next);
   const ctx: FreeAgencyContext = { seed: league.seed, next, capNext };
@@ -409,12 +414,13 @@ export function runFreeAgency(
     const offers: Array<{ team: Team; deal: Contract; mood: number }> = [];
     for (const t of Object.values(teams)) {
       let deal: Contract | null;
-      if (choices?.team === t.abbr) {
-        const mine = choices.offers.get(p.id);
+      const own = chosen.get(t.abbr);
+      if (own) {
+        const mine = own.offers.get(p.id);
         if (mine) {
           deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years: mine.years, annual: mine.annual });
           if (capHit(deal, next) > spendable(t, capNext, next)) deal = null;
-        } else deal = choices.frontOffice ? aiBid(ctx, t, p, ask, years) : null;
+        } else deal = own.frontOffice ? aiBid(ctx, t, p, ask, years) : null;
       } else deal = aiBid(ctx, t, p, ask, years);
       if (!deal) continue;
       const offered = deal.years.reduce((s, y) => s + y.salary + y.bonus, 0) / deal.years.length;
