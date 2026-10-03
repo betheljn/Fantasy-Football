@@ -13,6 +13,7 @@ import {
   slatePayout,
   slateProblems,
   startDynasty,
+  tailRecord,
   topUp,
   type Slate,
   type SlatePick,
@@ -90,5 +91,15 @@ describe("your own games", () => {
     expect(slateProblems([{ ...over, side: "under" }, other], 50, 1000, own, ownGames).join(" ")).toMatch(/only overs/);
     const full = gameLines(DYNASTY.league, mine, 20).props.find((p) => p.kind === "total")!;
     expect(slateProblems([{ prop: full, side: "over" }, other], 50, 1000, own, ownGames).join(" ")).toMatch(/off the board/);
+  });
+});
+
+describe("following and fading the radio hosts", () => {
+  it("tallies how your tailed picks did, host by host", () => {
+    const hit = { ...pick(0, 0), value: 99, hit: true, via: { host: "hottake", fade: false } };
+    const miss = { ...pick(1, 0), value: 0, hit: false, via: { host: "hottake", fade: true } };
+    const plain = { ...pick(2, 0), value: 0, hit: false };
+    const settled = { id: "t", season: 2031, week: 2, stake: 10, picks: [hit, miss, plain], won: false, payout: 0 };
+    expect(tailRecord([settled])).toEqual({ hottake: { follow: [1, 0], fade: [0, 1] } });
   });
 });

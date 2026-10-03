@@ -4,7 +4,7 @@
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SLATE_PAYOUT, SLATE_RULES, bookmaker, houseGreeting, houseOnResult, houseOnSlate, houseRecord, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
+import { SLATE_PAYOUT, SLATE_RULES, bookmaker, radioCast, houseGreeting, houseOnResult, houseOnSlate, houseRecord, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -14,7 +14,9 @@ export default function PicksScreen() {
   const d = useDynasty();
   const { weeksPlayed, schedule, userTeam, league } = useLeague();
   const bm = bookmaker(league.seed);
-  const [chosen, setChosen] = useState<SlatePick[]>([]);
+  const cast = radioCast(league.seed);
+  const hostName = (role: string) => cast.hosts.find((h) => h.role === role)?.name.split(" ")[0] ?? role;
+  const chosen = d.draft;
   const [stake, setStake] = useState("50");
   const [message, setMessage] = useState<{ text: string; good: boolean } | null>(null);
   const week = weeksPlayed + 1;
@@ -28,11 +30,7 @@ export default function PicksScreen() {
 
   const toggle = (prop: Prop, side: PickSide) => {
     setMessage(null);
-    setChosen((c) => {
-      const same = c.find((p) => p.prop.id === prop.id);
-      if (same?.side === side) return c.filter((p) => p.prop.id !== prop.id);
-      return [...c.filter((p) => p.prop.id !== prop.id), { prop, side }];
-    });
+    d.toggleDraft({ prop, side });
   };
   const amount = Number.parseInt(stake, 10) || 0;
   const problems = chosen.length > 0 ? slateProblems(chosen, amount, d.picks.balance) : [];
@@ -41,7 +39,7 @@ export default function PicksScreen() {
     if (p.length > 0) setMessage({ text: p.join(" "), good: false });
     else {
       setMessage({ text: `Slate placed: ${chosen.length} picks for ${amount} points. It pays ${slatePayout(chosen.length, amount).toLocaleString()} if every pick hits.`, good: true });
-      setChosen([]);
+      d.clearDraft();
     }
   };
   const mine = d.picks.open.filter((s) => s.week === week);
@@ -69,6 +67,7 @@ export default function PicksScreen() {
             {chosen.map((p) => (
               <Text key={p.prop.id} style={{ color: t.text, paddingVertical: 2 }}>
                 {pickText(p, d.board)}
+                {p.via ? <Text style={{ color: t.muted, fontSize: 12 }}> · {p.via.fade ? "fading" : "following"} {hostName(p.via.host)}</Text> : null}
               </Text>
             ))}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
@@ -83,7 +82,7 @@ export default function PicksScreen() {
             ))}
             <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
               <Btn label="Place slate" onPress={place} disabled={problems.length > 0} primary theme={t} />
-              <Btn label="Clear" onPress={() => setChosen([])} theme={t} />
+              <Btn label="Clear" onPress={d.clearDraft} theme={t} />
             </View>
           </Card>
         ) : null}
@@ -219,6 +218,7 @@ function Result({ s, quip, theme: t }: { s: SettledSlate; quip: string; theme: T
       {s.picks.map((p) => (
         <Text key={p.prop.id} style={{ color: t.muted, fontSize: 12 }}>
           {p.hit ? "✓" : "✗"} {p.side === "over" ? "Over" : "Under"} {p.prop.kind === "player" ? `${p.prop.name} ${p.prop.line}` : p.prop.kind === "total" ? `total ${p.prop.line}` : `home margin ${p.prop.line}`}: {p.value}
+          {p.via ? ` · ${p.via.fade ? "faded" : "followed"} the ${p.via.host === "numbers" ? "stats nerd" : p.via.host === "hottake" ? "hot take" : "former player"}` : ""}
         </Text>
       ))}
     </View>

@@ -26,6 +26,21 @@ export type PickSide = "over" | "under";
 export interface SlatePick {
   prop: Prop;
   side: PickSide;
+  /** Taken from a radio host: following their pick, or fading it (the other side). */
+  via?: { host: string; fade: boolean };
+}
+
+/** Your record following and fading each host: picks that hit and missed. */
+export function tailRecord(history: readonly SettledSlate[]): Record<string, { follow: [number, number]; fade: [number, number] }> {
+  const out: Record<string, { follow: [number, number]; fade: [number, number] }> = {};
+  for (const s of history)
+    for (const p of s.picks) {
+      if (!p.via) continue;
+      const r = (out[p.via.host] ??= { follow: [0, 0], fade: [0, 0] });
+      const bucket = p.via.fade ? r.fade : r.follow;
+      bucket[p.hit ? 0 : 1]++;
+    }
+  return out;
 }
 
 export interface Slate {

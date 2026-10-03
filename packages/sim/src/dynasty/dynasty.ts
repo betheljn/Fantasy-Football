@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { collectSeason, collectWeek, startCollection, type Collection, type Moment, type RecordBook } from "../collect/moments.ts";
 import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
 import { POSITIONS, BASE_STARTERS, type Position } from "../model/positions.ts";
 import { capHit, deadMoney } from "../model/contract.ts";
@@ -114,6 +115,9 @@ export interface Dynasty {
   staffCareers: Map<string, StaffCareer>;
   /** Each team's win pct last season (for multi-year job reviews). */
   lastWinPct?: Map<string, number>;
+  /** League records since the dynasty began, and every moment worth keeping. */
+  recordBook?: RecordBook;
+  moments?: Moment[];
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -225,6 +229,8 @@ export interface PlayedSeason {
   scouting?: ScoutingState;
   /** Trades made during the season. */
   trades?: TradeRecord[];
+  /** Moments and the record book through the season (the season-long moments come at the end). */
+  collection?: Collection;
 }
 
 /**
@@ -240,6 +246,7 @@ export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } 
   const trades: TradeRecord[] = [];
   const traded = new Set<PlayerId>();
   const results = [];
+  let collection = startCollection(dynasty.recordBook);
   for (let week = 1; week <= schedule.weeks; week++) {
     const talks = aiTradeWeek(league, seasonWindow(league, week - 1), new Set(), traded);
     league = talks.league;
@@ -248,11 +255,12 @@ export function playSeason(dynasty: Dynasty): PlayedSeason & { league: League } 
       for (const p of t.players) traded.add(p.id);
     }
     const played = playWeek(league, schedule, week, (g) => addGameToSeason(stats, g));
+    collection = collectWeek(collection, league, schedule.season, played.games);
     league = aiInSeasonMoves(played.league, schedule.season, week).league;
     for (const g of played.games) results.push(g.summary);
   }
   const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
-  return { season, stats, playoffs: simulatePlayoffs(league, season), trades, league };
+  return { season, stats, playoffs: simulatePlayoffs(league, season), trades, league, collection };
 }
 
 /** Everything the offseason did, in full (history keeps only the highlights). */
@@ -477,6 +485,10 @@ export function completeOffseason(
   const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
   const nextLeague: League = { ...settled.league, season: next, freeAgents };
 
+  // The season's moments and records join the dynasty's.
+  const collection = played.collection ?? startCollection(dynasty.recordBook);
+  if (!collection.seasonDone) collectSeason(collection, league, league.season, played.stats, records, playoffs);
+
   const record: SeasonRecord = {
     season: league.season,
     champion: playoffs.champion,
@@ -509,6 +521,8 @@ export function completeOffseason(
       staffPool: staff.pool,
       staffCareers: staff.careers,
       lastWinPct: new Map([...records.values()].map((r) => [r.team, winPct(r)])),
+      recordBook: collection.book,
+      moments: [...(dynasty.moments ?? []), ...collection.moments],
     },
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };

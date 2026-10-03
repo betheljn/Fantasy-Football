@@ -174,7 +174,7 @@ come later.
 4. Picks screen: this week's board, your slate, results; the house (an AI
    bookmaker with a personality) as your opponent
 
-### Milestone 11: media (current)
+### Milestone 11: media (done)
 The league's story told back to you, from the event log.
 1. News: each week's stories (upsets, thrillers, routs, big games, streaks,
    rankings, star injuries, trades, the MVP race), ranked by size; a national
@@ -184,6 +184,18 @@ The league's story told back to you, from the event log.
    week, and on-air picks from the board with their records kept
 3. Follow or fade: add a host's pick to your slate; the show brags or eats
    crow about last week
+
+### Milestone 12: collectibles and trophies (current)
+Everything collected marks something that happened in your league; nothing is
+for sale.
+1. Moments and the record book: notable plays, games and seasons become
+   moment cards (common, rare, epic, legendary; a league first is a 1 of 1;
+   a broken record makes it rarer); single-game and single-season records,
+   starting empty in year one
+2. Trophy room and rivalries: your titles, division crowns and players'
+   awards; traveling rivalry trophies between neighboring states
+3. Hall of Fame: a yearly ballot of retired players (AI media voters plus
+   your vote); retired jersey numbers
 
 After each step: run it, show sample output, and stop for review.
 

@@ -1,20 +1,20 @@
 // The weekly radio show: the script, each host's picks for the week, and
 // their records. The show is written off the week's picks board, so it's
 // worked out the first time you tune in.
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ScrollView, Text, View } from "react-native";
-import { radioCast, sideLabel, PROP_STAT_NAMES, type HostRole, type HostPick } from "@dynasty/sim";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { radioCast, sideLabel, tailRecord, PROP_STAT_NAMES, type HostRole, type HostPick } from "@dynasty/sim";
 import { Card, SectionTitle } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
-import { useTheme } from "../theme";
+import { useTheme, type Theme } from "../theme";
 
 const ROLE: Record<HostRole, string> = { numbers: "The numbers", hottake: "The hot take", veteran: "The former player" };
 
 export default function RadioScreen() {
   const t = useTheme();
   const d = useDynasty();
-  const { league, weeksPlayed, schedule } = useLeague();
+  const { league, weeksPlayed, schedule, userTeam } = useLeague();
   const cast = radioCast(league.seed);
   const week = weeksPlayed + 1;
   const radio = d.save?.radio;
@@ -29,6 +29,8 @@ export default function RadioScreen() {
   const color = (role: HostRole) => (role === "numbers" ? "#5aa9e6" : role === "hottake" ? "#f2545b" : "#e0a458");
   const nameOf = (role: HostRole) => cast.hosts.find((h) => h.role === role)!.name;
   const games = new Map((d.board ?? []).map((g) => [g.game.id, g.game]));
+  const tails = tailRecord(d.picks.history);
+  const router = useRouter();
 
   return (
     <>
@@ -81,15 +83,51 @@ export default function RadioScreen() {
                   <Text style={{ color: color(h.role), fontWeight: "800" }}>{h.name}</Text>
                   {show.picks
                     .filter((p) => p.host === h.role)
-                    .map((p) => (
-                      <Text key={p.prop.id} style={{ color: t.text, fontSize: 13, paddingVertical: 2 }}>
-                        {pickText(p, games.get(p.prop.game))}
-                      </Text>
-                    ))}
+                    .map((p) => {
+                      const mine = d.draft.find((x) => x.prop.id === p.prop.id);
+                      const following = mine?.via?.host === h.role && !mine.via.fade;
+                      const fading = mine?.via?.host === h.role && mine.via.fade;
+                      const other = p.side === "over" ? "under" : "over";
+                      // Your own game's player props only take overs.
+                      const canFade = !(p.prop.kind === "player" && p.prop.team === userTeam);
+                      return (
+                        <View key={p.prop.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 3 }}>
+                          <Text style={{ flex: 1, color: t.text, fontSize: 13 }}>{pickText(p, games.get(p.prop.game))}</Text>
+                          <Chip label="Follow" on={following} onPress={() => d.toggleDraft({ prop: p.prop, side: p.side, via: { host: h.role, fade: false } })} theme={t} />
+                          {canFade ? <Chip label="Fade" on={fading} onPress={() => d.toggleDraft({ prop: p.prop, side: other, via: { host: h.role, fade: true } })} theme={t} /> : null}
+                        </View>
+                      );
+                    })}
                 </View>
               ))}
             </Card>
           </>
+        ) : null}
+
+        {d.draft.length > 0 ? (
+          <Pressable onPress={() => router.push("/picks")} accessibilityRole="link">
+            <Card style={{ borderColor: t.accent, borderWidth: 1 }}>
+              <Text style={{ color: t.text, fontWeight: "700" }}>
+                Your slate: {d.draft.length} pick{d.draft.length === 1 ? "" : "s"} <Text style={{ color: t.accent }}>Finish it on the picks board ›</Text>
+              </Text>
+            </Card>
+          </Pressable>
+        ) : null}
+
+        {Object.keys(tails).length > 0 ? (
+          <Card>
+            <SectionTitle>You and the hosts</SectionTitle>
+            {cast.hosts
+              .filter((h) => tails[h.role])
+              .map((h) => {
+                const r = tails[h.role]!;
+                return (
+                  <Text key={h.role} style={{ color: t.text, paddingVertical: 2 }}>
+                    {h.name.split(" ")[0]}: following {r.follow[0]}-{r.follow[1]}, fading {r.fade[0]}-{r.fade[1]}
+                  </Text>
+                );
+              })}
+          </Card>
         ) : null}
 
         {radio && radio.last.length > 0 ? (
@@ -104,6 +142,14 @@ export default function RadioScreen() {
         ) : null}
       </ScrollView>
     </>
+  );
+}
+
+function Chip({ label, on, onPress, theme: t }: { label: string; on: boolean; onPress: () => void; theme: Theme }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} style={{ paddingHorizontal: 10, height: 28, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: on ? t.accent : t.border, backgroundColor: on ? t.accent : "transparent" }}>
+      <Text style={{ color: on ? t.onAccent : t.text, fontWeight: "700", fontSize: 12 }}>{label}</Text>
+    </Pressable>
   );
 }
 

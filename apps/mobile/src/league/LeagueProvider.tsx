@@ -62,6 +62,9 @@ import {
   aiInSeasonMoves,
   localFeed,
   nationalFeed,
+  collectSeason,
+  collectWeek,
+  startCollection,
   addToRecords,
   emptyRecords,
   gradeHostPicks,
@@ -189,6 +192,11 @@ export interface DynastyControls {
   boardProgress: number | null;
   loadBoard: () => void;
   placeSlate: (picks: SlatePick[], stake: number) => string[];
+  /** The slate you're building (shared by the picks board and the radio show; cleared when the week moves on). */
+  draft: SlatePick[];
+  /** Add a pick (or switch its side, or take it off if it's already there on that side). */
+  toggleDraft: (pick: SlatePick) => void;
+  clearDraft: () => void;
   /** In-season moves (regular season only): injured reserve and free-agent signings. */
   canMakeMoves: boolean;
   placeOnIR: (player: string) => string[];
@@ -448,6 +456,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   }, [restoring, state, busy, playoffs]);
 
   const [boardProgress, setBoardProgress] = useState<number | null>(null);
+  const [draft, setDraft] = useState<SlatePick[]>([]);
+  // A new week, a new slate.
+  useEffect(() => setDraft([]), [state?.weeksPlayed, state?.dynasty.league.season]);
   // With picks riding on your own players this week, your depth chart is locked until it's played.
   const depthLocked = !!state && (state.picks?.open ?? []).some((x) => x.week === state.weeksPlayed + 1 && ownPicks(x.picks, state.userTeam).length > 0);
   const boardJob = useRef<object | null>(null);
@@ -499,6 +510,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     let lineups = s.lineups ?? startLog(s.dynasty.league);
     // The week's games (injured players sit), then injuries move on a week.
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
+    const collection = collectWeek(s.collection ?? startCollection(s.dynasty.recordBook), s.dynasty.league, sched.season, week_.games, s.userTeam);
     const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
     // Settle this week's slates, then the weekly top-up.
     const before = s.picks ?? newPicks();
@@ -544,7 +556,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const kept = [...national, ...localFeed(stories, s.userTeam).filter((x) => !national.includes(x))];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
+    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -552,7 +564,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const s = stateRef.current;
     if (!s || !schedule || !playoffs) return null;
     const season = { season: schedule.season, schedule, results: s.results, standings };
-    return { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}) };
+    return { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}), ...(s.collection ? { collection: s.collection } : {}) };
   };
 
   /** After your staff calls: staff moves, retirements and development, then re-signings. */
@@ -601,7 +613,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio() }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -700,7 +712,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       // Draft week closes: the AI teams make their trades before the offseason opens.
       const traded = new Set(state.trades.flatMap((t) => t.players.map((p) => p.id)));
       const week = draftWeekTrades(state.dynasty.league, playoffs, new Set([state.userTeam]), traded);
-      persist({ ...state, dynasty: { ...state.dynasty, league: week.league }, trades: [...state.trades, ...week.trades], playoffs }, true);
+      // The season's own moments (milestone seasons, the champion), once.
+      const collection = state.collection ?? startCollection(state.dynasty.recordBook);
+      if (!collection.seasonDone) {
+        collectSeason(collection, state.dynasty.league, schedule.season, state.stats, computeRecords(state.dynasty.league, state.results), playoffs, state.userTeam);
+        collection.seasonDone = true;
+      }
+      persist({ ...state, dynasty: { ...state.dynasty, league: week.league }, trades: [...state.trades, ...week.trades], playoffs, collection }, true);
       checkpoint({ season: schedule.season, picks: [], offers: [], frontOffice: true });
       setStaffStep({ step: "decide" });
     },
@@ -845,6 +863,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
       return [];
     },
+    draft,
+    toggleDraft: (pick) =>
+      setDraft((c) => {
+        const same = c.find((p) => p.prop.id === pick.prop.id);
+        if (same && same.side === pick.side) return c.filter((p) => p.prop.id !== pick.prop.id);
+        return [...c.filter((p) => p.prop.id !== pick.prop.id), pick];
+      }),
+    clearDraft: () => setDraft([]),
     canMakeMoves,
     placeOnIR: (id) => {
       const s = stateRef.current;
