@@ -207,6 +207,23 @@ describe("re-signing budget", () => {
   }, 60_000);
 });
 
+describe("early extensions", () => {
+  it("are offered on the plan, and a team making its own calls extends only who it chose, at the deal shown", () => {
+    const begun = beginOffseason(START, playSeasonLike());
+    const plans = allTeams(START.league).map((t) => offseasonContractPlan(begun, t.abbr));
+    const plan = plans.find((p) => p.extensions.length >= 2);
+    expect(plan).toBeDefined();
+    const [take, skip] = plan!.extensions;
+    // Extend one star and not the other (re-signing nobody, so the extension fits).
+    const keep = new Set([take!.player.id]);
+    const state = resolveContracts(begun, { team: plan!.team, keep });
+    const extended = state.contracts!.moves.filter((m) => m.team === plan!.team && m.kind === "extended");
+    expect(resignFits(plan!, keep).get(take!.player.id)).toBe(true);
+    expect(extended.find((m) => m.player.id === take!.player.id)?.contract).toEqual(take!.deal);
+    expect(extended.some((m) => m.player.id === skip!.player.id)).toBe(false);
+  }, 60_000);
+});
+
 /** The first season, played all at once (as ONE was). */
 function playSeasonLike() {
   const schedule = seasonSchedule(START);

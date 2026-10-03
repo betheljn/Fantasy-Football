@@ -3,15 +3,16 @@
 // budget; the offseason then runs with your choices.
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { DEV_TRAIT_NAMES, fillReserve, formatMoney, moodLabel, playerOverall, resignFits, type ContractPlan, type ResignOffer } from "@dynasty/sim";
+import { DEV_TRAIT_NAMES, fillReserve, formatMoney, moodLabel, playerOverall, resignFits, type ContractPlan, type ExtensionOffer, type ResignOffer } from "@dynasty/sim";
 import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
   const t = useTheme();
-  // The front office's picks, cut to what fits (in the order the team handles them, as it would anyway).
+  // The front office's picks, cut to what fits (in the order the team handles them, as it would anyway):
+  // the re-signings it wants, then every extension that still fits.
   const aiPicks = useMemo(() => {
-    const fit = resignFits(plan, new Set(plan.offers.filter((o) => o.aiWants).map((o) => o.player.id)));
+    const fit = resignFits(plan, new Set([...plan.offers.filter((o) => o.aiWants).map((o) => o.player.id), ...plan.extensions.map((x) => x.player.id)]));
     return new Set([...fit].filter(([, ok]) => ok).map(([id]) => id));
   }, [plan]);
   const [keep, setKeep] = useState<Set<string>>(() => (initial ? new Set(initial) : aiPicks));
@@ -27,9 +28,11 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
   const fits = resignFits(plan, keep);
   const fitting = plan.offers.filter((o) => fits.get(o.player.id) === true);
   const running = plan.committed + fitting.reduce((s, o) => s + o.capHit, 0);
+  const extending = plan.extensions.filter((x) => fits.get(x.player.id) === true);
+  const extensionCost = extending.reduce((s, x) => s + x.extra + x.accelerated, 0);
   const reserve = fillReserve(plan, fitting.length);
-  const room = plan.budget - running - reserve;
-  const overflow = keep.size - fitting.length;
+  const room = plan.budget - running - extensionCost - reserve;
+  const overflow = [...fits.values()].filter((ok) => !ok).length;
   const expectedCost = fitting.reduce((s, o) => s + o.capHit * o.chance, 0);
   // The budget keeps a small cushion under the cap.
   const cushion = plan.cap + plan.rollover - plan.incentives - plan.rookieBill - plan.budget;
@@ -51,6 +54,7 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
           <Line label="Already under contract" value={`−${formatMoney(plan.committed)}`} theme={t} />
           <Line label="Cushion kept under the cap" value={`−${formatMoney(cushion)}`} theme={t} />
           <Line label={`Chosen (${fitting.length}, if all say yes)`} value={`−${formatMoney(running - plan.committed)}`} theme={t} />
+          {extending.length ? <Line label={`Extensions (${extending.length})`} value={`−${formatMoney(extensionCost)}`} theme={t} /> : null}
           {reserve > 0 ? <Line label={`Kept to fill ${plan.openSpots - fitting.length} open spot${plan.openSpots - fitting.length === 1 ? "" : "s"} at the minimum`} value={`−${formatMoney(reserve)}`} theme={t} /> : null}
           <View style={{ height: 1, backgroundColor: t.border, marginVertical: 6 }} />
           <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
@@ -70,8 +74,22 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
         {plan.offers.map((o) => (
           <OfferRow key={o.player.id} offer={o} kept={keep.has(o.player.id)} fits={fits.get(o.player.id) ?? true} onToggle={() => toggle(o.player.id)} theme={t} />
         ))}
+
+        {plan.extensions.length ? (
+          <View style={{ gap: 12, marginTop: 8 }}>
+            <View>
+              <SectionTitle>Early extensions</SectionTitle>
+              <Text style={{ color: t.muted }}>
+                Young stars with a year left on their deals. Extend now and the new deal replaces the last year (any unpaid bonus comes due next season); wait and he plays it out, then hits this list as an expiring deal next year.
+              </Text>
+            </View>
+            {plan.extensions.map((x) => (
+              <ExtensionRow key={x.player.id} offer={x} on={keep.has(x.player.id)} fits={fits.get(x.player.id) ?? true} onToggle={() => toggle(x.player.id)} theme={t} />
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
-      <StickyFooter note={`Keeping ${fitting.length} · ${formatMoney(room)} room left`}>
+      <StickyFooter note={`Keeping ${fitting.length}${extending.length ? ` · extending ${extending.length}` : ""} · ${overflow ? `${overflow} won't fit` : `${formatMoney(room)} room left`}`}>
         <Pressable
           onPress={() => onDone(keep)}
           accessibilityRole="button"
@@ -118,6 +136,45 @@ function OfferRow({ offer: o, kept, fits, onToggle, theme: t }: { offer: ResignO
             {o.kind === "option" ? "Can't refuse" : `${moodLabel(o.mood)} (${o.mood}) · ${odds}% to accept`}
           </Text>
           {kept && !fits ? <Text style={{ fontSize: 12, marginTop: 2, color: t.score, fontWeight: "700" }}>Won't fit under the cap</Text> : null}
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
+function ExtensionRow({ offer: x, on, fits, onToggle, theme: t }: { offer: ExtensionOffer; on: boolean; fits: boolean; onToggle: () => void; theme: Theme }) {
+  const p = x.player;
+  const years = x.deal.years.length;
+  const avg = x.deal.years.reduce((s, y) => s + y.salary + y.bonus, 0) / years;
+  return (
+    <Pressable onPress={onToggle} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`Extend ${p.firstName} ${p.lastName}`}>
+      <Card style={{ flexDirection: "row", gap: 12, alignItems: "center", borderColor: on ? t.accent : t.border, borderWidth: on ? 1.5 : 1 }}>
+        <View style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: on ? t.accent : t.muted, backgroundColor: on ? t.accent : "transparent", alignItems: "center", justifyContent: "center" }}>
+          {on ? <Text style={{ color: t.onAccent, fontWeight: "900" }}>✓</Text> : null}
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
+            <Text style={{ color: t.muted, width: 26 }}>{p.position}</Text>
+            <Text style={{ flex: 1, color: t.text, fontWeight: "700" }} numberOfLines={1}>
+              {p.firstName} {p.lastName}
+            </Text>
+            <Text style={{ color: t.text, fontWeight: "800" }}>{playerOverall(p)}</Text>
+          </View>
+          <Text style={{ color: t.muted, fontSize: 12, marginTop: 2 }}>
+            age {p.age}
+            {p.devTraitRevealed && p.devTrait !== "normal" ? ` · ${DEV_TRAIT_NAMES[p.devTrait]} dev` : ""}
+            {x.homegrown ? " · homegrown (80% cap)" : ""}
+            {` · now ${formatMoney(x.capHit - x.extra)} for ${x.deal.years[0]!.season}`}
+          </Text>
+          <Text style={{ color: t.text, fontSize: 13, marginTop: 4 }}>
+            {years} yr{years === 1 ? "" : "s"} from {x.deal.years[0]!.season}, {formatMoney(avg)}/yr · {formatMoney(x.capHit)} next season
+          </Text>
+          <Text style={{ fontSize: 12, marginTop: 2, color: t.muted }}>
+            Cap next season: {x.extra + x.accelerated >= 0 ? "+" : ""}
+            {formatMoney(x.extra + x.accelerated)}
+            {x.accelerated > 0 ? ` (incl. ${formatMoney(x.accelerated)} old bonus)` : ""}
+          </Text>
+          {on && !fits ? <Text style={{ fontSize: 12, marginTop: 2, color: t.score, fontWeight: "700" }}>Won't fit under the cap</Text> : null}
         </View>
       </Card>
     </Pressable>

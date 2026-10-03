@@ -99,8 +99,25 @@ export interface OpenYearResult {
 /** A team deciding its own re-signings (the user's team); everyone else is left to the AI. */
 export interface ResignChoices {
   team: string;
-  /** Expiring players to try to keep (fifth-year option or new deal). Everyone else goes. */
+  /**
+   * Expiring players to try to keep (fifth-year option or new deal), and
+   * players with a year left to extend early (see ContractPlan.extensions).
+   * Expiring players left out go; players left out with a year left play it out.
+   */
   keep: ReadonlySet<PlayerId>;
+}
+
+/** An early extension: a young star entering the last year of his deal, locked up now. */
+export interface ExtensionOffer {
+  player: Player;
+  /** The new deal (replacing what's left of the old one). */
+  deal: Contract;
+  /** Next season's cap hit: the new deal's, and how much more that is than the old deal's. */
+  capHit: number;
+  extra: number;
+  /** The old deal's unpaid signing bonus, which comes due on next season's cap. */
+  accelerated: number;
+  homegrown: boolean;
 }
 
 /** What keeping an expiring player would take. */
@@ -140,6 +157,8 @@ export interface ContractPlan {
   /** The league minimum salary next season. */
   minimum: number;
   offers: ResignOffer[];
+  /** Young stars with a year left the team can extend now (the AI extends any that fit), best first. */
+  extensions: ExtensionOffer[];
 }
 
 /** Money held back to fill the roster at the minimum once `kept` expiring players have re-signed. */
@@ -148,9 +167,10 @@ export function fillReserve(plan: Pick<ContractPlan, "openSpots" | "minimum">, k
 }
 
 /**
- * Which of the players you'd keep fit, walking the offers in the order the
- * team handles them (if all say yes): each must fit the budget while still
- * leaving enough to fill the rest of the roster at the minimum.
+ * Which of the players you'd keep or extend fit, walking them in the order the
+ * team handles them (re-signings first, if all say yes, then extensions): each
+ * must fit the budget while still leaving enough to fill the rest of the
+ * roster at the minimum.
  */
 export function resignFits(plan: ContractPlan, keep: ReadonlySet<PlayerId>): Map<PlayerId, boolean> {
   const fits = new Map<PlayerId, boolean>();
@@ -164,6 +184,13 @@ export function resignFits(plan: ContractPlan, keep: ReadonlySet<PlayerId>): Map
       committed += o.capHit;
       kept++;
     }
+  }
+  for (const x of plan.extensions) {
+    if (!keep.has(x.player.id)) continue;
+    const cost = x.extra + x.accelerated;
+    const ok = committed + cost + fillReserve(plan, kept) <= plan.budget;
+    fits.set(x.player.id, ok);
+    if (ok) committed += cost;
   }
   return fits;
 }
@@ -251,6 +278,41 @@ function resignOffer(ctx: OpenYearContext, team: Team, p: Player): ResignOffer {
   return { player: p, kind: "re-sign", deal, capHit: capHit(deal, ctx.next), mood: m, chance, accepts, homegrown, aiWants };
 }
 
+/** Players under contract with one year left who qualify for an early extension, best first. */
+function extensionCandidates(team: Team, next: number): Player[] {
+  return team.roster
+    .filter((p) => {
+      const c = p.contract;
+      if (!c || finalSeason(c) !== next || contractYear(c, next)?.option) return false;
+      return playerOverall(p) >= EXTENSION.minOverall && p.age <= EXTENSION.maxAge;
+    })
+    .sort((a, b) => playerOverall(b) - playerOverall(a) || a.id.localeCompare(b.id));
+}
+
+function extensionOffer(ctx: OpenYearContext, team: Team, p: Player): ExtensionOffer {
+  const c = p.contract!;
+  const homegrown = c.draftedBy === team.abbr;
+  // His own random stream, so the offer shown is the deal he signs.
+  const rng = new Rng(`${ctx.seed}:${ctx.next}:extend:${p.id}`);
+  const deal = veteranContract(p, ctx.capNext, {
+    kind: "extension",
+    signed: ctx.next,
+    years: Math.min(5, contractLength(rng, p) + 1),
+    annual: marketValue(p, ctx.capNext, ctx.index) * EXTENSION.premium,
+    homegrown,
+    ...(c.draftedBy ? { draftedBy: c.draftedBy } : {}),
+  });
+  const hit = capHit(deal, ctx.next);
+  return {
+    player: p,
+    deal,
+    capHit: hit,
+    extra: hit - capHit(c, ctx.next),
+    accelerated: c.years.filter((y) => y.season >= ctx.next).reduce((s, y) => s + y.bonus, 0),
+    homegrown,
+  };
+}
+
 /**
  * A team's re-signing picture for the coming offseason: what it can spend and
  * what each expiring player would take. Same arguments as openContractYear.
@@ -259,7 +321,14 @@ export function contractPlan(played: League, league: League, triggers: Incentive
   const ctx = openYearContext(played, league, triggers, order);
   const team = league.teams[abbr]!;
   const b = teamBudget(ctx, played.teams[abbr]!, team);
-  return { team: abbr, season: ctx.next, cap: ctx.capNext, ...b, offers: expiringPlayers(team, ctx.next).map((p) => resignOffer(ctx, team, p)) };
+  return {
+    team: abbr,
+    season: ctx.next,
+    cap: ctx.capNext,
+    ...b,
+    offers: expiringPlayers(team, ctx.next).map((p) => resignOffer(ctx, team, p)),
+    extensions: extensionCandidates(team, ctx.next).map((p) => extensionOffer(ctx, team, p)),
+  };
 }
 
 /**
@@ -272,8 +341,7 @@ export function contractPlan(played: League, league: League, triggers: Incentive
 export function openContractYear(played: League, league: League, triggers: IncentiveTriggers, order: string[], choices?: PerTeam<ResignChoices>): OpenYearResult {
   const ctx = openYearContext(played, league, triggers, order);
   const chosen = teamChoices(choices);
-  const { next, capNext, index } = ctx;
-  const rng = new Rng(`${league.seed}:${next}:contracts`);
+  const { next } = ctx;
   const moves: ContractMove[] = [];
   const freeAgents: Player[] = [];
   const teams: League["teams"] = { ...league.teams };
@@ -316,33 +384,22 @@ export function openContractYear(played: League, league: League, triggers: Incen
       moves.push({ kind: offer.kind === "option" ? "option" : "re-signed", team: abbr, player: p, contract: offer.deal });
     }
 
-    // Early extensions: lock up young stars entering the last year of a deal.
-    for (const p of [...roster].sort((a, b) => playerOverall(b) - playerOverall(a))) {
-      const c = p.contract!;
-      if (finalSeason(c) !== next || contractYear(c, next)?.option) continue;
-      if (playerOverall(p) < EXTENSION.minOverall || p.age > EXTENSION.maxAge) continue;
-      const homegrown = c.draftedBy === abbr;
-      const deal = veteranContract(p, capNext, {
-        kind: "extension",
-        signed: next,
-        years: Math.min(5, contractLength(rng, p) + 1),
-        annual: marketValue(p, capNext, index) * EXTENSION.premium,
-        homegrown,
-        ...(c.draftedBy ? { draftedBy: c.draftedBy } : {}),
-      });
-      const extra = capHit(deal, next) - capHit(c, next);
-      // The unpaid bonus from the old deal accelerates onto this season's cap, so it has to fit too.
-      const leftover = c.years.filter((y) => y.season >= next).reduce((s, y) => s + y.bonus, 0);
-      if (committed + extra + leftover + fillReserve(plan, kept) > budget) continue;
-      committed += extra + leftover;
-      accelerated += leftover;
-      roster = roster.map((q) => (q.id === p.id ? { ...q, contract: deal } : q));
-      moves.push({ kind: "extended", team: abbr, player: p, contract: deal });
+    // Early extensions: lock up young stars entering the last year of a deal
+    // (a team making its own calls extends only the ones it chose).
+    for (const p of extensionCandidates(team, next)) {
+      const mine = chosen.get(abbr);
+      if (mine && !mine.keep.has(p.id)) continue;
+      const x = extensionOffer(ctx, team, p);
+      if (committed + x.extra + x.accelerated + fillReserve(plan, kept) > budget) continue;
+      committed += x.extra + x.accelerated;
+      accelerated += x.accelerated;
+      roster = roster.map((q) => (q.id === p.id ? { ...q, contract: x.deal } : q));
+      moves.push({ kind: "extended", team: abbr, player: p, contract: x.deal });
     }
     const later = (team.cap?.pendingDeadMoney ?? []).filter((d) => d.season > next);
     teams[abbr] = withRoster(team, roster, { rollover, deadMoney: accelerated + pendingDead(team, next), incentives, ...(later.length > 0 ? { pendingDeadMoney: later } : {}) });
   }
-  return { league: { ...league, teams }, freeAgents, moves, marketIndex: index };
+  return { league: { ...league, teams }, freeAgents, moves, marketIndex: ctx.index };
 }
 
 /** Slotted rookie deals for this year's draft picks. */
