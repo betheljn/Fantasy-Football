@@ -6,11 +6,12 @@ import { Card, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
-export default function ScheduleScreen() {
+export function ScoresSection() {
   const t = useTheme();
   const router = useRouter();
   const { schedule, results, weeksPlayed } = useLeague();
-  const [week, setWeek] = useState(1);
+  // Open on the latest week played (or week 1 before any).
+  const [week, setWeek] = useState(() => Math.max(1, weeksPlayed));
   const byId = useMemo(() => new Map(results.map((r) => [r.id, r])), [results]);
   const games = schedule.games.filter((g) => g.week === week);
   const byes = Object.entries(schedule.byes).filter(([, w]) => w.includes(week)).map(([team]) => team);
@@ -53,7 +54,7 @@ export default function ScheduleScreen() {
                   {side(g.home, r?.homeScore)}
                 </View>
                 <Text style={{ width: 64, textAlign: "right", color: r ? t.accent : t.muted, fontSize: 12, fontWeight: "600" }}>
-                  {r ? `Final${r.overtime ? "/OT" : ""}\nWatch ›` : g.kind === "division" ? "Division" : g.kind === "conference" ? "Conference" : "Non-conf."}
+                  {r ? `Final${r.overtime ? "/OT" : ""}\nWatch ›` : g.kind === "division" ? "Division" : g.kind === "conference" ? "Conf." : "Non-conf."}
                 </Text>
               </Card>
             </Pressable>

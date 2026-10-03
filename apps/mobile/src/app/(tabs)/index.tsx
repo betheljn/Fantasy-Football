@@ -186,13 +186,6 @@ function SeasonHub({ data }: { data: LeagueData }) {
           {div && weeksPlayed > 0 ? ` · ${ordinal(place)} in ${div.division}` : ""}
           {rank && rank <= 25 && weeksPlayed > 0 ? ` · No. ${rank}` : ""}
         </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-          <Button label="Team page" onPress={() => router.push(`/team/${userTeam}`)} theme={t} small />
-          {d.phase === "season" ? <Button label={`Picks · ${d.picks.balance.toLocaleString()} pts`} onPress={() => router.push("/picks")} theme={t} small /> : null}
-          {d.phase === "season" ? <Button label="Radio" onPress={() => router.push("/radio")} theme={t} small /> : null}
-          <Button label="Moments" onPress={() => router.push("/moments")} theme={t} small />
-          <Button label="Business" onPress={() => router.push("/business")} theme={t} small />
-        </View>
       </Card>
 
       {d.phase === "season" || simming ? (
@@ -226,8 +219,6 @@ function SeasonHub({ data }: { data: LeagueData }) {
 
       {(d.save?.news ?? []).length > 0 && (d.phase === "season" || d.phase === "playoffs" || d.phase === "complete") ? <HeadlinesCard data={data} /> : null}
 
-      {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <OwnerCard data={data} /> : null}
-
       {d.phase === "season" ? <ScoutingCard data={data} /> : null}
 
       {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <InjuriesCard data={data} /> : null}
@@ -253,8 +244,6 @@ function SeasonHub({ data }: { data: LeagueData }) {
         </Card>
       ) : null}
 
-      <History data={data} />
-      <DangerZone />
     </ScrollView>
   );
 }
@@ -291,51 +280,6 @@ function SpringPick({ season }: { season: number }) {
 }
 
 /** The owner (or the board): their goal, trust in you, fan mood, and last season's verdict. */
-function OwnerCard({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const office = d.save?.office;
-  if (!office) return null;
-  const owner = teamOwner(data.league.seed, data.userTeam);
-  const last = office.reviews.at(-1);
-  return (
-    <Card>
-      <SectionTitle>{office.role === "owner" ? "The board" : `Your owner: ${owner.name}`}</SectionTitle>
-      {office.role === "gm" ? (
-        <>
-          <Text style={{ color: t.text }}>
-            Wants: <Text style={{ fontWeight: "700" }}>{OWNER_GOALS[owner.goal].name}</Text> ({OWNER_GOALS[owner.goal].wants}).
-          </Text>
-          <Meter label="Owner's trust" value={office.trust} warn={office.trust < 35} theme={t} />
-        </>
-      ) : (
-        <Text style={{ color: t.muted }}>You own the team. The board grades each season; nobody can fire you.</Text>
-      )}
-      <Meter label="Fan mood" value={office.fanMood} warn={office.fanMood < 35} theme={t} />
-      {office.expectedWins !== undefined ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Expected this season: about {Math.round(office.expectedWins)} wins.</Text> : null}
-      {last ? (
-        <Text style={{ color: t.muted, fontSize: 13, marginTop: 6 }}>
-          {last.season}: grade {last.grade}. {last.verdict}
-        </Text>
-      ) : null}
-    </Card>
-  );
-}
-
-function Meter({ label, value, warn, theme: t }: { label: string; value: number; warn: boolean; theme: Theme }) {
-  return (
-    <View style={{ marginTop: 8 }}>
-      <View style={{ flexDirection: "row" }}>
-        <Text style={{ flex: 1, color: t.muted, fontSize: 12 }}>{label}</Text>
-        <Text style={{ color: warn ? t.score : t.text, fontWeight: "700", fontSize: 12 }}>{value}</Text>
-      </View>
-      <View style={{ height: 6, borderRadius: 3, backgroundColor: t.border, marginTop: 3, overflow: "hidden" }}>
-        <View style={{ width: `${value}%`, height: 6, backgroundColor: warn ? t.score : t.accent }} />
-      </View>
-    </View>
-  );
-}
-
 /** After each game: one question from the press, three ways to answer. */
 function PressCard() {
   const t = useTheme();
@@ -595,42 +539,6 @@ function Playoffs({ data }: { data: LeagueData }) {
   );
 }
 
-function History({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const router = useRouter();
-  const history = d.save?.dynasty.history ?? [];
-  if (history.length === 0) return null;
-  return (
-    <Card>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <View style={{ flex: 1 }}>
-          <SectionTitle>Dynasty history</SectionTitle>
-        </View>
-        <Pressable onPress={() => router.push("/halloffame")} accessibilityRole="link" style={{ marginRight: 12 }}>
-          <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Hall of Fame ›</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push("/trophies")} accessibilityRole="link">
-          <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Trophy room ›</Text>
-        </Pressable>
-      </View>
-      {[...history].reverse().map((h) => {
-        const mine = h.top25.find((e) => e.team === data.userTeam);
-        return (
-          <View key={h.season} style={{ flexDirection: "row", paddingVertical: 3 }}>
-            <Text style={{ width: 48, color: t.muted }}>{h.season}</Text>
-            <Text style={{ flex: 1, color: t.text }}>
-              Champion {h.champion}
-              {h.champion === data.userTeam ? " ★" : ""}
-            </Text>
-            <Text style={{ color: t.muted }}>{mine ? `you: No. ${mine.rank}` : ""}</Text>
-          </View>
-        );
-      })}
-    </Card>
-  );
-}
-
 /** The start screen: your save slots, and starting a new dynasty in a free one. */
 function Saves() {
   const t = useTheme();
@@ -675,24 +583,6 @@ function Saves() {
         <Button label="Online leagues with friends" onPress={() => router.push("/online")} theme={t} />
       </View>
     </Centered>
-  );
-}
-
-function DangerZone() {
-  const t = useTheme();
-  const d = useDynasty();
-  const [armed, setArmed] = useState(false);
-  return (
-    <View style={{ alignItems: "center", marginTop: 8, gap: 14 }}>
-      <Pressable onPress={d.closeDynasty} accessibilityRole="button">
-        <Text style={{ color: t.accent, fontWeight: "600" }}>Switch dynasty</Text>
-      </Pressable>
-      <Pressable onPress={() => (armed ? d.deleteDynasty() : setArmed(true))} accessibilityRole="button">
-        <Text style={{ color: armed ? t.score : t.muted, fontWeight: armed ? "700" : "400" }}>
-          {armed ? "Tap again to delete this dynasty for good" : "Delete dynasty"}
-        </Text>
-      </Pressable>
-    </View>
   );
 }
 

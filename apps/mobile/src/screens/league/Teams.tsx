@@ -6,7 +6,7 @@ import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
-export default function TeamsScreen() {
+export function TeamsSection() {
   const t = useTheme();
   const router = useRouter();
   const { league, standings } = useLeague();

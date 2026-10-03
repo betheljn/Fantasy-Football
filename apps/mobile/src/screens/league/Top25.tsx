@@ -6,7 +6,7 @@ import { Card, LinkRow, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
-export default function RankingsScreen() {
+export function Top25Section() {
   const t = useTheme();
   const router = useRouter();
   const { league, rankings, weeksPlayed, schedule } = useLeague();

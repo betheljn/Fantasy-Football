@@ -253,6 +253,23 @@ name to join (no passwords at first). Ask before installing dependencies.
    7c. App: each stage's screen for online leagues (worked out on the phone
        with the same sim code as the server; a ranked draft board)
 
+### Milestone 16: organized and alive (current)
+Make the app easy to find your way around and good to look at, games first.
+Decided: five tabs by what you're doing (Home, Team, League, Media, Office),
+real icons (@expo/vector-icons).
+1. Navigation: five tabs; League folds in scores, standings, Top 25 and
+   teams; Team, Media and Office list their screens with a live line each;
+   every screen has one home
+2. Home, compact: the next game up top (play, watch, sim), one "Needs you"
+   list (press, injuries, scouting, trade offers, offseason calls), last
+   result, a few headlines
+3. One look: shared headers, sections, rows, stats, badges and empty
+   states; team colors used throughout; consistent spacing and type
+4. Game day: pregame (matchup, key players), live scoreboard in team colors
+   with a win-chance bar and big plays, postgame recap (leaders, moments)
+5. Flow polish: the offseason as a guided stepper (solo and online), loading
+   and empty states, transitions
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style
