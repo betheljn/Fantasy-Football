@@ -170,7 +170,8 @@ export interface PressContext {
 /** This week's question, picked from what just happened, and three ways to answer. */
 export function pressConference(leagueSeed: string, season: number, c: PressContext): PressConference {
   const rng = new Rng(`${leagueSeed}:press:${season}:${c.week}`);
-  const q = (question: string, answers: PressAnswer[]): PressConference => ({ week: c.week, question, answers });
+  // (Questions can open with a trophy's name, "the ...": capitalized as the start of a sentence.)
+  const q = (question: string, answers: PressAnswer[]): PressConference => ({ week: c.week, question: question.charAt(0).toUpperCase() + question.slice(1), answers });
   if (c.rivalry)
     return c.rivalry.won
       ? q(`You've got ${c.rivalry.trophy} back in your building. What does it mean?`, [

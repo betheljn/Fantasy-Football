@@ -15,6 +15,7 @@ import {
   injuryLabel,
   injuryReport,
   TRADE_DEADLINE_WEEK,
+  IR_MIN_WEEKS,
   type TradeRecord,
   allTeams,
   formatMoney,
@@ -28,7 +29,7 @@ import {
   teamRatings,
   winPct,
 } from "@dynasty/sim";
-import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Swatch, type IconName } from "../../components/ui";
 import { OnlineHub } from "../../online/OnlineHub";
 import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
@@ -161,90 +162,189 @@ function ChooseTeam({ data }: { data: LeagueData }) {
 function SeasonHub({ data }: { data: LeagueData }) {
   const t = useTheme();
   const d = useDynasty();
-  const router = useRouter();
-  const { league, schedule, results, userTeam, weeksPlayed, standings, rankings, playoffs, playoffRoundsShown } = data;
+  const { league, userTeam, weeksPlayed, standings, rankings, playoffs } = data;
   const team = league.teams[userTeam]!;
   const rec = data.records.get(userTeam);
   const div = standings.find((x) => x.teams.some((r) => r.team === userTeam));
   const place = div ? div.teams.findIndex((r) => r.team === userTeam) + 1 : 0;
   const rank = rankings.find((e) => e.team === userTeam)?.rank;
-  const nextWeek = weeksPlayed + 1;
-  const myGames = schedule.games.filter((g) => g.home === userTeam || g.away === userTeam);
-  const upcoming = myGames.find((g) => g.week === nextWeek);
-  const lastResult = [...results].reverse().find((r) => r.home === userTeam || r.away === userTeam);
-  const simming = d.phase === "simming";
+  const postseason = d.phase === "playoffs" || d.phase === "complete";
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Swatch abbr={userTeam} size={18} />
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: "800", color: t.text }}>{teamName(team)}</Text>
-        </View>
-        <Text style={{ color: t.muted, marginTop: 6 }}>
-          {league.season} season · {rec ? formatRecord(rec) : "0-0"}
-          {div && weeksPlayed > 0 ? ` · ${ordinal(place)} in ${div.division}` : ""}
-          {rank && rank <= 25 && weeksPlayed > 0 ? ` · No. ${rank}` : ""}
-        </Text>
-      </Card>
-
-      {d.phase === "season" || simming ? (
-        <Card>
-          <SectionTitle>{simming ? "Simulating" : `Week ${nextWeek} of ${schedule.weeks}`}</SectionTitle>
-          {simming ? (
-            <Bar value={d.progress} theme={t} />
-          ) : upcoming ? (
-            <Matchup data={data} home={upcoming.home} away={upcoming.away} />
-          ) : (
-            <Text style={{ color: t.muted }}>Bye week.</Text>
-          )}
-          {!simming ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-              {upcoming ? <Button label="Watch your game" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} /> : null}
-              <Button label={`Play week ${nextWeek}`} onPress={d.playWeek} theme={t} primary />
-              <Button label="Sim to playoffs" onPress={d.playRegularSeason} theme={t} />
-            </View>
-          ) : null}
-          {lastResult && !simming ? (
-            <Pressable onPress={() => router.push(`/game/${lastResult.id}`)} accessibilityRole="link">
-              <Text style={{ color: t.muted, marginTop: 12 }}>
-                Last game: {resultLine(lastResult, userTeam)} <Text style={{ color: t.accent }}>Watch ›</Text>
-              </Text>
-            </Pressable>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {d.phase === "season" && d.press ? <PressCard /> : null}
-
-      {(d.save?.news ?? []).length > 0 && (d.phase === "season" || d.phase === "playoffs" || d.phase === "complete") ? <HeadlinesCard data={data} /> : null}
-
-      {d.phase === "season" ? <ScoutingCard data={data} /> : null}
-
-      {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <InjuriesCard data={data} /> : null}
-
-      {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <TradesCard data={data} /> : null}
-
-      {playoffs ? <Playoffs data={data} /> : null}
-
-      {d.phase === "playoffs" ? (
-        <Button label={`Play the ${ROUND_NAMES[PLAYOFF_ROUNDS[playoffRoundsShown]!]}`} onPress={d.playPlayoffRound} theme={t} primary />
-      ) : null}
-
-      {d.phase === "complete" && playoffs ? (
-        <Card>
-          <SectionTitle>{league.season} champions</SectionTitle>
-          <Text style={{ fontSize: 20, fontWeight: "800", color: t.text }}>{teamName(league.teams[playoffs.champion]!)}</Text>
-          <Text style={{ color: t.muted, marginTop: 4 }}>
-            {playoffs.champion === userTeam ? "That's you. Champions!" : `Runner-up: ${playoffs.runnerUp}.`}
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Swatch abbr={userTeam} size={18} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 20, fontWeight: "800", color: t.text }}>{teamName(team)}</Text>
+          <Text style={{ color: t.muted, fontSize: 13 }}>
+            {league.season} · {rec ? formatRecord(rec) : "0-0"}
+            {div && weeksPlayed > 0 ? ` · ${ordinal(place)} in ${div.division}` : ""}
+            {rank && rank <= 25 && weeksPlayed > 0 ? ` · No. ${rank}` : ""}
           </Text>
-          <View style={{ marginTop: 12 }}>
-            <Button label="Start the offseason" onPress={d.startOffseason} theme={t} primary />
-          </View>
-        </Card>
-      ) : null}
+        </View>
+      </View>
 
+      <NextUp data={data} />
+      {postseason && playoffs ? <Playoffs data={data} /> : null}
+      <NeedsYou data={data} />
+      <LastWeek data={data} />
     </ScrollView>
+  );
+}
+
+/** The one thing to do next: this week's game, the next playoff round, or the offseason. */
+function NextUp({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const { league, schedule, userTeam, weeksPlayed, playoffs, playoffRoundsShown, rankings } = data;
+  const nextWeek = weeksPlayed + 1;
+  const upcoming = schedule.games.find((g) => g.week === nextWeek && (g.home === userTeam || g.away === userTeam));
+  const rankOf = (abbr: string) => rankings.find((e) => e.team === abbr)?.rank;
+
+  if (d.phase === "simming") {
+    return (
+      <Card style={{ gap: 8 }}>
+        <SectionTitle>Simulating</SectionTitle>
+        <Bar value={d.progress} theme={t} />
+      </Card>
+    );
+  }
+  if (d.phase === "playoffs") {
+    const round = PLAYOFF_ROUNDS[playoffRoundsShown]!;
+    return (
+      <Card style={{ gap: 10, borderColor: t.accent, borderWidth: 1.5 }}>
+        <SectionTitle>Playoffs</SectionTitle>
+        <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{ROUND_NAMES[round]}</Text>
+        <Button label={`Play the ${ROUND_NAMES[round]}`} onPress={d.playPlayoffRound} theme={t} primary />
+      </Card>
+    );
+  }
+  if (d.phase === "complete" && playoffs) {
+    const champ = playoffs.champion;
+    return (
+      <Card style={{ gap: 8, borderColor: "#f5b83d", borderWidth: 1.5 }}>
+        <SectionTitle>{league.season} champions</SectionTitle>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Swatch abbr={champ} size={22} />
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "800", color: t.text }}>{teamName(league.teams[champ]!)}</Text>
+        </View>
+        <Text style={{ color: t.muted }}>{champ === userTeam ? "That's you. Champions!" : `They beat ${teamName(league.teams[playoffs.runnerUp]!)} in the final.`}</Text>
+        <Button label="Start the offseason" onPress={d.startOffseason} theme={t} primary />
+      </Card>
+    );
+  }
+  if (d.phase !== "season") return null;
+
+  const side = (abbr: string) => {
+    const r = data.records.get(abbr);
+    const n = rankOf(abbr);
+    return (
+      <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
+        <Swatch abbr={abbr} size={40} />
+        <Text style={{ color: t.text, fontWeight: abbr === userTeam ? "800" : "600", fontSize: 15, textAlign: "center" }} numberOfLines={1}>
+          {n && n <= 25 && weeksPlayed > 0 ? <Text style={{ color: t.muted, fontSize: 12 }}>{n} </Text> : null}
+          {league.teams[abbr]!.nickname}
+        </Text>
+        <Text style={{ color: t.muted, fontSize: 12 }}>
+          {league.teams[abbr]!.state} · {r ? formatRecord(r) : "0-0"}
+        </Text>
+      </View>
+    );
+  };
+  return (
+    <Card style={{ gap: 12, borderColor: t.accent, borderWidth: 1.5 }}>
+      <SectionTitle>
+        Week {nextWeek} of {schedule.weeks}
+      </SectionTitle>
+      {upcoming ? (
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {side(upcoming.away)}
+          <Text style={{ color: t.muted, fontWeight: "700", paddingHorizontal: 6 }}>at</Text>
+          {side(upcoming.home)}
+        </View>
+      ) : (
+        <Text style={{ color: t.text, fontSize: 17, fontWeight: "700" }}>Bye week: your team rests.</Text>
+      )}
+      <Button label={upcoming ? `Play week ${nextWeek}` : `Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} primary />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {upcoming ? (
+          <View style={{ flex: 1 }}>
+            <Button label="Watch your game" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} small />
+          </View>
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <Button label="Sim to playoffs" onPress={d.playRegularSeason} theme={t} small />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+/** Everything waiting on you, in one list (or "all caught up"). */
+function NeedsYou({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const { league, userTeam, weeksPlayed } = data;
+  const team = league.teams[userTeam]!;
+  const items: Array<{ key: string; icon: IconName; title: string; detail: string; go: string }> = [];
+  const office = d.save?.office;
+  if (d.press && office?.press[d.press.week] === undefined) {
+    items.push({ key: "press", icon: "mic-outline", title: "Press conference", detail: `"${d.press.question}"`, go: "/press" });
+  }
+  if (d.canMakeMoves) {
+    const long = team.roster.filter((p) => (p.injury?.weeks ?? 0) >= IR_MIN_WEEKS);
+    if (long.length) items.push({ key: "ir", icon: "medkit-outline", title: `${long.length} could go on injured reserve`, detail: long.map((p) => `${p.position} ${p.lastName}`).join(", "), go: "/injuries" });
+    if (team.roster.length < 72) items.push({ key: "sign", icon: "person-add-outline", title: `${72 - team.roster.length} open roster spot${team.roster.length === 71 ? "" : "s"}`, detail: "Sign a free agent", go: "/freeagents" });
+  }
+  if (d.phase === "season" && d.scouting && d.scoutPlan.length === 0) {
+    items.push({ key: "scout", icon: "search-outline", title: "Scouting points to assign", detail: `${SCOUT_POINTS} this week; your scouts choose if you don't`, go: "/scouting" });
+  }
+  if (d.canTrade && d.tradeWindow?.week !== 0 && TRADE_DEADLINE_WEEK - weeksPlayed === 1) {
+    items.push({ key: "deadline", icon: "swap-horizontal-outline", title: "Last week to trade", detail: `Trading closes after week ${TRADE_DEADLINE_WEEK}`, go: "/trade" });
+  }
+  if (d.canTrade && d.tradeWindow?.week === 0) {
+    items.push({ key: "draftweek", icon: "swap-horizontal-outline", title: "Draft week: trades are open", detail: "Deal players and picks before the offseason", go: "/trade" });
+  }
+  if (office?.role === "gm" && office.trust < 35) {
+    items.push({ key: "owner", icon: "warning-outline", title: "Your owner is losing patience", detail: `Trust ${office.trust}. Win, or say the right things.`, go: "/owner" });
+  }
+  return (
+    <NavGroup title={items.length ? `Needs you · ${items.length}` : "Needs you"}>
+      {items.length === 0 ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 14 }}>
+          <Icon name="checkmark-circle-outline" color={t.accent} />
+          <Text style={{ color: t.muted }}>You're all caught up.</Text>
+        </View>
+      ) : (
+        items.map((x, i) => <NavRow key={x.key} icon={x.icon} title={x.title} detail={x.detail} onPress={() => router.push(x.go as never)} last={i === items.length - 1} />)
+      )}
+    </NavGroup>
+  );
+}
+
+/** Your last game and the week's biggest stories. */
+function LastWeek({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const router = useRouter();
+  const { results, userTeam } = data;
+  const last = [...results].reverse().find((r) => r.home === userTeam || r.away === userTeam);
+  const news = d.save?.news ?? [];
+  const week = news.length ? Math.max(...news.map((s) => s.week)) : 0;
+  const top = news
+    .filter((s) => s.week === week && !s.local)
+    .sort((a, b) => b.importance - a.importance)
+    .slice(0, 3);
+  if (!last && top.length === 0) return null;
+  return (
+    <NavGroup title={week ? `Week ${week}` : "Last week"}>
+      {last ? <NavRow icon="play-circle-outline" title={resultLine(last, userTeam)} detail="Watch the replay" onPress={() => router.push(`/game/${last.id}`)} last={top.length === 0} /> : null}
+      {top.map((s, i) => (
+        <NavRow key={s.id} icon="newspaper-outline" title={s.headline} onPress={() => router.push("/news")} last={i === top.length - 1} />
+      ))}
+    </NavGroup>
   );
 }
 
@@ -280,32 +380,6 @@ function SpringPick({ season }: { season: number }) {
 }
 
 /** The owner (or the board): their goal, trust in you, fan mood, and last season's verdict. */
-/** After each game: one question from the press, three ways to answer. */
-function PressCard() {
-  const t = useTheme();
-  const d = useDynasty();
-  const p = d.press!;
-  const answered = d.save?.office?.press[p.week];
-  return (
-    <Card>
-      <SectionTitle>Press conference</SectionTitle>
-      <Text style={{ color: t.text, fontWeight: "700", marginBottom: 6 }}>"{p.question}"</Text>
-      {answered === undefined ? (
-        p.answers.map((a, i) => (
-          <Pressable key={i} onPress={() => d.answerPress(i)} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: t.border, marginBottom: 6, opacity: pressed ? 0.6 : 1 })}>
-            <Text style={{ color: t.text }}>{a.text}</Text>
-          </Pressable>
-        ))
-      ) : (
-        <>
-          <Text style={{ color: t.muted }}>You said: "{p.answers[answered]!.text}"</Text>
-          <Text style={{ color: t.accent, marginTop: 4 }}>{p.answers[answered]!.reaction}</Text>
-        </>
-      )}
-    </Card>
-  );
-}
-
 /** Fired: the owner's verdict, and the teams that want you. */
 function Fired({ data }: { data: LeagueData }) {
   const t = useTheme();
@@ -339,161 +413,6 @@ function Fired({ data }: { data: LeagueData }) {
         );
       })}
     </ScrollView>
-  );
-}
-
-/** The latest week's top stories: your game first, then the biggest around the league. */
-function HeadlinesCard({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const router = useRouter();
-  const all = d.save?.news ?? [];
-  const week = Math.max(...all.map((s) => s.week));
-  const latest = all.filter((s) => s.week === week);
-  const recap = latest.find((s) => s.kind === "recap" && s.teams.includes(data.userTeam));
-  const top = latest.filter((s) => !s.local).sort((a, b) => b.importance - a.importance).slice(0, 3);
-  return (
-    <Card>
-      <SectionTitle>Week {week} headlines</SectionTitle>
-      {recap ? <Text style={{ color: t.text, fontWeight: "800", marginBottom: 6 }}>{recap.headline}</Text> : null}
-      {top.map((s) => (
-        <View key={s.id} style={{ flexDirection: "row", gap: 6, paddingVertical: 3 }}>
-          <Text style={{ color: t.accent }}>•</Text>
-          <Text style={{ flex: 1, color: t.text }}>{s.headline}</Text>
-        </View>
-      ))}
-      <View style={{ flexDirection: "row", marginTop: 8 }}>
-        <Button label="All the news" onPress={() => router.push("/news")} theme={t} small />
-      </View>
-    </Card>
-  );
-}
-
-function InjuriesCard({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const router = useRouter();
-  const mine = useMemo(() => injuryReport(data.league, data.weeksPlayed, data.userTeam), [data.league, data.weeksPlayed, data.userTeam]);
-  const lastWeek = (d.save?.injuryNews ?? []).filter((n) => n.week === data.weeksPlayed && n.team !== data.userTeam).slice(0, 3);
-  return (
-    <Card>
-      <SectionTitle>Injuries</SectionTitle>
-      {mine.length === 0 ? <Text style={{ color: t.muted }}>Your team is healthy.</Text> : null}
-      {mine.slice(0, 5).map((e) => (
-        <View key={e.player.id} style={{ flexDirection: "row", gap: 8, paddingVertical: 2 }}>
-          <Text style={{ width: 28, color: t.muted }}>{e.player.position}</Text>
-          <Text style={{ flex: 1, color: t.text, fontWeight: e.starter ? "700" : "400" }} numberOfLines={1}>
-            {e.player.firstName} {e.player.lastName} <Text style={{ color: t.muted, fontWeight: "400", fontSize: 12 }}>{e.injury.type}</Text>
-          </Text>
-          <Text style={{ color: e.returnWeek === null ? t.score : t.muted, fontSize: 12 }}>{backLabel(e.returnWeek, data.schedule.weeks)}</Text>
-        </View>
-      ))}
-      {mine.length > 5 ? <Text style={{ color: t.muted, fontSize: 12 }}>and {mine.length - 5} more</Text> : null}
-      {lastWeek.length > 0 ? (
-        <View style={{ marginTop: 8, gap: 3 }}>
-          <Text style={{ color: t.text, fontWeight: "700" }}>Around the league</Text>
-          {lastWeek.map((n) => (
-            <Text key={n.player} style={{ color: t.muted, fontSize: 13 }}>
-              {n.team} {n.starter ? "starting " : ""}
-              {n.position} {n.name}: {injuryLabel(n)}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-        <Button label="Injury report" onPress={() => router.push("/injuries")} theme={t} small />
-        {d.canMakeMoves ? <Button label="Free agents" onPress={() => router.push("/freeagents")} theme={t} small /> : null}
-      </View>
-    </Card>
-  );
-}
-
-function TradesCard({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const router = useRouter();
-  const trades = d.save?.trades ?? [];
-  const weeksLeft = TRADE_DEADLINE_WEEK - data.weeksPlayed;
-  const w = d.tradeWindow;
-  return (
-    <Card>
-      <SectionTitle>{w?.week === 0 ? "Draft-week trades" : "Trades"}</SectionTitle>
-      <Text style={{ color: t.muted }}>
-        {w?.week === 0
-          ? `Trade players and picks before the offseason, with the draft order set. The other teams make their moves when you start the offseason.`
-          : w
-            ? weeksLeft === 1
-              ? `Deadline: this is the last week to trade (after week ${TRADE_DEADLINE_WEEK}'s games, trading closes).`
-              : `Deadline: after week ${TRADE_DEADLINE_WEEK} (${weeksLeft} weeks left).`
-            : "The trade deadline has passed. Trading reopens in draft week, after the championship."}
-      </Text>
-      {w ? (
-        <View style={{ flexDirection: "row", marginTop: 10 }}>
-          <Button label="Make a trade" onPress={() => router.push("/trade")} theme={t} />
-        </View>
-      ) : null}
-      {trades.length > 0 ? (
-        <View style={{ marginTop: 10, gap: 6 }}>
-          <Text style={{ color: t.text, fontWeight: "700" }}>Around the league</Text>
-          {[...trades].reverse().slice(0, 5).map((tr, i) => (
-            <Text key={i} style={{ color: tr.teams.includes(data.userTeam) ? t.text : t.muted, fontSize: 13 }}>
-              {tr.week === 0 ? "Draft week" : `Wk ${tr.week}`} · {tradeLine(tr)}
-            </Text>
-          ))}
-          {trades.length > 5 ? <Text style={{ color: t.muted, fontSize: 12 }}>{trades.length} trades this season.</Text> : null}
-        </View>
-      ) : null}
-    </Card>
-  );
-}
-
-/** "MI gets WR J. Smith (72), 2037 Rd 3; OH gets CB K. Lee (68)" (plus who was released). */
-function tradeLine(tr: TradeRecord): string {
-  const side = (gets: string, from: string) => {
-    const items = [
-      ...tr.players.filter((p) => p.from === from).map((p) => `${p.position} ${p.name} (${p.overall})`),
-      ...(tr.picks ?? []).filter((p) => p.from === from).map((p) => `${p.draft} Rd ${p.round}${p.original !== from ? ` (${p.original})` : ""}`),
-    ];
-    return `${gets} gets ${items.join(", ")}`;
-  };
-  const released = (tr.released ?? []).map((r) => `${r.team} releases ${r.position} ${r.name}`);
-  return [`${side(tr.teams[0], tr.teams[1])}; ${side(tr.teams[1], tr.teams[0])}`, ...released].join("; ");
-}
-
-function ScoutingCard({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const router = useRouter();
-  const used = d.scoutPlan.reduce((n, a) => n + a.points, 0);
-  return (
-    <Card>
-      <SectionTitle>Scouting the {data.league.season + 1} class</SectionTitle>
-      <Text style={{ color: t.muted }}>
-        {used > 0 ? `${used} of ${SCOUT_POINTS} points assigned for week ${data.weeksPlayed + 1}.` : `${SCOUT_POINTS} points this week — your scouts will choose unless you do.`}
-      </Text>
-      <View style={{ marginTop: 10 }}>
-        <Button label="Open the draft board" onPress={() => router.push("/scouting")} theme={t} small />
-      </View>
-    </Card>
-  );
-}
-
-function Matchup({ data, home, away }: { data: LeagueData; home: string; away: string }) {
-  const t = useTheme();
-  const recs = data.records;
-  const side = (abbr: string) => (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Swatch abbr={abbr} />
-      <Text style={{ flex: 1, color: t.text, fontWeight: abbr === data.userTeam ? "800" : "500" }}>{teamName(data.league.teams[abbr]!)}</Text>
-      <Text style={{ color: t.muted, fontVariant: ["tabular-nums"] }}>{formatRecord(recs.get(abbr)!)}</Text>
-    </View>
-  );
-  return (
-    <View style={{ gap: 6 }}>
-      {side(away)}
-      <Text style={{ color: t.muted, fontSize: 12 }}>at</Text>
-      {side(home)}
-    </View>
   );
 }
 

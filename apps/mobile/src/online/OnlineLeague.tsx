@@ -264,8 +264,10 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
 
       {games ? (
         <Card>
-          <SectionTitle>Week {games.week} scores</SectionTitle>
+          <SectionTitle>{linkGames ? `Week ${games.week}: your league's games` : `Week ${games.week} scores`}</SectionTitle>
           {[...games.games]
+            // In the app, just the friends' games (the League tab has every score).
+            .filter((g) => !linkGames || friends.has(g.home) || friends.has(g.away))
             .sort((a, b) => Number(friends.has(b.home) || friends.has(b.away)) - Number(friends.has(a.home) || friends.has(a.away)))
             .map((g) => {
               const ours = friends.has(g.home) || friends.has(g.away);
@@ -295,6 +297,7 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
         </Card>
       ) : null}
 
+      {linkGames ? null : (
       <Card>
         <SectionTitle>Standings</SectionTitle>
         {shown.map((x) => (
@@ -309,6 +312,7 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
           </View>
         ))}
       </Card>
+      )}
     </>
   );
 }
