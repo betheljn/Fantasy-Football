@@ -29,8 +29,10 @@ import {
   teamRatings,
   winPct,
 } from "@dynasty/sim";
-import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Swatch, type IconName } from "../../components/ui";
+import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
+import { teamColors } from "../../field/colors";
 import { OnlineHub } from "../../online/OnlineHub";
+import { OffseasonStepper, type OffseasonStepKey } from "../../components/OffseasonStepper";
 import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
@@ -47,6 +49,7 @@ export default function Home() {
 
   switch (d.phase) {
     case "loading":
+    case "opening":
       return <Centered theme={t}><ActivityIndicator color={t.accent} /></Centered>;
     case "start":
       return <Saves />;
@@ -54,38 +57,41 @@ export default function Home() {
       return data ? <OnlineHub /> : null;
     case "building":
       return (
-        <Centered theme={t}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: t.text }}>Building your league</Text>
-          <Text style={{ color: t.muted, marginVertical: 8, textAlign: "center", maxWidth: 300 }}>
-            Settling fifteen years of drafts, development and retirements so every roster has a history.
-          </Text>
-          <Bar value={d.progress} theme={t} />
-        </Centered>
+        <Working icon="construct-outline" title="Building your league" body="Settling fifteen years of drafts, development and retirements so every roster has a history." progress={d.progress} />
       );
     case "offseason":
-      return (
-        <Centered theme={t}>
-          <ActivityIndicator color={t.accent} />
-          <Text style={{ fontSize: 18, fontWeight: "700", color: t.text, marginTop: 12 }}>Running the offseason</Text>
-          <Text style={{ color: t.muted, marginTop: 8, textAlign: "center", maxWidth: 300 }}>
-            Staff moves, retirements, player development, contracts, the draft and free agency.
-          </Text>
-        </Centered>
-      );
+      return <Working icon="sync-outline" title="Running the offseason" body="Staff moves, retirements, player development, contracts, the draft and free agency." />;
     case "choose":
       return data ? <ChooseTeam data={data} /> : null;
     case "fired":
       return data && d.save?.fired ? <Fired data={data} /> : null;
     case "staff":
-      return d.staffSeats ? <StaffScreen overview={d.staffSeats} onConfirm={d.confirmStaff} /> : null;
+      return d.staffSeats ? (
+        <Stepped step="staff">
+          <StaffScreen overview={d.staffSeats} onConfirm={d.confirmStaff} />
+        </Stepped>
+      ) : null;
     case "hire":
-      return d.staffOpenings ? <HireScreen openings={d.staffOpenings} onConfirm={d.confirmHires} /> : null;
+      return d.staffOpenings ? (
+        <Stepped step="hire">
+          <HireScreen openings={d.staffOpenings} onConfirm={d.confirmHires} />
+        </Stepped>
+      ) : null;
     case "resign":
-      return d.contractPlan ? <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} /> : null;
+      return d.contractPlan ? (
+        <Stepped step="resign">
+          <ResignScreen plan={d.contractPlan} onDone={d.finishOffseason} />
+        </Stepped>
+      ) : null;
     case "draft":
-      return d.draftTurn && data ? <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} /> : null;
+      return d.draftTurn && data ? (
+        <Stepped step="draft" note={`round ${d.draftTurn.round}, pick ${d.draftTurn.overall}`}>
+          <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} />
+        </Stepped>
+      ) : null;
     case "freeagency":
       return d.freeAgencyPlan && data ? (
+        <Stepped step="freeagency">
         <FreeAgencyScreen
           plan={d.freeAgencyPlan}
           offers={d.offers}
@@ -99,14 +105,29 @@ export default function Home() {
             return mood(l.player, appeal, annual / l.market);
           }}
         />
+        </Stepped>
       ) : null;
     case "cuts":
-      return d.rosterPlan ? <CutsScreen plan={d.rosterPlan} onDone={d.finishCuts} /> : null;
+      return d.rosterPlan ? (
+        <Stepped step="cuts">
+          <CutsScreen plan={d.rosterPlan} onDone={d.finishCuts} />
+        </Stepped>
+      ) : null;
     case "report":
       return d.save?.report ? <Report report={d.save.report} /> : null;
     default:
       return data ? <SeasonHub data={data} /> : null;
   }
+}
+
+/** An offseason screen under the stepper that shows where you are. */
+function Stepped({ step, note, children }: { step: OffseasonStepKey; note?: string; children: ReactNode }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <OffseasonStepper step={step} note={note} />
+      <View style={{ flex: 1 }}>{children}</View>
+    </View>
+  );
 }
 
 function ChooseTeam({ data }: { data: LeagueData }) {
@@ -540,7 +561,17 @@ function Report({ report }: { report: OffseasonReport }) {
   );
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>{report.season} offseason</Text>
+      {data ? (
+        <TeamBanner abbr={data.userTeam} title={`${report.season} in review`} subtitle={`Champion: ${report.champion}, over ${report.runnerUp}`}>
+          <StatRow>
+            <Stat label="Record" value={report.record} onDark={teamColors(data.userTeam).onPrimary} />
+            <Stat label="Final rank" value={report.rank ? `No. ${report.rank}` : "-"} onDark={teamColors(data.userTeam).onPrimary} />
+            <Stat label="Grade" value={d.save?.office?.reviews.find((x) => x.season === report.season)?.grade ?? "-"} onDark={teamColors(data.userTeam).onPrimary} />
+          </StatRow>
+        </TeamBanner>
+      ) : (
+        <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>{report.season} offseason</Text>
+      )}
       {(() => {
         const r = d.save?.office?.reviews.find((x) => x.season === report.season);
         return r ? (
@@ -651,6 +682,22 @@ function Report({ report }: { report: OffseasonReport }) {
       })()}
       <Button label={`Start the ${next} season`} onPress={d.startNextSeason} theme={t} primary />
     </ScrollView>
+  );
+}
+
+/** A long job in progress: what's happening, and how far along when we know. */
+function Working({ icon, title, body, progress }: { icon: IconName; title: string; body: string; progress?: number }) {
+  const t = useTheme();
+  return (
+    <Centered theme={t}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: t.card, borderWidth: 1, borderColor: t.border, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+        <Icon name={icon} size={30} color={t.accent} />
+      </View>
+      <Text style={{ fontSize: 19, fontWeight: "800", color: t.text }}>{title}</Text>
+      <Text style={{ color: t.muted, marginTop: 8, marginBottom: 12, textAlign: "center", maxWidth: 300 }}>{body}</Text>
+      {progress === undefined ? <ActivityIndicator color={t.accent} /> : <Bar value={progress} theme={t} />}
+      {progress !== undefined ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 6 }}>{Math.round(progress * 100)}%</Text> : null}
+    </Centered>
   );
 }
 

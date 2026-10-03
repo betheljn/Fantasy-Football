@@ -23,6 +23,7 @@ import { api, type OffseasonChoice } from "../online/api";
 import { DraftBoardScreen } from "../online/DraftBoardScreen";
 import { STAGE_NAMES } from "../online/OnlineLeague";
 import { useStagedOffseason } from "../online/staged";
+import { OffseasonStepper } from "../components/OffseasonStepper";
 import { CutsScreen } from "../screens/CutsScreen";
 import { FreeAgencyScreen } from "../screens/FreeAgencyScreen";
 import { ResignScreen } from "../screens/ResignScreen";
@@ -155,6 +156,7 @@ export default function OffseasonCallScreen() {
   return (
     <>
       <Stack.Screen options={{ title }} />
+      {off ? <OffseasonStepper step={off.stage} note="your call" /> : null}
       {error ? <Text style={{ color: t.score, fontWeight: "700", padding: 12 }}>{error}</Text> : null}
       <View style={{ flex: 1 }}>{body}</View>
     </>

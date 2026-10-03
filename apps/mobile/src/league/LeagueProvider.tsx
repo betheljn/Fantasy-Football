@@ -156,7 +156,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "online" | "fired" | "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
+export type Phase = "opening" | "online" | "fired" | "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -314,7 +314,8 @@ function boardFor(s: SaveState | null, schedule: Schedule | null): GameLines[] |
 
 export function LeagueProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SaveState | null>(null);
-  const [busy, setBusy] = useState<"loading" | "building" | "offseason" | "simming" | null>("loading");
+  /** "loading": the app starting up (nothing shows until it's done); "opening": a save opened from the save list. */
+  const [busy, setBusy] = useState<"loading" | "opening" | "building" | "offseason" | "simming" | null>("loading");
   const [progress, setProgress] = useState(0);
   const [slotIndex, setSlotIndex] = useState<SlotIndex>({ active: null, slots: [] });
   const [slot, setSlot] = useState<number | null>(null);
@@ -450,9 +451,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     setRestoring(null);
   };
 
-  const openSlotNow = (n: number) => {
+  const openSlotNow = (n: number, atLaunch = false) => {
     leaveOnline();
-    setBusy("loading");
+    // Opening from the save list keeps the app's screens in place (no restart of navigation).
+    setBusy(atLaunch ? "loading" : "opening");
     resetOffseason();
     loadSlot(n)
       .then(({ state: loaded, progress: p }) => {
@@ -492,7 +494,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     readIndex()
       .then(async (index) => {
         setSlotIndex(index);
-        if (index.active !== null && index.slots.some((x) => x.slot === index.active)) openSlotNow(index.active);
+        if (index.active !== null && index.slots.some((x) => x.slot === index.active)) openSlotNow(index.active, true);
         else {
           await reopenOnline();
           setBusy(null);
@@ -616,6 +618,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
 
   const phase: Phase =
     busy === "loading" ? "loading"
+    : busy === "opening" ? "opening"
     : busy === "building" ? "building"
     : busy === "offseason" ? "offseason"
     : busy === "simming" ? "simming"

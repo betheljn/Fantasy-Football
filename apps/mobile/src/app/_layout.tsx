@@ -39,6 +39,8 @@ function Gate() {
         headerTitleStyle: { color: t.text },
         contentStyle: { backgroundColor: t.bg },
         headerBackButtonDisplayMode: "minimal",
+        // Screens slide in from the side (the platform's own feel on iOS and Android).
+        animation: "slide_from_right",
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

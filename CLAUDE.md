@@ -253,7 +253,7 @@ name to join (no passwords at first). Ask before installing dependencies.
    7c. App: each stage's screen for online leagues (worked out on the phone
        with the same sim code as the server; a ranked draft board)
 
-### Milestone 16: organized and alive (current)
+### Milestone 16: organized and alive (done)
 Make the app easy to find your way around and good to look at, games first.
 Decided: five tabs by what you're doing (Home, Team, League, Media, Office),
 real icons (@expo/vector-icons).

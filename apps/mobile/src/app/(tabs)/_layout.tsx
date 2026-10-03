@@ -28,6 +28,8 @@ export default function TabsLayout() {
         tabBarActiveTintColor: t.accent,
         tabBarInactiveTintColor: t.muted,
         sceneStyle: { backgroundColor: t.bg },
+        // A quick cross-fade between tabs.
+        animation: "fade",
       }}
     >
       <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: icon("home-outline", "home") }} />
