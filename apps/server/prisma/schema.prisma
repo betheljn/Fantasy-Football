@@ -21,6 +21,10 @@ model League {
   seed       String
   /** Where the league is: "lobby" (claiming states), "season", "offseason". */
   phase      String   @default("lobby")
+  /** Hours each week stays open for ready-ups before it's played anyway. */
+  weekHours  Int      @default(24)
+  /** When the coming week is played if not everyone has readied up (null in the lobby). */
+  deadline   DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   members    Member[]

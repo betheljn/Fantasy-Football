@@ -2,6 +2,12 @@
 // database to migrate (from .env, never committed).
 import { defineConfig, env } from "prisma/config";
 
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // no .env: DATABASE_URL comes from the environment
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: { path: "prisma/migrations" },

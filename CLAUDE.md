@@ -231,6 +231,9 @@ name to join (no passwords at first). Ask before installing dependencies.
    claim a state; the server runs the sim (results decided on the server)
 3. Weekly advance: everyone readies up (or a timer runs out); AI covers
    anyone who misses it; the app talks to the server for online leagues
+   3a. Server: ready-ups, deadline timer, commissioner push; the server plays
+       each week, the playoffs and the offseason (AI calls for now)
+   3b. App: create or join an online league, lobby, ready up, results
 
 After each step: run it, show sample output, and stop for review.
 
