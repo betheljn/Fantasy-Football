@@ -18,7 +18,8 @@ import {
   type StaffMember,
 } from "@dynasty/sim";
 import { useMemo } from "react";
-import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { Button, Card, LinkRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner } from "../../components/ui";
+import { teamColors } from "../../field/colors";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
 
@@ -36,39 +37,41 @@ export default function TeamScreen() {
   const rank = rankings.find((e) => e.team === team.abbr)?.rank;
   const cap = salaryCap(league.seed, league.season);
   const pay = payroll(team, league.season);
+  // A team can spend up to the cap plus whatever it rolled over from last season.
+  const rollover = team.cap?.rollover ?? 0;
+  const limit = cap + rollover;
   const byId = new Map(results.map((r) => [r.id, r]));
   const games = schedule.games.filter((g) => g.home === team.abbr || g.away === team.abbr);
   const staff = team.staff ? ([team.staff.hc, team.staff.oc, team.staff.dc, team.staff.gm, team.staff.scout] as StaffMember[]) : [];
   const player = (id: string) => team.roster.find((p) => p.id === id)!;
+  const onBanner = teamColors(team.abbr).onPrimary;
 
   return (
     <>
       <Stack.Screen options={{ title: team.abbr }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <Card>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Swatch abbr={team.abbr} size={18} />
-            <Text style={{ flex: 1, fontSize: 20, fontWeight: "800", color: t.text }}>{teamName(team)}</Text>
+        <TeamBanner abbr={team.abbr} title={teamName(team)} subtitle={divRank ? `${divRank.division} division${team.abbr === userTeam ? " · your team" : ""}` : undefined}>
+          <StatRow>
+            <Stat label="Record" value={rec ? formatRecord(rec) : "0-0"} onDark={onBanner} />
+            <Stat label="Division" value={divRank && weeksPlayed > 0 ? ordinal(divRank.teams.findIndex((rt) => rt.team === team.abbr) + 1) : "-"} onDark={onBanner} />
+            <Stat label="Top 25" value={rank && rank <= 25 && weeksPlayed > 0 ? `No. ${rank}` : "-"} onDark={onBanner} />
+            <Stat label="Cap used" value={`${((pay / limit) * 100).toFixed(0)}%`} onDark={onBanner} />
+          </StatRow>
+        </TeamBanner>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {team.abbr === userTeam ? (
+            <View style={{ flex: 1 }}>
+              <Button small label="Depth chart" onPress={() => router.push("/depth")} />
+            </View>
+          ) : null}
+          <View style={{ flex: 1 }}>
+            <Button small label="Trophy room" onPress={() => router.push(`/trophies?team=${team.abbr}`)} />
           </View>
-          <Text style={{ color: t.muted, marginTop: 6 }}>
-            {rec ? formatRecord(rec) : "0-0"}
-            {divRank ? ` · ${ordinal(divRank.teams.findIndex((rt) => rt.team === team.abbr) + 1)} in ${divRank.division}` : ""}
-            {rank && rank <= 25 ? ` · No. ${rank}` : ""}
-          </Text>
-          <Text style={{ color: t.muted, marginTop: 2 }}>
-            Payroll {formatMoney(pay)} of {formatMoney(cap)} cap ({((pay / cap) * 100).toFixed(0)}%)
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            {team.abbr === userTeam ? (
-              <Pressable onPress={() => router.push("/depth")} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
-                <Text style={{ color: t.accent, fontWeight: "700" }}>Depth chart</Text>
-              </Pressable>
-            ) : null}
-            <Pressable onPress={() => router.push(`/trophies?team=${team.abbr}`)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
-              <Text style={{ color: t.accent, fontWeight: "700" }}>Trophy room</Text>
-            </Pressable>
-          </View>
-        </Card>
+        </View>
+        <Text style={{ color: t.muted, fontSize: 12, textAlign: "center", marginTop: -4 }}>
+          Payroll {formatMoney(pay)} of {formatMoney(limit)}
+          {rollover > 0 ? ` (${formatMoney(cap)} cap + ${formatMoney(rollover)} rolled over)` : " (the cap)"}
+        </Text>
 
         <Card>
           <SectionTitle>Staff</SectionTitle>
@@ -96,8 +99,10 @@ export default function TeamScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Text style={{ width: 44, color: t.muted }}>Wk {g.week}</Text>
                 <Text style={{ width: 22, color: t.muted }}>{home ? "vs" : "@"}</Text>
-                <Swatch abbr={opp} />
-                <Text style={{ flex: 1, color: t.text }}>{opp}</Text>
+                <Swatch abbr={opp} size={22} />
+                <Text style={{ flex: 1, color: t.text }} numberOfLines={1}>
+                  {league.teams[opp]!.state}
+                </Text>
                 <Text style={{ color: wl === "W" ? t.accent : wl === "L" ? t.score : t.muted, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
                   {r ? `${wl} ${us}-${them}` : ""}
                 </Text>

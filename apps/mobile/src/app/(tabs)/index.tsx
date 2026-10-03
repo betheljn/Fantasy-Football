@@ -130,7 +130,7 @@ function ChooseTeam({ data }: { data: LeagueData }) {
           ] as const
         ).map(([key, label, note]) => (
           <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="radio" accessibilityState={{ selected: role === key }} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
-            <Text style={{ color: role === key ? t.accent : t.muted, fontWeight: "900", width: 18 }}>{role === key ? "◉" : "○"}</Text>
+            <Icon name={role === key ? "radio-button-on" : "radio-button-off"} color={role === key ? t.accent : t.muted} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: t.text, fontWeight: "700" }}>{label}</Text>
               <Text style={{ color: t.muted, fontSize: 13 }}>{note}</Text>
@@ -142,8 +142,8 @@ function ChooseTeam({ data }: { data: LeagueData }) {
       {teams.map(({ team, ovr }) => (
         <Card key={team.abbr} style={{ paddingVertical: 4 }}>
           <LinkRow label={`Choose ${teamName(team)}`} onPress={() => d.chooseTeam(team.abbr, role)}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Swatch abbr={team.abbr} size={14} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Swatch abbr={team.abbr} size={36} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.text, fontWeight: "700" }}>{teamName(team)}</Text>
                 <Text style={{ color: t.muted, fontSize: 12 }}>
@@ -399,7 +399,7 @@ function Fired({ data }: { data: LeagueData }) {
         return (
           <Card key={abbr}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Swatch abbr={abbr} size={14} />
+              <Swatch abbr={abbr} size={28} />
               <Text style={{ flex: 1, color: t.text, fontWeight: "800" }}>{teamName(team)}</Text>
               <Text style={{ color: t.muted }}>{rec ? formatRecord(rec) : ""}</Text>
             </View>
@@ -467,7 +467,10 @@ function Saves() {
   const stateName = (abbr: string) => STATES.find(([, a]) => a === abbr)?.[0] ?? abbr;
   return (
     <Centered theme={t}>
-      <Text style={{ fontSize: 28, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
+      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: t.accent, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+        <Icon name="american-football" size={38} color={t.onAccent} />
+      </View>
+      <Text style={{ fontSize: 30, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
       <Text style={{ color: t.muted, textAlign: "center", marginVertical: 12, maxWidth: 320 }}>
         Fifty teams, one per state. Pick one, play the seasons, build a dynasty.
       </Text>
@@ -476,7 +479,7 @@ function Saves() {
           <Card key={s.slot} style={{ paddingVertical: 4 }}>
             <LinkRow label={`Continue save ${s.slot}`} onPress={() => d.openSlot(s.slot)}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {s.team ? <Swatch abbr={s.team} size={14} /> : null}
+                {s.team ? <Swatch abbr={s.team} size={38} /> : <Icon name="add-circle-outline" size={38} color={t.muted} />}
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? stateName(s.team) : "New league"}</Text>
                   <Text style={{ color: t.muted, fontSize: 12 }}>
@@ -493,12 +496,12 @@ function Saves() {
           </Card>
         ))}
       </View>
-      {d.canStartNew ? (
-        <Button label="New dynasty" onPress={d.newDynasty} theme={t} primary />
-      ) : (
-        <Text style={{ color: t.muted, textAlign: "center", maxWidth: 300 }}>All save slots are full. Delete one to start another dynasty.</Text>
-      )}
-      <View style={{ marginTop: 12 }}>
+      <View style={{ width: "100%", maxWidth: 360, gap: 10 }}>
+        {d.canStartNew ? (
+          <Button label="New dynasty" onPress={d.newDynasty} theme={t} primary />
+        ) : (
+          <Text style={{ color: t.muted, textAlign: "center" }}>All save slots are full. Delete one to start another dynasty.</Text>
+        )}
         <Button label="Online leagues with friends" onPress={() => router.push("/online")} theme={t} />
       </View>
     </Centered>

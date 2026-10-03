@@ -19,7 +19,7 @@ import {
   type FreeAgentOffer,
   type Position,
 } from "@dynasty/sim";
-import { Card } from "../components/ui";
+import { Card, Chips } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 interface Props {
@@ -93,13 +93,9 @@ export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, front
               <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? (offers.size > 0 ? `Open free agency (${offers.size} offer${offers.size === 1 ? "" : "s"})` : "Open free agency (no offers)")}</Text>
             </Pressable>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, height: 50 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6, alignItems: "center" }}>
-            {(["ALL", ...POSITIONS] as const).map((p) => (
-              <Pressable key={p} onPress={() => setPos(p)} accessibilityRole="button" accessibilityState={{ selected: pos === p }} style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, justifyContent: "center", backgroundColor: pos === p ? t.accent : t.card, borderWidth: 1, borderColor: pos === p ? t.accent : t.border }}>
-                <Text style={{ color: pos === p ? t.onAccent : t.text, fontWeight: "600", fontSize: 13 }}>{p === "ALL" ? "All" : p}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+            <Chips options={(["ALL", ...POSITIONS] as const).map((p) => ({ key: p, label: p === "ALL" ? "All" : p }))} value={pos} onChange={setPos} />
+          </View>
         </View>
       }
       renderItem={({ item: l }) => (

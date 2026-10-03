@@ -31,7 +31,7 @@ import {
   type TradeProposal,
   type TradeWindow,
 } from "@dynasty/sim";
-import { Card, LinkRow, SectionTitle, Swatch } from "../components/ui";
+import { Card, LinkRow, SectionTitle, Swatch, Chips } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { api } from "../online/api";
 import { useTheme, type Theme } from "../theme";
@@ -78,7 +78,7 @@ export default function TradeScreen() {
             <Card key={team.abbr} style={{ paddingVertical: 2 }}>
               <LinkRow label={`Trade with ${teamName(team)}`} onPress={() => setPartner(team.abbr)}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Swatch abbr={team.abbr} size={12} />
+                  <Swatch abbr={team.abbr} size={30} />
                   <Text style={{ flex: 1, color: t.text, fontWeight: "600" }}>
                     {teamName(team)}
                     {friend(team.abbr) ? <Text style={{ color: t.accent, fontWeight: "400" }}> · a friend's team</Text> : null}
@@ -223,13 +223,7 @@ function Deal({ partner, window: w, onBack }: { partner: string; window: TradeWi
         <PickChooser title={`${them.abbr} picks: tap to ask for`} league={league} window={w} owner={partner} chosen={getPicks} onToggle={(id) => toggle(getPicks, setGetPicks, id)} theme={t} />
         <PickChooser title="Your picks: tap to send" league={league} window={w} owner={userTeam} chosen={givePicks} onToggle={(id) => toggle(givePicks, setGivePicks, id)} theme={t} />
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {(["All", ...POSITIONS] as const).map((p) => (
-            <Pressable key={p} onPress={() => setPos(p)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 30, borderRadius: 15, justifyContent: "center", backgroundColor: pos === p ? t.accent : t.card, borderWidth: 1, borderColor: t.border }}>
-              <Text style={{ color: pos === p ? t.onAccent : t.text, fontWeight: "700", fontSize: 12 }}>{p}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <Chips options={(["All", ...POSITIONS] as const).map((p) => ({ key: p, label: p }))} value={pos} onChange={setPos} />
 
         <Roster title={`${teamName(them)}: tap to ask for`} team={them} season={w.season} pos={pos} chosen={get} onToggle={(id) => toggle(get, setGet, id)} onOpen={(id) => router.push(`/player/${id}`)} theme={t} />
         <Roster title="Your roster: tap to send" team={me} season={w.season} pos={pos} chosen={give} onToggle={(id) => toggle(give, setGive, id)} onOpen={(id) => router.push(`/player/${id}`)} theme={t} />

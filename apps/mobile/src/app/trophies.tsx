@@ -4,7 +4,8 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { retiredNumbers, rivalries, rivalryGames, seriesLine, teamName, trophyRoom } from "@dynasty/sim";
-import { Card, SectionTitle, Swatch } from "../components/ui";
+import { Card, Icon, SectionTitle, Stat, StatRow, Swatch, TeamBanner } from "../components/ui";
+import { teamColors } from "../field/colors";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -28,20 +29,20 @@ export default function TrophyRoomScreen() {
   const st = (x: string) => league.teams[x]?.state ?? x;
   const retired = retiredNumbers(dynasty, abbr);
   const seasons = dynasty.history.length;
+  const onBanner = teamColors(abbr).onPrimary;
 
   return (
     <>
       <Stack.Screen options={{ title: "Trophy room" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <Card>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Swatch abbr={abbr} size={18} />
-            <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: "800" }}>{teamName(league.teams[abbr]!)}</Text>
-          </View>
-          <Text style={{ color: t.muted, marginTop: 4 }}>
-            {seasons === 0 ? "Year one: the trophy case is waiting." : `${seasons} season${seasons === 1 ? "" : "s"} in the books.`}
-          </Text>
-        </Card>
+        <TeamBanner abbr={abbr} title={teamName(league.teams[abbr]!)} subtitle={seasons === 0 ? "Year one: the trophy case is waiting." : `${seasons} season${seasons === 1 ? "" : "s"} in the books`}>
+          <StatRow>
+            <Stat label="Titles" value={String(room.titles.length)} onDark={onBanner} />
+            <Stat label="Division" value={String(room.divisionTitles.length)} onDark={onBanner} />
+            <Stat label="Rivalry cups" value={String(room.rivalries.filter((r) => r.holder === abbr).length)} onDark={onBanner} />
+            <Stat label="Awards" value={String(room.awards.length + room.coachOfTheYear.length)} onDark={onBanner} />
+          </StatRow>
+        </TeamBanner>
 
         <Banner label="Championships" years={room.titles} color="#f5b83d" empty="No titles yet." theme={t} />
         {room.runnerUps.length ? <Banner label="Runner-up" years={room.runnerUps} color="#c0c7d0" empty="" theme={t} /> : null}
@@ -53,17 +54,22 @@ export default function TrophyRoomScreen() {
             const other = r.rivalry.teams[0] === abbr ? r.rivalry.teams[1] : r.rivalry.teams[0];
             const held = r.holder === abbr;
             return (
-              <View key={r.rivalry.id} style={{ paddingVertical: 6 }}>
-                <Text style={{ color: held ? t.accent : t.text, fontWeight: "800", textTransform: "capitalize" }}>
-                  {held ? "🏆 " : ""}
-                  {r.rivalry.trophy.replace(/^the /, "")}
-                  <Text style={{ color: t.muted, fontWeight: "400", textTransform: "none" }}> vs {st(other)}</Text>
-                </Text>
+              <View key={r.rivalry.id} style={{ paddingVertical: 8, flexDirection: "row", gap: 10 }}>
+                <Swatch abbr={other} size={30} />
+                <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  {held ? <Icon name="trophy" size={16} color={t.gold} /> : null}
+                  <Text style={{ flex: 1, color: held ? t.gold : t.text, fontWeight: "800", textTransform: "capitalize" }}>
+                    {r.rivalry.trophy.replace(/^the /, "")}
+                    <Text style={{ color: t.muted, fontWeight: "400", textTransform: "none" }}> vs {st(other)}</Text>
+                  </Text>
+                </View>
                 <Text style={{ color: t.muted, fontSize: 13 }}>
                   {r.holder ? `${held ? "In your case" : `Held by ${st(r.holder)}`}. ` : "Not yet won. "}
                   {seriesLine(r, st)}
                   {r.streak && r.streak.n >= 2 ? ` ${st(r.streak.team)} has won ${r.streak.n} straight.` : ""}
                 </Text>
+                </View>
               </View>
             );
           })}

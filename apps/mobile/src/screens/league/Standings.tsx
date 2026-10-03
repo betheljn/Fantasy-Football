@@ -9,7 +9,7 @@ import { useTheme } from "../../theme";
 export function StandingsSection() {
   const t = useTheme();
   const router = useRouter();
-  const { league, standings, weeksPlayed, schedule } = useLeague();
+  const { league, standings, weeksPlayed, schedule, userTeam } = useLeague();
   const conferences = league.conferences;
   return (
     <View style={{ flex: 1 }}>
@@ -35,8 +35,8 @@ export function StandingsSection() {
                     <LinkRow key={rt.team} label={teamName(league.teams[rt.team]!)} onPress={() => router.push(`/team/${rt.team}`)}>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <Swatch abbr={rt.team} />
-                          <Text style={{ color: t.text, fontWeight: i === 0 ? "700" : "400" }} numberOfLines={1}>
+                          <Swatch abbr={rt.team} size={22} />
+                          <Text style={{ color: rt.team === userTeam ? t.accent : t.text, fontWeight: i === 0 || rt.team === userTeam ? "700" : "400" }} numberOfLines={1}>
                             {league.teams[rt.team]!.state}
                           </Text>
                         </View>

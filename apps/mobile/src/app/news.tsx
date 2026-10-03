@@ -2,8 +2,9 @@
 // about your team (your game's recap and a look at the next one).
 import { Stack } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { StoryCard } from "../components/story";
+import { Chips, EmptyState, Segmented } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
 
@@ -20,34 +21,26 @@ export default function NewsScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "News" }} />
+      <Stack.Screen options={{ title: "Headlines" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {(
-            [
-              ["national", "Around the league"],
-              ["local", league.teams[userTeam]!.nickname],
-            ] as const
-          ).map(([key, label]) => (
-            <Pressable key={key} onPress={() => setView(key)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, justifyContent: "center", backgroundColor: view === key ? t.accent : t.card, borderWidth: 1, borderColor: t.border }}>
-              <Text style={{ color: view === key ? t.onAccent : t.text, fontWeight: "700", fontSize: 13 }}>{label}</Text>
-            </Pressable>
+        <Segmented
+          options={[
+            { key: "national", label: "Around the league" },
+            { key: "local", label: league.teams[userTeam]!.nickname },
+          ]}
+          value={view}
+          onChange={setView}
+        />
+        {weeks.length > 1 ? <Chips options={weeks.map((w) => ({ key: w, label: w === 0 ? "Spring" : `Week ${w}` }))} value={shown ?? weeks[0]!} onChange={setWeek} /> : null}
+        {shown === null ? <EmptyState icon="newspaper-outline" title="The presses are warming up" body="Stories start once the first week is played." /> : null}
+        {shown !== null && stories.length === 0 ? (
+          <EmptyState icon="cafe-outline" title={view === "local" ? "A quiet week" : "No stories this week"} body={view === "local" ? "Nothing about your team this week (a bye?)." : undefined} />
+        ) : null}
+        <View style={{ gap: 10 }}>
+          {stories.map((s, i) => (
+            <StoryCard key={s.id} s={s} lead={i === 0} mine={s.teams.includes(userTeam)} theme={t} />
           ))}
         </View>
-        {weeks.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {weeks.map((w) => (
-              <Pressable key={w} onPress={() => setWeek(w)} accessibilityRole="button" style={{ paddingHorizontal: 10, height: 28, borderRadius: 14, justifyContent: "center", borderWidth: 1, borderColor: shown === w ? t.accent : t.border }}>
-                <Text style={{ color: shown === w ? t.accent : t.muted, fontWeight: "700", fontSize: 12 }}>{w === 0 ? "Spring" : `Week ${w}`}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
-        {shown === null ? <Text style={{ color: t.muted }}>The news starts once the first week is played.</Text> : null}
-        {shown !== null && stories.length === 0 ? <Text style={{ color: t.muted }}>{view === "local" ? "A quiet week for your team (a bye?)." : "No stories this week."}</Text> : null}
-        {stories.map((s, i) => (
-          <StoryCard key={s.id} s={s} lead={i === 0} mine={s.teams.includes(userTeam)} theme={t} />
-        ))}
       </ScrollView>
     </>
   );

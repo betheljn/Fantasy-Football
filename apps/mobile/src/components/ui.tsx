@@ -1,9 +1,9 @@
 // Small shared building blocks for list-style screens.
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps, ReactNode } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
-import { teamColor } from "../field/colors";
-import { useTheme } from "../theme";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
+import { teamColor, teamColors } from "../field/colors";
+import { radius, space, typo, useTheme } from "../theme";
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
@@ -26,9 +26,118 @@ export function LinkRow({ onPress, children, label }: { onPress: () => void; chi
   );
 }
 
-/** Team color swatch. */
+/**
+ * A team's mark: a dot in its color when small, and at 18 and up a badge in
+ * its colors with its initials.
+ */
 export function Swatch({ abbr, size = 10 }: { abbr: string; size?: number }) {
-  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: teamColor(abbr) }} />;
+  if (size < 18) return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: teamColor(abbr) }} />;
+  const c = teamColors(abbr);
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.primary, borderWidth: Math.max(2, size / 14), borderColor: c.trim, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ color: c.onPrimary, fontWeight: "900", fontSize: size * 0.34, letterSpacing: 0.5 }}>{abbr}</Text>
+    </View>
+  );
+}
+
+export const TeamBadge = Swatch;
+
+/**
+ * A team-colored header: the team's badge, a title and a line under it, on a
+ * band of its color (for team pages, player pages, game screens).
+ */
+export function TeamBanner({ abbr, title, subtitle, children }: { abbr: string; title: string; subtitle?: string; children?: ReactNode }) {
+  const c = teamColors(abbr);
+  return (
+    <View style={{ backgroundColor: c.primary, borderRadius: radius.md, padding: space.lg, gap: space.md, borderBottomWidth: 4, borderBottomColor: c.trim }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+        <Swatch abbr={abbr} size={48} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: c.onPrimary, fontSize: typo.title, fontWeight: "900" }}>{title}</Text>
+          {subtitle ? <Text style={{ color: c.onPrimary, opacity: 0.85, fontSize: typo.small, marginTop: 2 }}>{subtitle}</Text> : null}
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/** A titled card, with an optional link on the right ("See all ›"). */
+export function Section({ title, action, children, style }: { title: string; action?: { label: string; onPress: () => void }; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const t = useTheme();
+  return (
+    <Card style={style}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: space.sm }}>
+        <Text style={{ flex: 1, fontSize: 12, fontWeight: "700", color: t.accent, textTransform: "uppercase", letterSpacing: 0.5 }}>{title}</Text>
+        {action ? (
+          <Pressable onPress={action.onPress} accessibilityRole="link" hitSlop={8}>
+            <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>{action.label} ›</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {children}
+    </Card>
+  );
+}
+
+/** A number with its label under it; several sit side by side in a StatRow. */
+export function Stat({ label, value, tone, onDark }: { label: string; value: string; tone?: "good" | "bad" | "gold"; onDark?: string }) {
+  const t = useTheme();
+  const color = onDark ?? (tone === "good" ? t.good : tone === "bad" ? t.score : tone === "gold" ? t.gold : t.text);
+  return (
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <Text style={{ color, fontSize: 20, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{value}</Text>
+      <Text style={{ color: onDark ?? t.muted, opacity: onDark ? 0.8 : 1, fontSize: typo.tiny, marginTop: 1, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</Text>
+    </View>
+  );
+}
+
+export function StatRow({ children }: { children: ReactNode }) {
+  return <View style={{ flexDirection: "row", gap: space.sm }}>{children}</View>;
+}
+
+/** A small rounded label: a status, a tag, a count. */
+export function Pill({ label, tone = "muted" }: { label: string; tone?: "accent" | "muted" | "good" | "bad" | "gold" }) {
+  const t = useTheme();
+  const color = tone === "accent" || tone === "good" ? t.accent : tone === "bad" ? t.score : tone === "gold" ? t.gold : t.muted;
+  return (
+    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: color, alignSelf: "flex-start" }}>
+      <Text style={{ color, fontSize: typo.tiny, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</Text>
+    </View>
+  );
+}
+
+/** Nothing here yet: what this space is for, and what to do. */
+export function EmptyState({ icon, title, body, action }: { icon: IconName; title: string; body?: string; action?: { label: string; onPress: () => void } }) {
+  const t = useTheme();
+  return (
+    <View style={{ alignItems: "center", padding: space.xl, gap: space.sm }}>
+      <Ionicons name={icon} size={36} color={t.muted} />
+      <Text style={{ color: t.text, fontSize: typo.heading, fontWeight: "700", textAlign: "center" }}>{title}</Text>
+      {body ? <Text style={{ color: t.muted, textAlign: "center", maxWidth: 300 }}>{body}</Text> : null}
+      {action ? (
+        <View style={{ marginTop: space.sm }}>
+          <Button label={action.label} onPress={action.onPress} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** A 0-100 bar with its label and value (owner's trust, fan mood, ratings). */
+export function Meter({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  const t = useTheme();
+  return (
+    <View style={{ marginTop: space.sm }}>
+      <View style={{ flexDirection: "row" }}>
+        <Text style={{ flex: 1, color: t.muted, fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: warn ? t.score : t.text, fontWeight: "700", fontSize: 12 }}>{Math.round(value)}</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: t.border, marginTop: 3, overflow: "hidden" }}>
+        <View style={{ width: `${Math.max(0, Math.min(100, value))}%`, height: 6, backgroundColor: warn ? t.score : t.accent }} />
+      </View>
+    </View>
+  );
 }
 
 /** A full-size or small button; primary is filled with the accent color. */
@@ -145,5 +254,28 @@ export function Segmented<K extends string>({ options, value, onChange }: { opti
         );
       })}
     </View>
+  );
+}
+
+/** A scrolling row of choices (weeks, positions, seasons): one is picked. */
+export function Chips<K extends string | number>({ options, value, onChange }: { options: ReadonlyArray<{ key: K; label: string }>; value: K; onChange: (k: K) => void }) {
+  const t = useTheme();
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 6, alignItems: "center" }}>
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <Pressable
+            key={String(o.key)}
+            onPress={() => onChange(o.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, justifyContent: "center", backgroundColor: on ? t.accent : t.card, borderWidth: StyleSheet.hairlineWidth, borderColor: on ? t.accent : t.border }}
+          >
+            <Text style={{ color: on ? t.onAccent : t.text, fontWeight: on ? "800" : "600", fontSize: 13 }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }

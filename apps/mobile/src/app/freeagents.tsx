@@ -16,7 +16,7 @@ import {
   salaryCap,
   type Position,
 } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, Chips } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
 
@@ -72,13 +72,7 @@ export default function FreeAgentsScreen() {
           {message ? <Text style={{ color: message.good ? t.accent : t.score, fontWeight: "700", marginTop: 6 }}>{message.text}</Text> : null}
         </Card>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {(["All", ...POSITIONS] as const).map((p) => (
-            <Pressable key={p} onPress={() => setPos(p)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 30, borderRadius: 15, justifyContent: "center", backgroundColor: pos === p ? t.accent : t.card, borderWidth: 1, borderColor: t.border }}>
-              <Text style={{ color: pos === p ? t.onAccent : t.text, fontWeight: "700", fontSize: 12 }}>{p}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <Chips options={(["All", ...POSITIONS] as const).map((p) => ({ key: p, label: p }))} value={pos} onChange={setPos} />
 
         <Card>
           <SectionTitle>Available ({rows.length})</SectionTitle>

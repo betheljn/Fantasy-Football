@@ -24,7 +24,8 @@ import {
   type SeasonFinances,
   type TeamBusiness,
 } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, Stat, StatRow, TeamBanner } from "../components/ui";
+import { teamColors } from "../field/colors";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -57,14 +58,13 @@ export default function BusinessScreen() {
     <>
       <Stack.Screen options={{ title: "Business" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <Card>
-          <SectionTitle>{team.state}</SectionTitle>
-          <Text style={{ color: t.text, fontWeight: "800", fontSize: 18, textTransform: "capitalize" }}>{size} market</Text>
-          <Text style={{ color: t.muted, marginTop: 2 }}>
-            {POPULATION[userTeam]}M people. {SIZE_NOTE[size]}
-          </Text>
-          <Row label="Cash" value={formatMoney(b.cash)} theme={t} bold />
-        </Card>
+        <TeamBanner abbr={userTeam} title={`${size.charAt(0).toUpperCase()}${size.slice(1)} market`} subtitle={`${team.state} · ${POPULATION[userTeam]}M people. ${SIZE_NOTE[size]}`}>
+          <StatRow>
+            <Stat label="Cash" value={formatMoney(b.cash)} onDark={teamColors(userTeam).onPrimary} />
+            <Stat label="Die-hards" value={`${b.fans.dieHard.toLocaleString()}k`} onDark={teamColors(userTeam).onPrimary} />
+            <Stat label="Seats" value={`${Math.round(b.stadium.capacity / 1000)}k`} onDark={teamColors(userTeam).onPrimary} />
+          </StatRow>
+        </TeamBanner>
 
         <Card>
           <SectionTitle>Fans</SectionTitle>

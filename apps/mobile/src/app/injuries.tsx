@@ -4,7 +4,7 @@ import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { IR_MIN_WEEKS, ROSTER_MAX, allTeams, backLabel, formatMoney, injuryLabel, injuryReport, playerOverall, teamName, type InjuryNews, type InjuryReportEntry } from "@dynasty/sim";
-import { Card, LinkRow, SectionTitle, Swatch } from "../components/ui";
+import { Button, Card, EmptyState, LinkRow, Pill, SectionTitle, Segmented, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -29,33 +29,29 @@ export default function InjuriesScreen() {
     <>
       <Stack.Screen options={{ title: "Injury report" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {(
-            [
-              ["mine", `Your team (${mine.length})`],
-              ["news", "League news"],
-              ["all", `All teams (${report.length})`],
-            ] as const
-          ).map(([key, label]) => (
-            <Pressable key={key} onPress={() => setView(key)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, justifyContent: "center", backgroundColor: view === key ? t.accent : t.card, borderWidth: 1, borderColor: t.border }}>
-              <Text style={{ color: view === key ? t.onAccent : t.text, fontWeight: "700", fontSize: 13 }}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Segmented
+          options={[
+            { key: "mine", label: `Yours (${mine.length})` },
+            { key: "news", label: "League news" },
+            { key: "all", label: `All (${report.length})` },
+          ]}
+          value={view}
+          onChange={setView}
+        />
         {seasonOver ? <Text style={{ color: t.muted }}>As the regular season ended. Everyone is healthy again by the offseason.</Text> : null}
 
         {view === "mine" ? (
           <>
             <Card>
               <SectionTitle>{teamName(league.teams[userTeam]!)}</SectionTitle>
-              {mine.length === 0 ? <Text style={{ color: t.muted }}>Nobody hurt. Enjoy it.</Text> : null}
+              {mine.length === 0 ? <EmptyState icon="fitness-outline" title="Everyone's healthy" body="Nobody hurt. Enjoy it." /> : null}
               {mine.map((e) => (
                 <View key={e.player.id}>
                   <ReportRow e={e} theme={t} />
                   {d.canMakeMoves && e.injury.weeks >= IR_MIN_WEEKS ? (
-                    <Pressable onPress={() => setMessage(d.placeOnIR(e.player.id).join(" ") || `${e.player.firstName} ${e.player.lastName} is on injured reserve for the season.`)} accessibilityRole="button" style={{ alignSelf: "flex-start", marginLeft: 36, marginBottom: 6 }}>
-                      <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Place on injured reserve (out for the season, frees a roster spot)</Text>
-                    </Pressable>
+                    <View style={{ marginLeft: 36, marginBottom: 8, alignSelf: "flex-start" }}>
+                      <Button small label="Place on injured reserve" onPress={() => setMessage(d.placeOnIR(e.player.id).join(" ") || `${e.player.firstName} ${e.player.lastName} is on injured reserve for the season.`)} />
+                    </View>
                   ) : null}
                 </View>
               ))}
@@ -92,7 +88,7 @@ export default function InjuriesScreen() {
             {moves.slice(0, 30).map((m, i) => (
               <View key={`${m.player}-${i}`} style={{ flexDirection: "row", gap: 8, paddingVertical: 4 }}>
                 <Text style={{ width: 40, color: t.muted, fontSize: 12 }}>Wk {m.week}</Text>
-                <Swatch abbr={m.team} />
+                <Swatch abbr={m.team} size={20} />
                 <Text style={{ flex: 1, color: m.team === userTeam ? t.text : t.muted, fontSize: 13, fontWeight: m.team === userTeam ? "700" : "400" }}>
                   {m.team} {m.kind === "signed" ? `signs ${m.position} ${m.name} (${m.overall}) for ${formatMoney(m.salary ?? 0)}` : `puts ${m.position} ${m.name} (${m.overall}) on injured reserve`}
                 </Text>
@@ -119,7 +115,7 @@ export default function InjuriesScreen() {
               .map(({ team, rows }) => (
                 <Card key={team.abbr}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <Swatch abbr={team.abbr} />
+                    <Swatch abbr={team.abbr} size={26} />
                     <Text style={{ flex: 1, color: t.text, fontWeight: "700" }}>{teamName(team)}</Text>
                     <Text style={{ color: t.muted, fontSize: 12 }}>
                       {rows.length} out{rows.some((e) => e.starter) ? ` · ${rows.filter((e) => e.starter).length} starter${rows.filter((e) => e.starter).length === 1 ? "" : "s"}` : ""}
@@ -150,7 +146,7 @@ function ReportRow({ e, theme: t }: { e: InjuryReportEntry; theme: Theme }) {
           </Text>
           <Text style={{ color: t.muted, fontSize: 12 }}>{e.injury.type}</Text>
         </View>
-        <Text style={{ color: e.returnWeek === null ? t.score : t.text, fontSize: 12, fontWeight: "700" }}>{backLabel(e.returnWeek, schedule.weeks)}</Text>
+        <Pill label={backLabel(e.returnWeek, schedule.weeks)} tone={e.returnWeek === null ? "bad" : "muted"} />
         <Text style={{ width: 26, textAlign: "right", color: t.text, fontWeight: "800" }}>{playerOverall(e.player)}</Text>
       </View>
     </LinkRow>
@@ -161,7 +157,7 @@ function NewsRow({ n, mine, theme: t }: { n: InjuryNews; mine: boolean; theme: T
   return (
     <View style={{ flexDirection: "row", gap: 8, paddingVertical: 5, alignItems: "flex-start" }}>
       <Text style={{ width: 40, color: t.muted, fontSize: 12 }}>Wk {n.week}</Text>
-      <Swatch abbr={n.team} />
+      <Swatch abbr={n.team} size={20} />
       <Text style={{ flex: 1, color: mine ? t.text : t.muted, fontWeight: mine ? "700" : "400", fontSize: 13 }}>
         {n.team} {n.starter ? "starting " : ""}
         {n.position} {n.name} ({n.overall}): {injuryLabel(n)}

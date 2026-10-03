@@ -4,7 +4,7 @@ import { Stack } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { HOF_RULES, hofBallot, type HofCandidate } from "@dynasty/sim";
-import { Card, SectionTitle, Swatch } from "../components/ui";
+import { Card, SectionTitle, Swatch, Segmented } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -24,18 +24,14 @@ export default function HallOfFameScreen() {
     <>
       <Stack.Screen options={{ title: "Hall of Fame" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {(
-            [
-              ["ballot", `${schedule.season} ballot`],
-              ["hall", `The Hall (${members.length})`],
-            ] as const
-          ).map(([key, label]) => (
-            <Pressable key={key} onPress={() => setView(key)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 32, borderRadius: 16, justifyContent: "center", backgroundColor: view === key ? t.accent : t.card, borderWidth: 1, borderColor: t.border }}>
-              <Text style={{ color: view === key ? t.onAccent : t.text, fontWeight: "700", fontSize: 13 }}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Segmented
+          options={[
+            { key: "ballot", label: `${schedule.season} ballot` },
+            { key: "hall", label: `The Hall (${members.length})` },
+          ]}
+          value={view}
+          onChange={setView}
+        />
 
         {view === "ballot" ? (
           <>
@@ -80,7 +76,7 @@ export default function HallOfFameScreen() {
                 <Text style={{ color: t.muted, marginTop: 2 }}>{m.line}</Text>
                 {m.awards.length ? <Text style={{ color: t.muted, marginTop: 2 }}>{m.awards.join(" · ")}</Text> : null}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-                  <Swatch abbr={m.team} />
+                  <Swatch abbr={m.team} size={22} />
                   <Text style={{ color: t.text, fontSize: 13 }}>
                     {st(m.team)} retired #{m.jersey ?? "?"}
                   </Text>

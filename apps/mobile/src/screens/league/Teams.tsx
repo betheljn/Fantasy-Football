@@ -9,7 +9,7 @@ import { useTheme } from "../../theme";
 export function TeamsSection() {
   const t = useTheme();
   const router = useRouter();
-  const { league, standings } = useLeague();
+  const { league, standings, userTeam } = useLeague();
   const record = new Map(standings.flatMap((d) => d.teams.map((rt) => [rt.team, rt.record])));
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -25,8 +25,8 @@ export function TeamsSection() {
                 return (
                   <LinkRow key={abbr} label={teamName(team)} onPress={() => router.push(`/team/${abbr}`)}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                      <Swatch abbr={abbr} size={12} />
-                      <Text style={{ flex: 1, color: t.text }}>{teamName(team)}</Text>
+                      <Swatch abbr={abbr} size={28} />
+                      <Text style={{ flex: 1, color: abbr === userTeam ? t.accent : t.text, fontWeight: abbr === userTeam ? "800" : "500" }}>{teamName(team)}</Text>
                       <Text style={{ color: t.muted, fontVariant: ["tabular-nums"] }}>{r ? formatRecord(r) : "0-0"}</Text>
                     </View>
                   </LinkRow>

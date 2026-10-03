@@ -146,10 +146,10 @@ function GameBoard({ lines, own, chosen, onPick, theme: t }: { lines: GameLines;
         <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12, marginBottom: 4 }}>YOUR GAME · overs on your own players only (your depth chart locks once you pick)</Text>
       ) : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <Swatch abbr={game.away} />
+        <Swatch abbr={game.away} size={22} />
         <Text style={{ color: t.text, fontWeight: "800" }}>{game.away}</Text>
         <Text style={{ color: t.muted }}>at</Text>
-        <Swatch abbr={game.home} />
+        <Swatch abbr={game.home} size={22} />
         <Text style={{ color: t.text, fontWeight: "800" }}>{game.home}</Text>
       </View>
       {lines.props.map((p) => {

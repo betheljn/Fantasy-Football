@@ -5,7 +5,7 @@ import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { RARITIES, RECORD_NAMES, RECORD_STATS, startCollection, type Moment, type Rarity, type RecordEntry } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, Segmented, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -29,17 +29,15 @@ export default function MomentsScreen() {
     <>
       <Stack.Screen options={{ title: "Moments" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {(
-            [
-              ["yours", "Your team"],
-              ["all", "The league"],
-              ["records", "Record book"],
-            ] as const
-          ).map(([key, label]) => (
-            <Pill key={key} label={label} on={view === key} onPress={() => setView(key)} theme={t} />
-          ))}
-        </View>
+        <Segmented
+          options={[
+            { key: "yours", label: "Your team" },
+            { key: "all", label: "The league" },
+            { key: "records", label: "Record book" },
+          ]}
+          value={view}
+          onChange={setView}
+        />
 
         {view === "records" ? (
           <>
@@ -69,24 +67,31 @@ export default function MomentsScreen() {
 function MomentCard({ m, theme: t }: { m: Moment; theme: Theme }) {
   const router = useRouter();
   const color = RARITY_COLOR[m.rarity];
+  // A card from a set: the rarity's color across the top, the team's badge, the year.
   return (
-    <Card style={{ borderColor: color, borderWidth: m.rarity === "common" ? 1 : 2 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Text style={{ color, fontWeight: "900", fontSize: 11, letterSpacing: 0.5 }}>{RARITY_NAME[m.rarity].toUpperCase()}</Text>
-        {m.first ? <Badge label="1 of 1 · league first" color={color} /> : null}
-        {m.record ? <Badge label="League record" color={color} /> : null}
+    <Card style={{ borderColor: color, borderWidth: m.rarity === "common" ? 1 : 2, overflow: "hidden", paddingTop: 18 }}>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, backgroundColor: color }} />
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <Swatch abbr={m.team} size={40} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Text style={{ color, fontWeight: "900", fontSize: 11, letterSpacing: 0.5 }}>{RARITY_NAME[m.rarity].toUpperCase()}</Text>
+            {m.first ? <Badge label="1 of 1 · league first" color={color} /> : null}
+            {m.record ? <Badge label="League record" color={color} /> : null}
+            <Text style={{ color: t.muted, fontSize: 12, marginLeft: "auto" }}>
+              {m.season}
+              {m.week ? ` · wk ${m.week}` : " · season"}
+            </Text>
+          </View>
+          <Text style={{ color: t.text, fontWeight: "800", fontSize: 16, marginTop: 4 }}>{m.title}</Text>
+          <Text style={{ color: t.muted, marginTop: 2 }}>{m.detail}</Text>
+          {m.player ? (
+            <Pressable onPress={() => router.push(`/player/${m.player}`)} accessibilityRole="link" style={{ marginTop: 6 }}>
+              <Text style={{ color: t.accent, fontSize: 13, fontWeight: "700" }}>Player card ›</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
-      <Text style={{ color: t.muted, fontSize: 12, marginTop: 2 }}>
-        {m.season}
-        {m.week ? ` · week ${m.week}` : " · season"}
-      </Text>
-      <Text style={{ color: t.text, fontWeight: "800", fontSize: 16, marginTop: 4 }}>{m.title}</Text>
-      <Text style={{ color: t.muted, marginTop: 2 }}>{m.detail}</Text>
-      {m.player ? (
-        <Pressable onPress={() => router.push(`/player/${m.player}`)} accessibilityRole="link" style={{ marginTop: 4 }}>
-          <Text style={{ color: t.accent, fontSize: 12, fontWeight: "700" }}>Player card ›</Text>
-        </Pressable>
-      ) : null}
     </Card>
   );
 }

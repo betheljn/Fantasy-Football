@@ -4,7 +4,7 @@
 import { Stack, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SPRING_RULES, type SpringSeason } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 
@@ -82,11 +82,17 @@ function Breakouts({ s, userTeam, state, theme: t }: { s: SpringSeason; userTeam
       {s.breakouts.map((b) => {
         const mine = b.team === userTeam;
         return (
-          <Pressable key={b.player} onPress={() => router.push(`/player/${b.player}`)} accessibilityRole="link" style={{ paddingVertical: 4 }}>
-            <Text style={{ color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "600" }}>
-              {b.position} {b.name} <Text style={{ color: t.muted, fontWeight: "400" }}>({state(b.team)})</Text> {b.before} → {b.after}
+          <Pressable key={b.player} onPress={() => router.push(`/player/${b.player}`)} accessibilityRole="link" style={{ paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Swatch abbr={b.team} size={26} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "600" }}>
+                {b.position} {b.name} <Text style={{ color: t.muted, fontWeight: "400" }}>({state(b.team)})</Text>
+              </Text>
+              <Text style={{ color: t.muted, fontSize: 12 }}>{b.line}</Text>
+            </View>
+            <Text style={{ color: t.good, fontWeight: "800", fontVariant: ["tabular-nums"] }}>
+              {b.before} → {b.after}
             </Text>
-            <Text style={{ color: t.muted, fontSize: 12 }}>{b.line}</Text>
           </Pressable>
         );
       })}

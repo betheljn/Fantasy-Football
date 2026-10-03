@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Button, Card, SectionTitle, Swatch } from "../components/ui";
-import { useDynasty } from "../league/LeagueProvider";
+import { useDynasty, useLeagueMaybe } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
 
@@ -141,7 +141,7 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         <SectionTitle>Who's in</SectionTitle>
         {league.members.map((m) => (
           <View key={m.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 3 }}>
-            {m.team ? <Swatch abbr={m.team} /> : <View style={{ width: 10 }} />}
+            {m.team ? <Swatch abbr={m.team} size={24} /> : <View style={{ width: 24 }} />}
             <Text style={{ color: t.text, flex: 1, fontWeight: m.id === me.memberId ? "800" : "400" }}>
               {m.displayName}
               {m.isCommissioner ? <Text style={{ color: t.muted }}> · commissioner</Text> : null}
@@ -179,7 +179,7 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
                     accessibilityLabel={mine ? `Give up ${x.name}` : `Claim ${x.name}`}
                     style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 5, opacity: taken ? 0.5 : pressed ? 0.6 : 1 })}
                   >
-                    <Swatch abbr={x.abbr} />
+                    <Swatch abbr={x.abbr} size={24} />
                     <Text style={{ flex: 1, color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "400" }}>
                       {x.name} <Text style={{ color: t.muted }}>({x.overall.toFixed(1)})</Text>
                     </Text>
@@ -220,6 +220,12 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
   }, []);
   const friends = new Set(league.members.map((m) => m.team).filter((x): x is string => !!x));
   const yours = self?.team ? league.teams.find((x) => x.abbr === self.team) : undefined;
+  // In the app, the schedule is on the phone: this week's game for your team (none on a bye).
+  const onPhone = useLeagueMaybe();
+  const game =
+    linkGames && onPhone && yours && league.next?.kind === "week"
+      ? onPhone.schedule.games.find((g) => g.week === (league.next as { week: number }).week && (g.home === yours.abbr || g.away === yours.abbr))
+      : undefined;
   const ready = league.members.filter((m) => m.ready).length;
   const standings = [...league.teams].sort((a, b) => b.wins + b.ties / 2 - (a.wins + a.ties / 2) || a.losses - b.losses);
   // Before any games, just the friends' teams; then the top ten plus any friends below them.
@@ -237,9 +243,28 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
 
       <Card style={{ gap: 8 }}>
         <SectionTitle>{stepLabel(league.next, league.season)}</SectionTitle>
-        {yours ? (
+        {yours && game ? (
+          // This week's game, as on a solo Home: both teams' badges and records.
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {[game.away, "at", game.home].map((x) =>
+              x === "at" ? (
+                <Text key="at" style={{ color: t.muted, fontWeight: "700", paddingHorizontal: 6 }}>
+                  at
+                </Text>
+              ) : (
+                <View key={x} style={{ flex: 1, alignItems: "center", gap: 4 }}>
+                  <Swatch abbr={x} size={40} />
+                  <Text style={{ color: t.text, fontWeight: x === yours.abbr ? "800" : "600", fontSize: 15 }} numberOfLines={1}>
+                    {teamName(league, x).split(" ").slice(-1)[0]}
+                  </Text>
+                  <Text style={{ color: t.muted, fontSize: 12 }}>{record(league.teams.find((y) => y.abbr === x)!)}</Text>
+                </View>
+              ),
+            )}
+          </View>
+        ) : yours ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Swatch abbr={yours.abbr} size={14} />
+            <Swatch abbr={yours.abbr} size={24} />
             <Text style={{ color: t.text, fontSize: 17, fontWeight: "800", flex: 1 }}>{yours.name}</Text>
             <Text style={{ color: t.text, fontSize: 17, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{record(yours)}</Text>
           </View>
@@ -303,7 +328,7 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
         {shown.map((x) => (
           <View key={x.abbr} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 }}>
             {league.weeksPlayed > 0 ? <Text style={{ width: 22, color: t.muted, fontVariant: ["tabular-nums"] }}>{standings.indexOf(x) + 1}</Text> : null}
-            <Swatch abbr={x.abbr} />
+            <Swatch abbr={x.abbr} size={24} />
             <Text style={{ flex: 1, color: friends.has(x.abbr) ? t.accent : t.text, fontWeight: friends.has(x.abbr) ? "700" : "400" }}>
               {x.name}
               {x.claimedBy ? <Text style={{ color: t.muted, fontWeight: "400" }}> · {memberName(league, x.claimedBy)}</Text> : null}

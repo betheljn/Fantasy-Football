@@ -20,7 +20,8 @@ import {
   inSeasonContract,
   injuryLabel,
 } from "@dynasty/sim";
-import { Card, SectionTitle, Swatch } from "../../components/ui";
+import { Card, Pill, SectionTitle, Swatch } from "../../components/ui";
+import { NEUTRAL_COLORS, teamColors } from "../../field/colors";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { useTheme, type Theme } from "../../theme";
 
@@ -43,36 +44,35 @@ export default function PlayerScreen() {
   const season = stats.players.get(p.id);
   const key = new Set(keyAttributes(p));
   const statLine = season ? seasonLine(p.position, season.stats, season.games) : null;
+  // Free agents wear neutral colors.
+  const colors = team ? teamColors(team.abbr) : NEUTRAL_COLORS;
+  const trimText = colors.onTrim;
 
   return (
     <>
       <Stack.Screen options={{ title: `${p.firstName} ${p.lastName}` }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <Card>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: t.accent, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: t.onAccent, fontSize: 22, fontWeight: "900" }}>{playerOverall(p)}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: "800", color: t.text }}>
-                {team ? `#${p.jersey} ` : ""}
-                {p.firstName} {p.lastName}
-              </Text>
-              <Text style={{ color: t.muted }}>
-                {p.position}
-                {p.archetype ? ` · ${p.archetype}` : ""} · age {p.age}
-              </Text>
-              {p.injury ? <Text style={{ color: t.score, fontWeight: "700" }}>Injured: {injuryLabel(p.injury)}</Text> : null}
-              {team ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
-                  <Swatch abbr={team.abbr} />
-                  <Text style={{ color: t.muted }}>{teamName(team)}</Text>
-                </View>
-              ) : (
-                <Text style={{ color: t.muted, marginTop: 2 }}>Free agent</Text>
-              )}
-            </View>
+        <View style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 16, borderBottomWidth: 4, borderBottomColor: colors.trim, flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: colors.trim, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ color: trimText, fontSize: 24, fontWeight: "900" }}>{playerOverall(p)}</Text>
+            <Text style={{ color: trimText, fontSize: 9, fontWeight: "800", marginTop: -3 }}>OVR</Text>
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 21, fontWeight: "900", color: colors.onPrimary }}>
+              {p.firstName} {p.lastName}
+            </Text>
+            <Text style={{ color: colors.onPrimary, opacity: 0.85 }}>
+              {team ? `#${p.jersey} · ` : ""}
+              {p.position}
+              {p.archetype ? ` · ${p.archetype}` : ""} · age {p.age}
+            </Text>
+            <Text style={{ color: colors.onPrimary, opacity: 0.85, marginTop: 2 }}>{team ? teamName(team) : "Free agent"}</Text>
+          </View>
+          {team ? <Swatch abbr={team.abbr} size={34} /> : null}
+        </View>
+        {p.injury ? <Pill tone="bad" label={`Injured: ${injuryLabel(p.injury)}`} /> : null}
+
+        <Card>
           <Text style={{ color: t.muted, marginTop: 10 }}>
             Development: {p.devTraitRevealed ? DEV_TRAIT_NAMES[p.devTrait] : "Unknown"} · From {STATE_NAME.get(who.homeState) ?? who.homeState}
           </Text>
