@@ -13,6 +13,7 @@
     "demo:step4": "node scripts/step4-drive.ts",
     "demo:step5": "node scripts/step5-game.ts",
     "game": "node scripts/play-game.ts",
+    "coach": "node scripts/coach.ts",
     "demo:step6": "node scripts/play-game.ts",
     "anim": "node scripts/anim-preview.ts",
     "league": "node scripts/league-overview.ts",

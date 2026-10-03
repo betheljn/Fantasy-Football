@@ -4,7 +4,7 @@ import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
 import { simulateKickoff } from "../play/kickoff.ts";
 import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
-import { simulateConversion, simulateDrive, type DriveResult, type NextPossession } from "../drive/drive.ts";
+import { driveSteps, simulateConversion, type CoachCall, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
@@ -44,21 +44,77 @@ export interface GameResult {
   final: { quarter: number; clock: number };
   /** Everyone hurt in the game, in order. */
   injuries: Injury[];
+  /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
+  coached?: { team: string; calls: Array<CoachCall | null> };
 }
 
-/**
- * Simulate a full game. Deterministic: the same teams and seed always
- * produce the same GameResult.
- */
 export interface GameOptions {
   /** No home-field advantage (e.g. a championship at a neutral venue). */
   neutralSite?: boolean;
   /** Playoff rules: no ties; a tied overtime continues into another period. */
   playoff?: boolean;
+  /** A team whose calls a person makes (see gameSteps). */
+  coach?: string;
+  /** The coached team's answers, in order, to replay a coached game (missing ones take the coaches' call). */
+  calls?: ReadonlyArray<CoachCall | null>;
 }
 
+/**
+ * Simulate a full game. Deterministic: the same teams and seed always
+ * produce the same GameResult (and, for a coached game, the same calls).
+ */
 export function simulateGame(home: Team, away: Team, seed: number | string, options: GameOptions = {}): GameResult {
+  const steps = gameSteps(home, away, seed, options);
+  let i = 0;
+  let r = steps.next();
+  while (!r.done) r = steps.next(options.calls?.[i++] ?? undefined);
+  return r.value;
+}
+
+/** A coached game in progress: the call it's waiting on, or the finished result. */
+export interface CoachedGame {
+  /** The snap waiting on a call (null once the game is over). */
+  prompt: SnapPrompt | null;
+  result: GameResult | null;
+  /** Answers so far (null = took the coaches' call): with the seed, everything needed to pick the game up again. */
+  calls: Array<CoachCall | null>;
+  /** Answer the waiting prompt (nothing = take the coaches' call). */
+  answer(call?: CoachCall): void;
+}
+
+/** Start (or pick up, given the answers so far) a game that `coach` calls. */
+export function startCoachedGame(home: Team, away: Team, seed: number | string, coach: string, options: Omit<GameOptions, "coach" | "calls"> = {}, calls: ReadonlyArray<CoachCall | null> = []): CoachedGame {
+  const steps = gameSteps(home, away, seed, { ...options, coach });
+  const game: CoachedGame = {
+    prompt: null,
+    result: null,
+    calls: [],
+    answer(call) {
+      if (!game.prompt) throw new Error("The game is over");
+      game.calls.push(call ?? null);
+      advance(steps.next(call));
+    },
+  };
+  const advance = (r: IteratorResult<SnapPrompt, GameResult>) => {
+    game.prompt = r.done ? null : r.value;
+    game.result = r.done ? r.value : null;
+  };
+  advance(steps.next());
+  for (const c of calls) {
+    if (!game.prompt) break;
+    game.answer(c ?? undefined);
+  }
+  return game;
+}
+
+/**
+ * A game, pausing before each snap of the coached team on offense
+ * (options.coach) for a call. With nobody coached it never pauses.
+ */
+export function* gameSteps(home: Team, away: Team, seed: number | string, options: GameOptions = {}): Generator<SnapPrompt, GameResult, CoachCall | undefined> {
+
   const rng = new Rng(seed);
+  const answers: Array<CoachCall | null> = [];
   const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away });
   // The teams as they stand now (injured players leave the field).
   const teams = injuries.teams;
@@ -162,7 +218,7 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
     const offense = teams[pending.team]!;
     const defense = other(offense.abbr);
     if (quarter >= 5) otPossessed.add(offense.abbr);
-    const drive = simulateDrive(rng, {
+    const steps = driveSteps(rng, {
       offense,
       defense,
       quarter,
@@ -172,7 +228,15 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
       timeouts,
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
+      ...(options.coach ? { coach: options.coach } : {}),
     });
+    let step = steps.next();
+    while (!step.done) {
+      const answer = yield step.value;
+      answers.push(answer ?? null);
+      step = steps.next(answer);
+    }
+    const drive = step.value;
     const from = plays.length;
     for (const p of drive.plays) record(p.event, p.quarter, p.clockAfter, p.injuries);
     const { plays: _drivePlays, ...summary } = drive;
@@ -199,5 +263,6 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
     winner: diff === 0 ? null : diff > 0 ? home.abbr : away.abbr,
     final: { quarter, clock },
     injuries: injuries.all,
+    ...(options.coach ? { coached: { team: options.coach, calls: answers } } : {}),
   };
 }

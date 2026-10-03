@@ -276,6 +276,26 @@ real icons (@expo/vector-icons).
 5. Flow polish: the offseason as a guided stepper (solo and online), loading
    and empty states, transitions
 
+### Milestone 17: coach your own game (planned)
+Call the plays in your own games instead of only watching. The sim still
+decides every outcome; you only make the choices the AI coaches make now.
+Coached games are solo play at first (online games stay AI-coached).
+1. Sim: a game you can step through, pausing for your call before each snap
+   (like the draft's steps); the same seed and the same calls always give the
+   same game, and your calls are kept so past games replay exactly
+2. Offense: run or pass, formation, and 4th down (go, punt, field goal); hand
+   any drive to your offensive coordinator
+3. Defense and the clock: coverage and blitz, timeouts, two-point tries; your
+   head coach takes any call you skip
+4. Game-day screen: a compact call bar under the field (top-down or TV), auto
+   the rest of the half, and a recap of how your calls did
+
+### Milestone 18: player stories (planned)
+Texture on the systems already there.
+1. Re-signing talks: holdouts and counteroffers
+2. Captains and morale swings during the season
+3. Career milestones in the news and on the radio show
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style

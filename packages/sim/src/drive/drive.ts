@@ -5,11 +5,12 @@ import type { PlayContext } from "../play/common.ts";
 import { assessLiveBallPenalty, isNullified, rollPreSnapPenalty } from "../play/penalties.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import type { ConversionEvent, PlayEvent, Situation } from "../play/events.ts";
-import { fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from "../play/kicking.ts";
+import { fieldGoalDistance, fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from "../play/kicking.ts";
 import { simulatePass } from "../play/pass.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
 import { chooseDefense, chooseOffense } from "./scheme.ts";
+import type { OffenseFormation } from "../play/formation.ts";
 import { clockMistakeChance } from "../play/coaching.ts";
 import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
@@ -58,6 +59,48 @@ export interface DriveInput {
   homeTeam?: string;
   /** Checks each play for injuries; the hurt leave the field for the next snap. */
   injuries?: InjuryTracker;
+  /** A team whose calls are made by a person: the drive pauses before each of its snaps on offense. */
+  coach?: string;
+}
+
+/** A coached team's turn to call a play: the situation, what its coaches would call, and what it may call. */
+export interface SnapPrompt {
+  kind: "offense";
+  team: string;
+  opponent: string;
+  situation: Situation;
+  /** Coached team's score minus the opponent's. */
+  margin: number;
+  clockRunning: boolean;
+  timeouts: { own: number; opponent: number };
+  /** The personnel and alignment the offense has lined up in. */
+  formation: OffenseFormation;
+  /** What the coaching staff would call (answering nothing takes it). */
+  suggestion: PlayCall;
+  options: PlayCall[];
+}
+
+/** A person's answer to a prompt. */
+export interface CoachCall {
+  call: PlayCall;
+}
+
+/** Longest field goal anyone may try (yards). */
+export const MAX_FIELD_GOAL = 70;
+
+/** The calls open to an offense on this snap (the coaches' suggestion is always one of them). */
+export function callOptions(c: Pick<CallContext, "situation" | "clockRunning">, suggestion: PlayCall): PlayCall[] {
+  const s = c.situation;
+  const open: Record<PlayCall, boolean> = {
+    run: true,
+    pass: true,
+    punt: s.down === 4,
+    field_goal: fieldGoalDistance(s.yardline) <= MAX_FIELD_GOAL,
+    kneel: true,
+    spike: c.clockRunning && s.down < 4,
+  };
+  open[suggestion] = true;
+  return (Object.keys(open) as PlayCall[]).filter((k) => open[k]);
 }
 
 export interface DriveResult {
@@ -80,7 +123,21 @@ export interface DriveResult {
 
 const SCRIMMAGE_KINDS = new Set<PlayEvent["kind"]>(["run", "pass", "kneel", "spike"]);
 
+/** A drive with no coached team: runs straight through. */
 export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
+  const { coach: _coach, ...uncoached } = input;
+  const r = driveSteps(rng, uncoached).next();
+  if (!r.done) throw new Error("An uncoached drive asked for a call");
+  return r.value;
+}
+
+/**
+ * A drive, pausing before each snap of the coached team (`input.coach`) on
+ * offense. The coaches pick first, drawing from the same random stream as
+ * always, so answering nothing (or the suggestion) plays out exactly as an
+ * uncoached drive would; the same answers always give the same drive.
+ */
+export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, DriveResult, CoachCall | undefined> {
   let { offense, defense } = input;
   const off = offense.abbr;
   const def = defense.abbr;
@@ -152,7 +209,26 @@ export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
     // Personnel comes first (it shapes the run/pass call); the defense answers what it sees.
     const offenseFormation = chooseOffense(rng, offense, callContext());
     const cc = { ...callContext(), personnel: offenseFormation.personnel, set: offenseFormation.set };
-    const call = callPlay(rng, cc);
+    let call = callPlay(rng, cc);
+    if (input.coach === off) {
+      const options = callOptions(cc, call);
+      const answer = yield {
+        kind: "offense",
+        team: off,
+        opponent: def,
+        situation: { ...cc.situation },
+        margin: cc.margin,
+        clockRunning,
+        timeouts: { own: timeouts[off]!, opponent: timeouts[def]! },
+        formation: offenseFormation,
+        suggestion: call,
+        options,
+      };
+      if (answer) {
+        if (!options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
+        call = answer.call;
+      }
+    }
     const scrimmageCall = call === "run" || call === "pass";
     const ctx: PlayContext = {
       offense,
