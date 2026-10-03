@@ -25,7 +25,7 @@ import { keepValue, ROSTER_MIN } from "../dynasty/roster.ts";
 import type { DraftPick } from "../dynasty/draft.ts";
 import type { RosterMove } from "../dynasty/roster.ts";
 
-export type ContractMoveKind = "re-signed" | "extended" | "option" | "released" | "declined" | "signed" | "cut" | "cap cut";
+export type ContractMoveKind = "re-signed" | "extended" | "option" | "released" | "declined" | "signed" | "cut" | "cap cut" | "holdout";
 
 export interface ContractMove {
   kind: ContractMoveKind;
@@ -35,6 +35,8 @@ export interface ContractMove {
   contract?: Contract;
   /** Dead money left on the cap (cuts). */
   deadMoney?: number;
+  /** A holdout: games he'll miss. */
+  weeks?: number;
   /** Free agency: how many teams made offers, and whether he went home. */
   bidders?: number;
   hometown?: boolean;
@@ -105,6 +107,24 @@ export interface ResignChoices {
    * Expiring players left out go; players left out with a year left play it out.
    */
   keep: ReadonlySet<PlayerId>;
+  /** Counteroffers: what share of his ask you offer an expiring player (one of RESIGN_OFFERS; default his ask). */
+  offers?: ReadonlyMap<PlayerId, number>;
+}
+
+/** What you can offer an expiring player, as a share of what he asks. */
+export const RESIGN_OFFERS = [0.9, 1, 1.1, 1.2] as const;
+/** Mood points a counteroffer is worth per share of his ask above (or below) it. */
+const OFFER_MOOD = 50;
+
+/** One of the deals you can offer an expiring player: the money, and the odds he takes it. */
+export interface ResignTerms {
+  /** Share of his ask (1 = what he asked for). */
+  share: number;
+  deal: Contract;
+  capHit: number;
+  chance: number;
+  /** Whether he'd take it (decided by his one roll, so more money never turns a yes into a no). */
+  accepts: boolean;
 }
 
 /** An early extension: a young star entering the last year of his deal, locked up now. */
@@ -118,7 +138,12 @@ export interface ExtensionOffer {
   /** The old deal's unpaid signing bonus, which comes due on next season's cap. */
   accelerated: number;
   homegrown: boolean;
+  /** Underpaid and wanting a new deal: games he'll hold out next season if he isn't extended. */
+  holdout?: number;
 }
+
+/** Holdouts: good players under contract paid well below their market value. */
+export const HOLDOUT = { minOverall: 72, maxAge: 31, underpaid: 0.6, maxWeeks: 6 };
 
 /** What keeping an expiring player would take. */
 export interface ResignOffer {
@@ -137,6 +162,13 @@ export interface ResignOffer {
   homegrown: boolean;
   /** Whether the AI front office would try to keep him. */
   aiWants: boolean;
+  /** Re-signing terms you can offer, from less than his ask to more (one entry, share 1, for an option). */
+  terms: ResignTerms[];
+}
+
+/** The terms of an offer at a share of his ask (his ask if that share isn't offered). */
+export function termsAt(o: ResignOffer, share = 1): ResignTerms {
+  return o.terms.find((t) => t.share === share) ?? o.terms.find((t) => t.share === 1)!;
 }
 
 /** A team's re-signing picture before any decisions: its budget, what's committed, and every expiring player's offer. */
@@ -172,16 +204,17 @@ export function fillReserve(plan: Pick<ContractPlan, "openSpots" | "minimum">, k
  * must fit the budget while still leaving enough to fill the rest of the
  * roster at the minimum.
  */
-export function resignFits(plan: ContractPlan, keep: ReadonlySet<PlayerId>): Map<PlayerId, boolean> {
+export function resignFits(plan: ContractPlan, keep: ReadonlySet<PlayerId>, offers?: ReadonlyMap<PlayerId, number>): Map<PlayerId, boolean> {
   const fits = new Map<PlayerId, boolean>();
   let committed = plan.committed;
   let kept = 0;
   for (const o of plan.offers) {
     if (!keep.has(o.player.id)) continue;
-    const ok = committed + o.capHit + fillReserve(plan, kept + 1) <= plan.budget;
+    const hit = termsAt(o, offers?.get(o.player.id)).capHit;
+    const ok = committed + hit + fillReserve(plan, kept + 1) <= plan.budget;
     fits.set(o.player.id, ok);
     if (ok) {
-      committed += o.capHit;
+      committed += hit;
       kept++;
     }
   }
@@ -259,37 +292,67 @@ function resignOffer(ctx: OpenYearContext, team: Team, p: Player): ResignOffer {
     // A first-rounder finishing his rookie deal: the fifth-year option.
     const salary = Math.max(Math.round(c.years.reduce((s, y) => s + y.salary + y.bonus, 0) / c.years.length), Math.round(OPTION_PRICE * marketValue(p, ctx.capNext, ctx.index)));
     const deal: Contract = { ...c, years: [...c.years, { season: ctx.next, salary: Math.round(salary / 10) * 10, bonus: 0, guaranteed: true, option: true }] };
-    return { player: p, kind: "option", deal, capHit: capHit(deal, ctx.next), mood: m, chance: 1, accepts: true, homegrown, aiWants };
+    const hit = capHit(deal, ctx.next);
+    return { player: p, kind: "option", deal, capHit: hit, mood: m, chance: 1, accepts: true, homegrown, aiWants, terms: [{ share: 1, deal, capHit: hit, chance: 1, accepts: true }] };
   }
   // Each player's own random stream: the same answer however many others were decided first.
   const rng = new Rng(`${ctx.seed}:${ctx.next}:resign:${p.id}`);
   // Would he stay? Happy players re-sign (a little cheaper); unhappy ones test the market.
-  const chance = resignChance(m, homegrown);
-  const accepts = rng.chance(chance);
+  // His one roll: he takes any offer whose odds beat it (so his answer to his ask is as it always was).
+  const roll = rng.next();
   const happyDiscount = 0.1 * Math.max(0, Math.min(1, (m - 50) / 30));
-  const deal = veteranContract(p, ctx.capNext, {
-    kind: homegrown ? "extension" : "veteran",
-    signed: ctx.next,
-    years: contractLength(rng, p),
-    annual: marketValue(p, ctx.capNext, ctx.index) * Math.exp(rng.normal(0, 0.1)) * (1 - happyDiscount - hometownDiscount(p, team)),
-    homegrown,
-    ...(c?.draftedBy ? { draftedBy: c.draftedBy } : {}),
+  const years = contractLength(rng, p);
+  const ask = marketValue(p, ctx.capNext, ctx.index) * Math.exp(rng.normal(0, 0.1)) * (1 - happyDiscount - hometownDiscount(p, team));
+  const terms = RESIGN_OFFERS.map((share): ResignTerms => {
+    const deal = veteranContract(p, ctx.capNext, {
+      kind: homegrown ? "extension" : "veteran",
+      signed: ctx.next,
+      years,
+      annual: ask * share,
+      homegrown,
+      ...(c?.draftedBy ? { draftedBy: c.draftedBy } : {}),
+    });
+    const chance = resignChance(m + OFFER_MOOD * (share - 1), homegrown);
+    return { share, deal, capHit: capHit(deal, ctx.next), chance, accepts: roll < chance };
   });
-  return { player: p, kind: "re-sign", deal, capHit: capHit(deal, ctx.next), mood: m, chance, accepts, homegrown, aiWants };
+  const base = terms.find((t) => t.share === 1)!;
+  return { player: p, kind: "re-sign", deal: base.deal, capHit: base.capHit, mood: m, chance: base.chance, accepts: base.accepts, homegrown, aiWants, terms };
 }
 
-/** Players under contract with one year left who qualify for an early extension, best first. */
-function extensionCandidates(team: Team, next: number): Player[] {
+/** Young stars with one year left (early extensions). */
+function extendable(p: Player, next: number): boolean {
+  const c = p.contract;
+  if (!c || finalSeason(c) !== next || contractYear(c, next)?.option) return false;
+  return playerOverall(p) >= EXTENSION.minOverall && p.age <= EXTENSION.maxAge;
+}
+
+/**
+ * Games a player under contract will hold out next season unless he gets a
+ * new deal (0 = he won't): good players paid far below their market value,
+ * more likely the further below, decided by his own random stream.
+ */
+function holdoutWeeks(ctx: OpenYearContext, p: Player): number {
+  const c = p.contract;
+  if (!c || finalSeason(c) < ctx.next || contractYear(c, ctx.next)?.option) return 0;
+  if (playerOverall(p) < HOLDOUT.minOverall || p.age > HOLDOUT.maxAge) return 0;
+  const share = capHit(c, ctx.next) / marketValue(p, ctx.capNext, ctx.index);
+  if (share >= HOLDOUT.underpaid) return 0;
+  const rng = new Rng(`${ctx.seed}:${ctx.next}:holdout:${p.id}`);
+  // Money-minded players hold out more readily.
+  const money = persona(p).weights.money;
+  if (!rng.chance(Math.min(0.9, ((HOLDOUT.underpaid - share) / HOLDOUT.underpaid) * (0.6 + money)))) return 0;
+  return Math.min(HOLDOUT.maxWeeks, 2 + Math.floor(((HOLDOUT.underpaid - share) / HOLDOUT.underpaid) * 6 * rng.next()));
+}
+
+/** Players under contract worth extending now (early extensions and would-be holdouts), best first. */
+function extensionCandidates(ctx: OpenYearContext, team: Team): Array<{ player: Player; holdout: number }> {
   return team.roster
-    .filter((p) => {
-      const c = p.contract;
-      if (!c || finalSeason(c) !== next || contractYear(c, next)?.option) return false;
-      return playerOverall(p) >= EXTENSION.minOverall && p.age <= EXTENSION.maxAge;
-    })
-    .sort((a, b) => playerOverall(b) - playerOverall(a) || a.id.localeCompare(b.id));
+    .map((p) => ({ player: p, holdout: holdoutWeeks(ctx, p) }))
+    .filter((x) => x.holdout > 0 || extendable(x.player, ctx.next))
+    .sort((a, b) => playerOverall(b.player) - playerOverall(a.player) || a.player.id.localeCompare(b.player.id));
 }
 
-function extensionOffer(ctx: OpenYearContext, team: Team, p: Player): ExtensionOffer {
+function extensionOffer(ctx: OpenYearContext, team: Team, p: Player, holdout = 0): ExtensionOffer {
   const c = p.contract!;
   const homegrown = c.draftedBy === team.abbr;
   // His own random stream, so the offer shown is the deal he signs.
@@ -310,6 +373,7 @@ function extensionOffer(ctx: OpenYearContext, team: Team, p: Player): ExtensionO
     extra: hit - capHit(c, ctx.next),
     accelerated: c.years.filter((y) => y.season >= ctx.next).reduce((s, y) => s + y.bonus, 0),
     homegrown,
+    ...(holdout > 0 ? { holdout } : {}),
   };
 }
 
@@ -327,7 +391,7 @@ export function contractPlan(played: League, league: League, triggers: Incentive
     cap: ctx.capNext,
     ...b,
     offers: expiringPlayers(team, ctx.next).map((p) => resignOffer(ctx, team, p)),
-    extensions: extensionCandidates(team, ctx.next).map((p) => extensionOffer(ctx, team, p)),
+    extensions: extensionCandidates(ctx, team).map((x) => extensionOffer(ctx, team, x.player, x.holdout)),
   };
 }
 
@@ -369,28 +433,41 @@ export function openContractYear(played: League, league: League, triggers: Incen
         release(p, "released");
         continue;
       }
-      if (!offer.accepts) {
+      const terms = termsAt(offer, mine?.offers?.get(p.id));
+      if (!terms.accepts) {
         release(p, "declined");
         continue;
       }
       // Keep enough back to fill the rest of the roster at the minimum.
-      if (committed + offer.capHit + fillReserve(plan, kept + 1) > budget) {
+      if (committed + terms.capHit + fillReserve(plan, kept + 1) > budget) {
         release(p, "released");
         continue;
       }
-      committed += offer.capHit;
+      committed += terms.capHit;
       kept++;
-      roster = roster.map((q) => (q.id === p.id ? { ...q, contract: offer.deal } : q));
-      moves.push({ kind: offer.kind === "option" ? "option" : "re-signed", team: abbr, player: p, contract: offer.deal });
+      roster = roster.map((q) => (q.id === p.id ? { ...q, contract: terms.deal } : q));
+      moves.push({ kind: offer.kind === "option" ? "option" : "re-signed", team: abbr, player: p, contract: terms.deal });
     }
 
     // Early extensions: lock up young stars entering the last year of a deal
     // (a team making its own calls extends only the ones it chose).
-    for (const p of extensionCandidates(team, next)) {
+    // A player wanting a new deal who doesn't get one holds out the first games of the season.
+    const holdOut = (x: ExtensionOffer) => {
+      if (!x.holdout) return;
+      roster = roster.map((q) => (q.id === x.player.id ? { ...q, holdout: { weeks: x.holdout! } } : q));
+      moves.push({ kind: "holdout", team: abbr, player: x.player, weeks: x.holdout });
+    };
+    for (const { player: p, holdout } of extensionCandidates(ctx, team)) {
       const mine = chosen.get(abbr);
-      if (mine && !mine.keep.has(p.id)) continue;
-      const x = extensionOffer(ctx, team, p);
-      if (committed + x.extra + x.accelerated + fillReserve(plan, kept) > budget) continue;
+      const x = extensionOffer(ctx, team, p, holdout);
+      if (mine && !mine.keep.has(p.id)) {
+        holdOut(x);
+        continue;
+      }
+      if (committed + x.extra + x.accelerated + fillReserve(plan, kept) > budget) {
+        holdOut(x);
+        continue;
+      }
       committed += x.extra + x.accelerated;
       accelerated += x.accelerated;
       roster = roster.map((q) => (q.id === p.id ? { ...q, contract: x.deal } : q));

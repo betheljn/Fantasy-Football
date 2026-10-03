@@ -3,11 +3,24 @@
 // budget; the offseason then runs with your choices.
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { DEV_TRAIT_NAMES, fillReserve, formatMoney, moodLabel, playerOverall, resignFits, type ContractPlan, type ExtensionOffer, type ResignOffer } from "@dynasty/sim";
+import { DEV_TRAIT_NAMES, RESIGN_OFFERS, fillReserve, formatMoney, moodLabel, playerOverall, resignFits, termsAt, type ContractPlan, type ExtensionOffer, type ResignOffer } from "@dynasty/sim";
 import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
-export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
+export function ResignScreen({
+  plan,
+  onDone,
+  initial,
+  initialOffers,
+  confirmLabel,
+}: {
+  plan: ContractPlan;
+  /** Who to keep, and counteroffers (share of his ask) for any you didn't offer his ask. */
+  onDone: (keep: ReadonlySet<string>, offers: ReadonlyMap<string, number>) => void;
+  initial?: readonly string[];
+  initialOffers?: ReadonlyArray<readonly [string, number]>;
+  confirmLabel?: string;
+}) {
   const t = useTheme();
   // The front office's picks, cut to what fits (in the order the team handles them, as it would anyway):
   // the re-signings it wants, then every extension that still fits.
@@ -16,6 +29,14 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
     return new Set([...fit].filter(([, ok]) => ok).map(([id]) => id));
   }, [plan]);
   const [keep, setKeep] = useState<Set<string>>(() => (initial ? new Set(initial) : aiPicks));
+  const [offers, setOffers] = useState<Map<string, number>>(() => new Map(initialOffers ?? []));
+  const offerShare = (id: string, share: number) =>
+    setOffers((m) => {
+      const n = new Map(m);
+      if (share === 1) n.delete(id);
+      else n.set(id, share);
+      return n;
+    });
   const toggle = (id: string) =>
     setKeep((k) => {
       const n = new Set(k);
@@ -25,15 +46,18 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
     });
 
   // Walk the list in the order the team handles it (as the sim does): once the budget runs out, later picks won't fit.
-  const fits = resignFits(plan, keep);
+  const fits = resignFits(plan, keep, offers);
   const fitting = plan.offers.filter((o) => fits.get(o.player.id) === true);
-  const running = plan.committed + fitting.reduce((s, o) => s + o.capHit, 0);
+  const running = plan.committed + fitting.reduce((s, o) => s + termsAt(o, offers.get(o.player.id)).capHit, 0);
   const extending = plan.extensions.filter((x) => fits.get(x.player.id) === true);
   const extensionCost = extending.reduce((s, x) => s + x.extra + x.accelerated, 0);
   const reserve = fillReserve(plan, fitting.length);
   const room = plan.budget - running - extensionCost - reserve;
   const overflow = [...fits.values()].filter((ok) => !ok).length;
-  const expectedCost = fitting.reduce((s, o) => s + o.capHit * o.chance, 0);
+  const expectedCost = fitting.reduce((s, o) => {
+    const t = termsAt(o, offers.get(o.player.id));
+    return s + t.capHit * t.chance;
+  }, 0);
   // The budget keeps a small cushion under the cap.
   const cushion = plan.cap + plan.rollover - plan.incentives - plan.rookieBill - plan.budget;
 
@@ -72,7 +96,16 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
         </View>
 
         {plan.offers.map((o) => (
-          <OfferRow key={o.player.id} offer={o} kept={keep.has(o.player.id)} fits={fits.get(o.player.id) ?? true} onToggle={() => toggle(o.player.id)} theme={t} />
+          <OfferRow
+            key={o.player.id}
+            offer={o}
+            kept={keep.has(o.player.id)}
+            fits={fits.get(o.player.id) ?? true}
+            share={offers.get(o.player.id) ?? 1}
+            onShare={(x) => offerShare(o.player.id, x)}
+            onToggle={() => toggle(o.player.id)}
+            theme={t}
+          />
         ))}
 
         {plan.extensions.length ? (
@@ -80,7 +113,7 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
             <View>
               <SectionTitle>Early extensions</SectionTitle>
               <Text style={{ color: t.muted }}>
-                Young stars with a year left on their deals. Extend now and the new deal replaces the last year (any unpaid bonus comes due next season); wait and he plays it out, then hits this list as an expiring deal next year.
+                Young stars with a year left, and anyone underpaid who wants a new deal. Extend now and the new deal replaces the old one (any unpaid bonus comes due next season). Wait and a young star plays it out; a holdout sits out the first games of the season.
               </Text>
             </View>
             {plan.extensions.map((x) => (
@@ -91,7 +124,7 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
       </ScrollView>
       <StickyFooter note={`Keeping ${fitting.length}${extending.length ? ` · extending ${extending.length}` : ""} · ${overflow ? `${overflow} won't fit` : `${formatMoney(room)} room left`}`}>
         <Pressable
-          onPress={() => onDone(keep)}
+          onPress={() => onDone(keep, new Map([...offers].filter(([id]) => keep.has(id))))}
           accessibilityRole="button"
           style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
         >
@@ -102,13 +135,32 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
   );
 }
 
-function OfferRow({ offer: o, kept, fits, onToggle, theme: t }: { offer: ResignOffer; kept: boolean; fits: boolean; onToggle: () => void; theme: Theme }) {
+const SHARE_LABEL = (x: number) => (x === 1 ? "His ask" : `${x > 1 ? "+" : "−"}${Math.round(Math.abs(x - 1) * 100)}%`);
+
+function OfferRow({
+  offer: o,
+  kept,
+  fits,
+  share,
+  onShare,
+  onToggle,
+  theme: t,
+}: {
+  offer: ResignOffer;
+  kept: boolean;
+  fits: boolean;
+  share: number;
+  onShare: (share: number) => void;
+  onToggle: () => void;
+  theme: Theme;
+}) {
   const p = o.player;
+  const terms = termsAt(o, share);
   // A new deal is all future years; an option adds one year to the rookie deal.
-  const years = o.kind === "option" ? 1 : o.deal.years.length;
-  const avg = o.deal.years.slice(-years).reduce((s, y) => s + y.salary + y.bonus, 0) / years;
-  const odds = Math.round(o.chance * 100);
-  const oddsColor = o.chance >= 0.75 ? t.accent : o.chance >= 0.4 ? "#d4a017" : t.score;
+  const years = o.kind === "option" ? 1 : terms.deal.years.length;
+  const avg = terms.deal.years.slice(-years).reduce((s, y) => s + y.salary + y.bonus, 0) / years;
+  const odds = Math.round(terms.chance * 100);
+  const oddsColor = terms.chance >= 0.75 ? t.accent : terms.chance >= 0.4 ? "#d4a017" : t.score;
   return (
     <Pressable onPress={onToggle} accessibilityRole="checkbox" accessibilityState={{ checked: kept }} accessibilityLabel={`Keep ${p.firstName} ${p.lastName}`}>
       <Card style={{ flexDirection: "row", gap: 12, alignItems: "center", borderColor: kept ? t.accent : t.border, borderWidth: kept ? 1.5 : 1 }}>
@@ -130,12 +182,33 @@ function OfferRow({ offer: o, kept, fits, onToggle, theme: t }: { offer: ResignO
             {o.aiWants ? "" : " · front office would let go"}
           </Text>
           <Text style={{ color: t.text, fontSize: 13, marginTop: 4 }}>
-            {o.kind === "option" ? `5th-year option: ${formatMoney(o.capHit)} for ${o.deal.years.at(-1)!.season}` : `${years} yr${years === 1 ? "" : "s"}, ${formatMoney(avg)}/yr · ${formatMoney(o.capHit)} next season`}
+            {o.kind === "option" ? `5th-year option: ${formatMoney(o.capHit)} for ${o.deal.years.at(-1)!.season}` : `${years} yr${years === 1 ? "" : "s"}, ${formatMoney(avg)}/yr · ${formatMoney(terms.capHit)} next season`}
           </Text>
           <Text style={{ fontSize: 12, marginTop: 2, color: oddsColor }}>
             {o.kind === "option" ? "Can't refuse" : `${moodLabel(o.mood)} (${o.mood}) · ${odds}% to accept`}
           </Text>
           {kept && !fits ? <Text style={{ fontSize: 12, marginTop: 2, color: t.score, fontWeight: "700" }}>Won't fit under the cap</Text> : null}
+          {kept && o.kind === "re-sign" ? (
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {RESIGN_OFFERS.map((x) => {
+                const on = x === share;
+                return (
+                  <Pressable
+                    key={x}
+                    onPress={() => onShare(x)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={`Offer ${SHARE_LABEL(x)}`}
+                    style={{ paddingHorizontal: 10, height: 30, borderRadius: 15, justifyContent: "center", borderWidth: 1, borderColor: on ? t.accent : t.border, backgroundColor: on ? t.accent : t.card }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: on ? t.onAccent : t.text }}>
+                      {SHARE_LABEL(x)} · {Math.round(termsAt(o, x).chance * 100)}%
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
       </Card>
     </Pressable>
@@ -174,6 +247,11 @@ function ExtensionRow({ offer: x, on, fits, onToggle, theme: t }: { offer: Exten
             {formatMoney(x.extra + x.accelerated)}
             {x.accelerated > 0 ? ` (incl. ${formatMoney(x.accelerated)} old bonus)` : ""}
           </Text>
+          {x.holdout ? (
+            <Text style={{ fontSize: 12, marginTop: 2, color: on && fits ? t.muted : t.score, fontWeight: "700" }}>
+              {on && fits ? `Wants a new deal (would have held out ${x.holdout} games)` : `Holds out the first ${x.holdout} games without a new deal`}
+            </Text>
+          ) : null}
           {on && !fits ? <Text style={{ fontSize: 12, marginTop: 2, color: t.score, fontWeight: "700" }}>Won't fit under the cap</Text> : null}
         </View>
       </Card>

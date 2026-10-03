@@ -20,6 +20,9 @@ import {
   offseasonFreeAgencyPlan,
   offseasonRosterPlan,
   resignFits,
+  termsAt,
+  gameDayTeam,
+  advanceInjuries,
   resolveContracts,
   runDraft,
   runOffseasonFreeAgency,
@@ -221,6 +224,54 @@ describe("early extensions", () => {
     expect(resignFits(plan!, keep).get(take!.player.id)).toBe(true);
     expect(extended.find((m) => m.player.id === take!.player.id)?.contract).toEqual(take!.deal);
     expect(extended.some((m) => m.player.id === skip!.player.id)).toBe(false);
+  }, 60_000);
+});
+
+describe("re-signing talks", () => {
+  it("counteroffers: more money never turns a yes into a no, and the deal signed is the one offered", () => {
+    const begun = beginOffseason(START, playSeasonLike());
+    const plans = allTeams(START.league).map((t) => offseasonContractPlan(begun, t.abbr));
+    let flipped = 0;
+    for (const plan of plans)
+      for (const o of plan.offers) {
+        if (o.kind !== "re-sign") continue;
+        for (let i = 1; i < o.terms.length; i++) {
+          expect(o.terms[i]!.chance).toBeGreaterThan(o.terms[i - 1]!.chance);
+          expect(o.terms[i]!.capHit).toBeGreaterThanOrEqual(o.terms[i - 1]!.capHit);
+          if (o.terms[i - 1]!.accepts) expect(o.terms[i]!.accepts).toBe(true);
+        }
+        if (!termsAt(o).accepts && termsAt(o, 1.2).accepts) flipped++;
+      }
+    // Some players who'd turn down their ask take more.
+    expect(flipped).toBeGreaterThan(0);
+    // Pay a player who'd say no to his ask 20% more: he re-signs at that deal.
+    const plan = plans.find((p) => p.offers.some((o) => !termsAt(o).accepts && termsAt(o, 1.2).accepts))!;
+    const o = plan.offers.find((x) => !termsAt(x).accepts && termsAt(x, 1.2).accepts)!;
+    const state = resolveContracts(begun, { team: plan.team, keep: new Set([o.player.id]), offers: new Map([[o.player.id, 1.2]]) });
+    const move = state.contracts!.moves.find((m) => m.player.id === o.player.id)!;
+    expect(move.kind).toBe("re-signed");
+    expect(move.contract).toEqual(termsAt(o, 1.2).deal);
+  }, 60_000);
+
+  it("holdouts: an underpaid player not extended sits the first games, then plays", () => {
+    const begun = beginOffseason(START, playSeasonLike());
+    const plan = allTeams(START.league)
+      .map((t) => offseasonContractPlan(begun, t.abbr))
+      .find((p) => p.extensions.some((x) => x.holdout))!;
+    expect(plan).toBeDefined();
+    const x = plan.extensions.find((e) => e.holdout)!;
+    // Keep nobody: he isn't extended, so he holds out.
+    const state = resolveContracts(begun, { team: plan.team, keep: new Set() });
+    expect(state.contracts!.moves.some((m) => m.kind === "holdout" && m.player.id === x.player.id && m.weeks === x.holdout)).toBe(true);
+    let league = state.contracts!.league;
+    const held = league.teams[plan.team]!.roster.find((p) => p.id === x.player.id)!;
+    expect(held.holdout).toEqual({ weeks: x.holdout });
+    for (let w = 0; w < x.holdout!; w++) {
+      expect(gameDayTeam(league.teams[plan.team]!).out).toContain(x.player.id);
+      league = advanceInjuries(league, []);
+    }
+    expect(league.teams[plan.team]!.roster.find((p) => p.id === x.player.id)!.holdout).toBeUndefined();
+    expect(gameDayTeam(league.teams[plan.team]!).out).not.toContain(x.player.id);
   }, 60_000);
 });
 

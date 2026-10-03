@@ -170,11 +170,13 @@ export class InjuryTracker {
  * are the players who sat.
  */
 export function gameDayTeam(team: Team): { team: Team; out: PlayerId[] } {
-  const injured = team.roster.filter((p) => p.injury && p.injury.weeks > 0);
+  // The hurt, and anyone holding out for a new deal, sit (unless the team is too thin to play without them).
+  const weeksOut = (p: Player) => Math.max(p.injury?.weeks ?? 0, p.holdout?.weeks ?? 0);
+  const injured = team.roster.filter((p) => weeksOut(p) > 0);
   if (injured.length === 0) return { team, out: [] };
   const sitting = new Set<PlayerId>();
   for (const pos of POSITIONS) {
-    const hurt = injured.filter((p) => p.position === pos).sort((a, b) => b.injury!.weeks - a.injury!.weeks || a.id.localeCompare(b.id));
+    const hurt = injured.filter((p) => p.position === pos).sort((a, b) => weeksOut(b) - weeksOut(a) || a.id.localeCompare(b.id));
     const spare = count(team, pos) - GAME_MIN[pos];
     for (const p of hurt.slice(0, Math.max(0, spare))) sitting.add(p.id);
   }
@@ -199,7 +201,16 @@ export function advanceInjuries(league: League, injuries: readonly Injury[]): Le
   const teams: League["teams"] = {};
   for (const [abbr, t] of Object.entries(league.teams)) {
     let touched = false;
-    const roster = t.roster.map((p) => {
+    const roster = t.roster.map((p0) => {
+      // A holdout counts down a week (and ends) like an injury heals.
+      let p = p0;
+      if (p.holdout) {
+        touched = true;
+        if (p.holdout.weeks <= 1) {
+          const { holdout: _over, ...rest } = p;
+          p = rest;
+        } else p = { ...p, holdout: { weeks: p.holdout.weeks - 1 } };
+      }
       const now = fresh.get(p.id);
       if (now) {
         touched = true;

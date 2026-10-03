@@ -208,7 +208,7 @@ export interface DynastyControls {
   /** Your re-signing picture while the offseason waits on you. */
   contractPlan: ContractPlan | null;
   /** Settle re-signings (keeping these expiring players) and go to the draft. */
-  finishOffseason: (keep: ReadonlySet<string>) => void;
+  finishOffseason: (keep: ReadonlySet<string>, offers?: ReadonlyMap<string, number>) => void;
   /** Next year's draft class and everyone's scouting of it (this season). */
   draftClass: DraftClass | null;
   scouting: ScoutingState | null;
@@ -575,7 +575,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         setFrontOffice(p.frontOffice);
         if (p.keep) {
           keptRef.current = new Set(p.keep);
-          off = resolveContracts(off, { team: s.userTeam, keep: keptRef.current });
+          off = resolveContracts(off, { team: s.userTeam, keep: keptRef.current, offers: new Map(p.resignOffers ?? []) });
           const gen = offseasonDraft(off, new Set([s.userTeam]));
           let r = gen.next();
           for (const pick of p.picks) {
@@ -1055,11 +1055,11 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (staffStep?.step === "hire") startRestOfOffseason(staffStep.fire, staffStep.renew, picks);
     },
     contractPlan,
-    finishOffseason: (keep) => {
+    finishOffseason: (keep, offers = new Map()) => {
       if (!state || !offseason || !playoffs) return;
       keptRef.current = keep;
-      updateCheckpoint((p) => ({ ...p, keep: [...keep] }));
-      const withContracts = resolveContracts(offseason, { team: state.userTeam, keep });
+      updateCheckpoint((p) => ({ ...p, keep: [...keep], resignOffers: [...offers] }));
+      const withContracts = resolveContracts(offseason, { team: state.userTeam, keep, offers });
       setOffseason(withContracts);
       draftRef.current = offseasonDraft(withContracts, new Set([state.userTeam]));
       stepDraft(undefined);

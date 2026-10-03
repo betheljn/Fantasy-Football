@@ -110,7 +110,7 @@ export type OnlineMove =
 export type OffseasonChoice =
   | { stage: "staff"; fire: StaffSlot[]; renew: StaffSlot[] }
   | { stage: "hire"; picks: Array<[StaffSlot, string]> }
-  | { stage: "resign"; keep: string[] }
+  | { stage: "resign"; keep: string[]; offers?: Array<[string, number]> }
   | { stage: "draft"; board: string[] }
   | { stage: "freeagency"; offers: Array<[string, FreeAgentOffer]>; frontOffice: boolean }
   | { stage: "cuts"; cuts: string[] };

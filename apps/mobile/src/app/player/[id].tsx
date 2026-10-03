@@ -71,6 +71,7 @@ export default function PlayerScreen() {
           {team ? <Swatch abbr={team.abbr} size={34} /> : null}
         </View>
         {p.injury ? <Pill tone="bad" label={`Injured: ${injuryLabel(p.injury)}`} /> : null}
+        {p.holdout ? <Pill tone="bad" label={`Holding out for a new deal: ${p.holdout.weeks} more game${p.holdout.weeks === 1 ? "" : "s"}`} /> : null}
 
         <Card>
           <Text style={{ color: t.muted, marginTop: 10 }}>

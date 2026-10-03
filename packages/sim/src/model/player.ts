@@ -33,6 +33,8 @@ export interface Player {
   readonly contract?: Contract;
   /** Hurt and missing games (absent = healthy). */
   readonly injury?: PlayerInjury;
+  /** Holding out for a new deal: games left to miss (absent = playing). */
+  readonly holdout?: { weeks: number };
 }
 
 export interface PlayerInit {

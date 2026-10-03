@@ -12,7 +12,7 @@ import type { LeagueState } from "./state.ts";
 export type OffseasonChoice =
   | { stage: "staff"; fire: StaffSlot[]; renew: StaffSlot[] }
   | { stage: "hire"; picks: Array<[StaffSlot, string]> }
-  | { stage: "resign"; keep: PlayerId[] }
+  | { stage: "resign"; keep: PlayerId[]; offers?: Array<[PlayerId, number]> }
   | { stage: "draft"; board: PlayerId[] }
   | { stage: "freeagency"; offers: Array<[PlayerId, FreeAgentOffer]>; frontOffice: boolean }
   | { stage: "cuts"; cuts: PlayerId[] };
@@ -32,7 +32,12 @@ export function recordChoice(s: LeagueState, team: string, c: OffseasonChoice): 
     : c.stage === "freeagency" ? { offers: c.offers, frontOffice: c.frontOffice }
     : c.cuts;
   const key = STAGE_KEY[c.stage];
-  const choices: StagedChoices = { ...o.choices, [key]: { ...(o.choices[key] ?? {}), [team]: value } };
+  let choices: StagedChoices = { ...o.choices, [key]: { ...(o.choices[key] ?? {}), [team]: value } };
+  // Counteroffers ride with the re-signings.
+  if (c.stage === "resign") {
+    const { [team]: _old, ...rest } = o.choices.resignOffers ?? {};
+    choices = { ...choices, resignOffers: c.offers?.length ? { ...rest, [team]: c.offers } : rest };
+  }
   return { state: { ...s, offseason: { ...o, choices } }, problems: [] };
 }
 
@@ -42,7 +47,13 @@ export function forMember(s: LeagueState, team: string | null): LeagueState {
   if (!o) return s;
   const key = STAGE_KEY[o.stage];
   const mine = team ? o.choices[key]?.[team] : undefined;
-  return { ...s, offseason: { ...o, choices: { ...o.choices, [key]: mine === undefined ? {} : { [team!]: mine } } } };
+  const choices = { ...o.choices, [key]: mine === undefined ? {} : { [team!]: mine } };
+  // During re-signings, other friends' counteroffers are theirs alone too.
+  if (o.stage === "resign") {
+    const offers = team ? o.choices.resignOffers?.[team] : undefined;
+    choices.resignOffers = offers ? { [team!]: offers } : {};
+  }
+  return { ...s, offseason: { ...o, choices } };
 }
 
 /** Friends who've made their call for the open stage. */
@@ -57,7 +68,15 @@ const choiceSchema = {
   oneOf: [
     { type: "object", required: ["stage", "fire", "renew"], properties: { stage: { const: "staff" }, fire: { type: "array", items: slot, maxItems: 5 }, renew: { type: "array", items: slot, maxItems: 5 } } },
     { type: "object", required: ["stage", "picks"], properties: { stage: { const: "hire" }, picks: { type: "array", maxItems: 5, items: { type: "array", items: [slot, idSchema], minItems: 2, maxItems: 2, additionalItems: false } } } },
-    { type: "object", required: ["stage", "keep"], properties: { stage: { const: "resign" }, keep: ids(72) } },
+    {
+      type: "object",
+      required: ["stage", "keep"],
+      properties: {
+        stage: { const: "resign" },
+        keep: ids(72),
+        offers: { type: "array", maxItems: 72, items: { type: "array", minItems: 2, maxItems: 2, additionalItems: false, items: [idSchema, { enum: [0.9, 1, 1.1, 1.2] }] } },
+      },
+    },
     { type: "object", required: ["stage", "board"], properties: { stage: { const: "draft" }, board: ids(500) } },
     {
       type: "object",

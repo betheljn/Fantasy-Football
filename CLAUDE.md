@@ -290,7 +290,7 @@ Coached games are solo play at first (online games stay AI-coached).
 4. Game-day screen: a compact call bar under the field (top-down or TV), auto
    the rest of the half, and a recap of how your calls did
 
-### Milestone 18: player stories (planned)
+### Milestone 18: player stories (in progress)
 Texture on the systems already there.
 1. Re-signing talks: holdouts and counteroffers
 2. Captains and morale swings during the season

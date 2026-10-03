@@ -98,6 +98,8 @@ export interface OffseasonProgress {
   hires?: [StaffSlot, string][];
   /** Expiring players you kept; set once re-signings are settled. */
   keep?: string[];
+  /** Counteroffers with the re-signings: [player, share of his ask]. */
+  resignOffers?: Array<[string, number]>;
   /** Your draft picks so far, in order. */
   picks: string[];
   /** Free-agent offers so far, and whether your front office bids on the rest. */

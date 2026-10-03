@@ -29,6 +29,8 @@ export interface StagedChoices {
   staff?: Record<string, { fire: StaffSlot[]; renew: StaffSlot[] }>;
   hires?: Record<string, Array<[StaffSlot, string]>>;
   resign?: Record<string, PlayerId[]>;
+  /** Counteroffers with the re-signings: [player, share of his ask]. */
+  resignOffers?: Record<string, Array<[PlayerId, number]>>;
   /** Ranked draft boards: the first prospect still there is the pick. */
   boards?: Record<string, PlayerId[]>;
   freeAgency?: Record<string, { offers: Array<[PlayerId, FreeAgentOffer]>; frontOffice: boolean }>;
@@ -64,7 +66,10 @@ export function stagedOffseason(dynasty: Dynasty, played: PlayedSeason, choices:
   if (at === 1) return { releases: offseasonStaffReleases(dynasty, played, decisions) };
   let state = beginOffseason(dynasty, played, { decisions, hires: staffHires(choices) });
   if (at === 2) return { state };
-  state = resolveContracts(state, entries(choices.resign).map(([team, keep]) => ({ team, keep: new Set(keep) })));
+  state = resolveContracts(
+    state,
+    entries(choices.resign).map(([team, keep]) => ({ team, keep: new Set(keep), offers: new Map(choices.resignOffers?.[team] ?? []) })),
+  );
   if (at === 3) return { state };
   const draft = draftWithBoards(state, new Map(entries(choices.boards)));
   if (at === 4) return { state, draft };

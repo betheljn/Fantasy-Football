@@ -107,7 +107,7 @@ export function HireScreen(props: {
         <Card>
           <Line label="Staff budget" value={formatMoney(openings.budget)} theme={t} />
           <Line label="Committed (incl. buyouts)" value={`−${formatMoney(openings.committed)}`} theme={t} />
-          <Line label="Your picks" value={`−${formatMoney(spent)}`} theme={t} />
+          <Line label="Your picks" value={spent ? `−${formatMoney(spent)}` : "$0"} theme={t} />
           <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
         </Card>
         {openings.openings.map((o) => (

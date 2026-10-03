@@ -62,6 +62,7 @@ export default function DepthChartScreen() {
                     <Text style={{ flex: 1, color: t.text, fontWeight: starter ? "700" : "400" }} numberOfLines={1}>
                       {p.firstName} {p.lastName}
                       {p.injury ? <Text style={{ color: t.score, fontSize: 12, fontWeight: "700" }}> {outLabel(p.injury)}</Text> : null}
+                      {p.holdout ? <Text style={{ color: t.score, fontSize: 12, fontWeight: "700" }}> holding out ({p.holdout.weeks} wk)</Text> : null}
                     </Text>
                     <Text style={{ width: 26, textAlign: "right", color: t.text, fontWeight: "700" }}>{playerOverall(p)}</Text>
                     {d.canEditDepthChart ? (

@@ -118,7 +118,15 @@ export default function OffseasonCallScreen() {
       case "hire":
         return <HireScreen openings={plan.openings} initial={choices?.hires?.[team]} confirmLabel={SUBMIT} onConfirm={(picks) => send({ stage: "hire", picks: [...picks] })} />;
       case "resign":
-        return <ResignScreen plan={plan.contracts} initial={choices?.resign?.[team]} confirmLabel={SUBMIT} onDone={(keep) => send({ stage: "resign", keep: [...keep] })} />;
+        return (
+          <ResignScreen
+            plan={plan.contracts}
+            initial={choices?.resign?.[team]}
+            initialOffers={choices?.resignOffers?.[team]}
+            confirmLabel={SUBMIT}
+            onDone={(keep, offers) => send({ stage: "resign", keep: [...keep], ...(offers.size ? { offers: [...offers] } : {}) })}
+          />
+        );
       case "draft":
         return (
           <DraftBoardScreen
