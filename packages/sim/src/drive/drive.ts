@@ -7,6 +7,7 @@ import { pointsForEvent } from "../play/scoring.ts";
 import type { ConversionEvent, PlayEvent, Situation } from "../play/events.ts";
 import { fieldGoalDistance, fieldGoalProbability, kickerOf, simulateFieldGoal, simulatePunt } from "../play/kicking.ts";
 import { simulatePass } from "../play/pass.ts";
+import { blockChance, pickBlocker, specialUnits } from "../play/special.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
 import { chooseDefense, chooseOffense } from "./scheme.ts";
@@ -613,6 +614,10 @@ export function simulateConversion(
   }
   const kicker = kickerOf(team);
   const start: Situation = { quarter, clock, down: 1, distance: 15, yardline: 85 };
-  const success = !rng.chance(0.01) && rng.chance(fieldGoalProbability(kicker, 33));
-  return { ...base, start, method: "kick", success, kicker: kicker.id, play: null, defensiveReturn: false };
+  // Rarely blocked (by the matchup), otherwise a short kick most make.
+  const units = specialUnits(team, other, "extra_point");
+  const blocked = rng.chance(blockChance("extra_point", team, other, units));
+  const blockedBy = blocked ? pickBlocker(rng, other, units).id : null;
+  const success = !blocked && rng.chance(fieldGoalProbability(kicker, 33));
+  return { ...base, start, method: "kick", success, kicker: kicker.id, play: null, defensiveReturn: false, blocked, blockedBy, units };
 }

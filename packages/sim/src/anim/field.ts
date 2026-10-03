@@ -30,7 +30,7 @@ export interface Keyframe extends Point {
 export type Role =
   | "QB" | "RB" | "FB" | "TE" | "WR" | "OL"
   | "DL" | "LB" | "CB" | "S"
-  | "K" | "P" | "KR" | "COVER";
+  | "K" | "P" | "KR" | "COVER" | "LS" | "H";
 
 export interface Actor {
   id: PlayerId;

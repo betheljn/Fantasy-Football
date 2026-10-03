@@ -4,6 +4,7 @@ import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { clamp, edge, exponential, weightedPick, type PlayContext } from "./common.ts";
 import type { FieldGoalEvent, Fumble, PuntEvent } from "./events.ts";
+import { blockChance, pickBlocker, specialUnits } from "./special.ts";
 
 /** Kick distance: line of scrimmage to goal line + 10 yard end zone + 7 yard snap. */
 export function fieldGoalDistance(yardline: number): number {
@@ -24,7 +25,9 @@ export function kickerOf(team: Team): Player {
 export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
   const kicker = kickerOf(ctx.offense);
   const distance = fieldGoalDistance(ctx.situation.yardline);
-  const blocked = rng.chance(0.015);
+  const units = specialUnits(ctx.offense, ctx.defense, "field_goal");
+  const blocked = rng.chance(blockChance("field_goal", ctx.offense, ctx.defense, units, distance));
+  const blockedBy = blocked ? pickBlocker(rng, ctx.defense, units).id : null;
   const made = !blocked && rng.chance(fieldGoalProbability(kicker, distance));
   // A miss gives the defense the ball at the spot of the kick, or their 20 if that's better.
   const spotOfKick = ctx.situation.yardline - 7;
@@ -37,6 +40,8 @@ export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
     distance,
     made,
     blocked,
+    blockedBy,
+    units,
     duration: 5,
     nextYardline: made ? null : Math.max(20, 100 - spotOfKick),
   };
@@ -82,7 +87,6 @@ export function returnFumble(rng: Rng, returner: Player, tackler: Player | null,
   };
 }
 
-export const PUNT_BLOCK_RATE = 0.005;
 export const PUNT_MUFF_RATE = { returned: 0.015, fairCatch: 0.004 };
 
 export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
@@ -90,6 +94,7 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
   const returner = returnerOf(ctx.defense);
   const coverage = coverageUnit(ctx.offense);
   const sit = ctx.situation;
+  const units = specialUnits(ctx.offense, ctx.defense, "punt", returner.id);
 
   const base = {
     kind: "punt" as const,
@@ -97,6 +102,7 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
     defense: ctx.defense.abbr,
     start: { ...sit },
     punter: punter.id,
+    units,
     blocked: false,
     blockedBy: null,
     returner: null,
@@ -112,8 +118,8 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
   };
 
   // Blocked: the ball goes backwards and the receiving team takes over.
-  if (rng.chance(PUNT_BLOCK_RATE)) {
-    const blocker = weightedPick(rng, [...starters(ctx.defense, "DL"), ...starters(ctx.defense, "LB")], (p) => passRushing(p.ratings));
+  if (rng.chance(blockChance("punt", ctx.offense, ctx.defense, units))) {
+    const blocker = pickBlocker(rng, ctx.defense, units);
     const spot = sit.yardline - rng.int(5, 12); // kicking team's perspective
     if (spot <= 0) {
       // Loose in the end zone: defense falls on it for a TD, or the punt team covers it for a safety.

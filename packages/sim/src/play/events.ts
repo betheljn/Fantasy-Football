@@ -1,3 +1,4 @@
+import type { SpecialUnits } from "./special.ts";
 import type { PlayerId } from "../model/player.ts";
 import type { Coverage, DefensePackage, OffenseSet, Personnel } from "./formation.ts";
 
@@ -147,6 +148,10 @@ export interface FieldGoalEvent extends SpecialEventBase {
   distance: number;
   made: boolean;
   blocked: boolean;
+  /** Who got a hand on a blocked kick. */
+  blockedBy?: PlayerId | null;
+  /** Everyone on the field for the kick. */
+  units?: SpecialUnits;
   /** On a miss: where the defense takes over (their perspective). */
   nextYardline: number | null;
 }
@@ -154,6 +159,8 @@ export interface FieldGoalEvent extends SpecialEventBase {
 export interface PuntEvent extends SpecialEventBase {
   kind: "punt";
   punter: PlayerId;
+  /** Everyone on the field for the punt. */
+  units?: SpecialUnits;
   /** 0 on a blocked punt. */
   grossYards: number;
   blocked: boolean;
@@ -190,6 +197,8 @@ export interface KneelEvent extends SpecialEventBase {
  */
 export interface KickoffEvent extends SpecialEventBase {
   kind: "kickoff";
+  /** Everyone on the field for the kick. */
+  units?: SpecialUnits;
   kicker: PlayerId;
   onside: boolean;
   freeKick: boolean;
@@ -232,6 +241,11 @@ export interface ConversionEvent extends SpecialEventBase {
   method: "kick" | "two_point";
   success: boolean;
   kicker: PlayerId | null;
+  /** A blocked extra point, and who blocked it. */
+  blocked?: boolean;
+  blockedBy?: PlayerId | null;
+  /** Everyone on the field for an extra-point kick. */
+  units?: SpecialUnits;
   /** The underlying run/pass on a two-point try. */
   play: ScrimmagePlayEvent | null;
   /** Failed two-point try turned over and returned all the way: 2 points to the defense. */

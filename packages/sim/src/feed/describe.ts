@@ -40,7 +40,7 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
   const n = (id: PlayerId | null) => (id ? displayName(who(id)) : "?");
   switch (e.kind) {
     case "field_goal":
-      return `${n(e.kicker)} ${e.distance}-yard field goal ${e.made ? "is GOOD" : e.blocked ? "is BLOCKED" : "is NO GOOD"}.`;
+      return `${n(e.kicker)} ${e.distance}-yard field goal ${e.made ? "is GOOD" : e.blocked ? `is BLOCKED${e.blockedBy ? ` by ${n(e.blockedBy)}` : ""}` : "is NO GOOD"}.`;
     case "punt": {
       if (e.blocked) {
         const b = `${n(e.punter)} punt BLOCKED by ${n(e.blockedBy)}`;
@@ -69,7 +69,7 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
     case "timeout":
       return `Timeout ${e.team} (${e.remaining} left).`;
     case "conversion":
-      if (e.method === "kick") return `${n(e.kicker)} extra point ${e.success ? "is GOOD" : "is NO GOOD"}.`;
+      if (e.method === "kick") return `${n(e.kicker)} extra point ${e.success ? "is GOOD" : e.blocked ? `is BLOCKED${e.blockedBy ? ` by ${n(e.blockedBy)}` : ""}` : "is NO GOOD"}.`;
       return (
         `Two-point try: ${describeScrimmage(e.play!, who).replace(/, TOUCHDOWN \w+/, "").replace(/\.$/, "")} — ` +
         (e.success ? "GOOD." : e.defensiveReturn ? `FAILS, returned for a DEFENSIVE TWO-POINT CONVERSION (${e.defense}).` : "FAILS.")

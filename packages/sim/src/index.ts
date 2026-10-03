@@ -7,6 +7,7 @@ export * from "./choices.ts";
 export * from "./gen/team-gen.ts";
 export * from "./play/events.ts";
 export * from "./play/formation.ts";
+export * from "./play/special.ts";
 export { simulateRun } from "./play/run.ts";
 export { simulatePass } from "./play/pass.ts";
 export type { PlayContext } from "./play/common.ts";

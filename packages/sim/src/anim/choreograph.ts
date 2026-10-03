@@ -6,7 +6,9 @@
 // at the sack spot). Deterministic: the same event and seed give the same tracks.
 import type { PlayerId } from "../model/player.ts";
 import { Rng } from "../rng.ts";
+import type { SpecialUnits, UnitMember } from "../play/special.ts";
 import type {
+  ConversionEvent,
   FieldGoalEvent,
   KickoffEvent,
   PassPlayEvent,
@@ -43,7 +45,7 @@ export function choreograph(e: PlayEvent, seed: number | string): PlayAnimation 
     case "pass":
       return scrimmage(rng, e);
     case "conversion":
-      return e.play ? scrimmage(rng, e.play) : null;
+      return e.play ? scrimmage(rng, e.play) : e.units ? extraPoint(rng, e) : null;
     case "kneel":
     case "spike":
       return qbOnly(rng, e.kind, e.qb, e.offense, e.defense, e.start);
@@ -388,7 +390,87 @@ function fieldGoal(rng: Rng, e: FieldGoalEvent): PlayAnimation {
     const tArrive = 1.3 + travelTime(hold, posts, 25);
     ball.push({ t: (1.3 + tArrive) / 2, x: (hold.x + posts.x) / 2, y: (hold.y + posts.y) / 2, z: 9 }, { t: tArrive, ...posts, z: e.made ? 5 : 3 });
   }
-  return build(e.offense, e.defense, e.start, [{ id: e.kicker, team: e.offense, role: "K", track: kicker.track }], ball);
+  const actors: Actor[] = [{ id: e.kicker, team: e.offense, role: "K", track: kicker.track }];
+  if (e.units) actors.push(...scrimmageKickUnits(rng, e.units, e.offense, e.defense, los, ballY, hold, e.blocked ? (e.blockedBy ?? null) : null, new Set([e.kicker])));
+  return build(e.offense, e.defense, e.start, actors, ball);
+}
+
+/** An extra point: a short field goal from the 15, with both units. */
+function extraPoint(rng: Rng, e: ConversionEvent): PlayAnimation {
+  const los = e.start.yardline;
+  const ballY = HASHES.middle;
+  const hold = { x: los - 7, y: ballY };
+  const kicker = new TrackBuilder({ x: hold.x - 2.5, y: ballY - 2 }).hold(0.8).to(1.3, { x: hold.x - 0.5, y: ballY - 0.3 });
+  const ball: Keyframe[] = [{ t: 0, x: los, y: ballY, z: 0.2 }, { t: 0.8, ...hold, z: 0.1 }];
+  if (e.blocked) ball.push({ t: 1.5, x: los - 1, y: ballY, z: 1.5 }, { t: 2.2, x: los - 4, y: ballY + rng.normal(0, 3), z: 0 });
+  else {
+    const posts = { x: 110, y: FIELD_MIDDLE + (e.success ? rng.normal(0, 1) : (rng.next() < 0.5 ? -1 : 1) * 4) };
+    const tArrive = 1.3 + travelTime(hold, posts, 25);
+    ball.push({ t: (1.3 + tArrive) / 2, x: (hold.x + posts.x) / 2, y: ballY, z: 8 }, { t: tArrive, ...posts, z: 5 });
+  }
+  const actors: Actor[] = [];
+  if (e.kicker) actors.push({ id: e.kicker, team: e.offense, role: "K", track: kicker.track });
+  actors.push(...scrimmageKickUnits(rng, e.units!, e.offense, e.defense, los, ballY, hold, e.blocked ? (e.blockedBy ?? null) : null, new Set(e.kicker ? [e.kicker] : [])));
+  return build(e.offense, e.defense, { ...e.start, distance: 100 }, actors, ball);
+}
+
+/** Spread players across `n` spots from `lo` to `hi`. */
+const spread = (i: number, n: number, lo: number, hi: number) => (n <= 1 ? (lo + hi) / 2 : lo + ((hi - lo) * i) / (n - 1));
+
+/** Members of one role, in order. */
+const ofRole = (members: readonly UnitMember[], ...roles: string[]) => members.filter((m) => roles.includes(m.role));
+
+/**
+ * The protection and the rush on a field goal or extra point: a wall at the
+ * line, a holder and a snapper, the rush pushing in and the edges curling at
+ * the kick. The blocker (if any) gets there as the ball comes off the foot.
+ */
+function scrimmageKickUnits(rng: Rng, u: SpecialUnits, offense: string, defense: string, los: number, ballY: number, hold: Point, blockedBy: PlayerId | null, skip: Set<PlayerId>): Actor[] {
+  const actors: Actor[] = [];
+  const add = (m: UnitMember, team: string, t: TrackBuilder, role: Role = m.role === "COVER" ? "COVER" : (m.role as Role)) => {
+    if (skip.has(m.id)) return;
+    skip.add(m.id);
+    actors.push({ id: m.id, team, role, track: t.track });
+  };
+  // Kicking side: snapper, a wall of six, two ends, the holder.
+  for (const m of ofRole(u.kicking, "LS")) add(m, offense, new TrackBuilder({ x: los - 0.4, y: ballY }).hold(0.05).to(1.4, { x: los - 1, y: ballY }).hold(2.2));
+  ofRole(u.kicking, "OL").forEach((m, i) => {
+    const y = ballY + [-1.3, 1.3, -2.6, 2.6, -3.9, 3.9][i % 6]! ;
+    add(m, offense, new TrackBuilder({ x: los - 0.6, y }).hold(0.05).to(1.4, { x: los - 1.4, y }).hold(2.2), "OL");
+  });
+  ofRole(u.kicking, "TE").forEach((m, i) => {
+    const y = ballY + (i % 2 ? 5.2 : -5.2);
+    add(m, offense, new TrackBuilder({ x: los - 1, y }).hold(0.05).to(1.4, { x: los - 2.2, y: y + (i % 2 ? -0.8 : 0.8) }).hold(2.2), "TE");
+  });
+  for (const m of ofRole(u.kicking, "H")) add(m, offense, new TrackBuilder({ x: hold.x, y: hold.y + 0.6 }).hold(2.2), "H");
+  for (const m of u.kicking) add(m, offense, new TrackBuilder({ x: los - 2, y: ballY + rng.normal(0, 4) }).hold(2.2), "OL");
+  // Block side: five down linemen, linebackers on the edges and over the middle, corners off the edge, a safety back.
+  const kickPoint = { x: hold.x + 1.2, y: ballY };
+  if (blockedBy) {
+    const m = u.receiving.find((x) => x.id === blockedBy);
+    const start = { x: los + 0.9, y: ballY + rng.normal(0, 1.5) };
+    if (m) add(m, defense, new TrackBuilder(start).hold(0.05).to(1.32, kickPoint).to(2.2, { x: kickPoint.x - 2, y: ballY + rng.normal(0, 2) }), m.role === "LB" ? "LB" : "DL");
+  }
+  ofRole(u.receiving, "DL").forEach((m, i, all) => {
+    const y = ballY + spread(i, all.length, -3.4, 3.4);
+    add(m, defense, new TrackBuilder({ x: los + 0.9, y }).hold(0.05).to(1.4, { x: los - 0.2, y }).hold(2.2), "DL");
+  });
+  ofRole(u.receiving, "LB").forEach((m, i) => {
+    if (i === 2) {
+      // The leaper over the middle.
+      add(m, defense, new TrackBuilder({ x: los + 4, y: ballY }).hold(0.05).to(1.3, { x: los + 0.6, y: ballY }).hold(2.2), "LB");
+      return;
+    }
+    const side = i % 2 ? 1 : -1;
+    add(m, defense, new TrackBuilder({ x: los + 1.1, y: ballY + side * 6 }).hold(0.05).toward(1.45, { x: kickPoint.x + 1.5, y: ballY + side * 2.2 }, 7.5).hold(2.2), "LB");
+  });
+  ofRole(u.receiving, "CB").forEach((m, i) => {
+    const side = i % 2 ? 1 : -1;
+    add(m, defense, new TrackBuilder({ x: los + 1, y: ballY + side * 8.5 }).hold(0.05).toward(1.5, { x: kickPoint.x + 2, y: ballY + side * 3 }, 8).hold(2.2), "CB");
+  });
+  for (const m of ofRole(u.receiving, "S")) add(m, defense, new TrackBuilder({ x: los + 11, y: ballY }).hold(1).to(2.2, { x: los + 13, y: ballY }), "S");
+  for (const m of u.receiving) add(m, defense, new TrackBuilder({ x: los + 2, y: ballY + rng.normal(0, 5) }).hold(2.2), "LB");
+  return actors;
 }
 
 /** Punts and kickoffs share this: ball in the air, the returner, a coverage tackler. */
@@ -402,8 +484,11 @@ function kickPlay(
   tKick: number,
   landing: Point,
   hang: number,
+  units?: (plan: KickPlan) => Actor[],
 ): PlayAnimation {
   const actors: Actor[] = [];
+  let end: Point | null = null;
+  let tEndAll = tKick + hang + 0.8;
   const kicker = new TrackBuilder(kickerStart).to(tKick, kickAt);
   actors.push({ id: kickerId, team: e.offense, role: kickerRole, track: kicker.track });
   const ball: Keyframe[] = [{ t: 0, ...kickerStart, z: 0.2 }, { t: tKick, ...kickAt, z: 1 }];
@@ -416,15 +501,17 @@ function kickPlay(
     const recoveredByKickers = e.recoveredByKickingTeam;
     // Where the ball ends up, in the kicking team's frame.
     const endX = recoveredByKickers ? e.nextYardline : 100 - e.nextYardline;
-    const end = clampToField({ x: e.touchdown ? -3 : endX, y: landing.y + rng.normal(0, 8) });
+    const endPt = clampToField({ x: e.touchdown ? -3 : endX, y: landing.y + rng.normal(0, 8) });
     const fairCatch = "fairCatch" in e && e.fairCatch;
     if (!fairCatch && !("muffed" in e && e.muffed)) {
-      const tEnd = Math.max(tLand + 0.5, tLand + travelTime(landing, end, CARRIER_SPEED));
-      r.to(tEnd, end);
-      ball.push({ t: tEnd, ...end, z: 1 });
+      const tEnd = Math.max(tLand + 0.5, tLand + travelTime(landing, endPt, CARRIER_SPEED));
+      end = endPt;
+      tEndAll = tEnd;
+      r.to(tEnd, endPt);
+      ball.push({ t: tEnd, ...endPt, z: 1 });
       if (e.tackler) {
         const cover = new TrackBuilder({ x: kickAt.x + 5, y: landing.y + rng.normal(0, 10) });
-        cover.to(tEnd, { x: end.x - 0.8, y: end.y });
+        cover.to(tEnd, { x: endPt.x - 0.8, y: endPt.y });
         actors.push({ id: e.tackler, team: e.offense, role: "COVER", track: cover.track });
       }
     } else {
@@ -433,7 +520,123 @@ function kickPlay(
   } else {
     ball.push({ t: tLand + 0.8, x: landing.x + 2, y: landing.y, z: 0 });
   }
+  if (units) {
+    const key = new Set(actors.map((a) => a.id));
+    actors.push(...units({ landing, tKick, tLand, end, tEnd: tEndAll, skip: new Set(key) }));
+    elevenEach(actors, e, key, landing, tLand);
+  }
   return build(e.offense, e.defense, e.start, actors, ball);
+}
+
+/**
+ * Exactly eleven a side: a tackler from outside the unit takes the place of
+ * one of its coverage players, and a returner with nothing to return still
+ * stands deep.
+ */
+function elevenEach(actors: Actor[], e: PuntEvent | KickoffEvent, key: ReadonlySet<PlayerId>, landing: Point, tLand: number) {
+  for (const team of [e.offense, e.defense]) {
+    let extra = actors.filter((a) => a.team === team).length - 11;
+    for (let i = actors.length - 1; i >= 0 && extra > 0; i--) {
+      const a = actors[i]!;
+      if (a.team === team && !key.has(a.id) && a.role !== "LS") {
+        actors.splice(i, 1);
+        extra--;
+      }
+    }
+  }
+  const returner = e.units?.receiving.find((m) => m.role === "KR");
+  if (returner && !actors.some((a) => a.id === returner.id) && actors.filter((a) => a.team === e.defense).length < 11) {
+    actors.push({ id: returner.id, team: e.defense, role: "KR", track: new TrackBuilder({ x: Math.min(landing.x, 98), y: landing.y }).hold(tLand + 0.8).track });
+  }
+}
+
+/** Where a kick went, for placing everyone else. */
+interface KickPlan {
+  landing: Point;
+  tKick: number;
+  tLand: number;
+  /** Where the return ended (null on a touchback, fair catch or muff). */
+  end: Point | null;
+  tEnd: number;
+  /** Players already drawn (kicker, returner, tackler). */
+  skip: Set<PlayerId>;
+}
+
+/** The rest of the punt team and the return team. */
+function puntUnits(rng: Rng, u: SpecialUnits, offense: string, defense: string, los: number, ballY: number) {
+  return (plan: KickPlan): Actor[] => {
+    const actors: Actor[] = [];
+    const add = (id: PlayerId, team: string, role: Role, t: TrackBuilder) => {
+      if (plan.skip.has(id)) return;
+      plan.skip.add(id);
+      actors.push({ id, team, role, track: t.track });
+    };
+    const target = plan.end ?? plan.landing;
+    // Coverage converges on the ball, then the tackle.
+    const cover = (t: TrackBuilder, spot: Point, release: number) => {
+      t.hold(release).toward(plan.tLand, { x: plan.landing.x - 4, y: plan.landing.y + (spot.y - ballY) * 0.4 }, 8);
+      t.toward(plan.tEnd, { x: target.x + 2 + rng.next() * 3, y: target.y + rng.normal(0, 4) }, 8);
+      return t;
+    };
+    for (const m of ofRole(u.kicking, "LS")) add(m.id, offense, "LS", cover(new TrackBuilder({ x: los - 0.4, y: ballY }), { x: los, y: ballY }, 1.7));
+    ofRole(u.kicking, "OL").forEach((m, i) => {
+      const y = ballY + [-1.3, 1.3, -2.6, 2.6, -3.9][i % 5]!;
+      add(m.id, offense, "OL", cover(new TrackBuilder({ x: los - 0.6, y }).hold(0.6).to(1.4, { x: los - 1.6, y }), { x: los, y }, 1.8));
+    });
+    for (const m of ofRole(u.kicking, "S")) add(m.id, offense, "S", cover(new TrackBuilder({ x: los - 5, y: ballY + 0.8 }), { x: los, y: ballY }, 2));
+    ofRole(u.kicking, "COVER").forEach((m, i) => {
+      // Two gunners split wide, the rest inside.
+      const y = i === 0 ? 3.5 : i === 1 ? FIELD_WIDTH - 3.5 : ballY + (i % 2 ? 6 : -6);
+      add(m.id, offense, "COVER", cover(new TrackBuilder({ x: los - (i < 2 ? 0.5 : 1), y }), { x: los, y }, i < 2 ? 0 : 1.2));
+    });
+    for (const m of u.kicking) if (m.role !== "P") add(m.id, offense, "COVER", cover(new TrackBuilder({ x: los - 1, y: ballY + rng.normal(0, 5) }), { x: los, y: ballY }, 1.5));
+    // Return team: jammers on the gunners, a rush, then everyone turns to set up the return.
+    const wall = (t: TrackBuilder, side: number) =>
+      t.toward(plan.tLand, { x: plan.landing.x - 12 - rng.next() * 6, y: plan.landing.y + side * (3 + rng.next() * 6) }, 7).toward(plan.tEnd, { x: target.x + 3 + rng.next() * 4, y: target.y + side * (2 + rng.next() * 3) }, 7);
+    ofRole(u.receiving, "CB").forEach((m, i) => {
+      const y = i === 0 ? 4.5 : FIELD_WIDTH - 4.5;
+      add(m.id, defense, "CB", new TrackBuilder({ x: los + 1.2, y }).toward(plan.tLand, { x: plan.landing.x - 7, y: plan.landing.y + (i ? 4 : -4) }, 8).toward(plan.tEnd, { x: target.x + 3, y: target.y + (i ? 2 : -2) }, 8));
+    });
+    ofRole(u.receiving, "DL").forEach((m, i, all) => {
+      const y = ballY + spread(i, all.length, -3, 3);
+      add(m.id, defense, "DL", wall(new TrackBuilder({ x: los + 0.9, y }).hold(0.6).to(1.6, { x: los - 1.5, y }).hold(2), i % 2 ? 1 : -1));
+    });
+    ofRole(u.receiving, "LB").forEach((m, i) => {
+      add(m.id, defense, "LB", wall(new TrackBuilder({ x: los + 3, y: ballY + (i - 1) * 4 }).hold(0.8), i % 2 ? 1 : -1));
+    });
+    for (const m of u.receiving) if (m.role !== "KR") add(m.id, defense, "S", wall(new TrackBuilder({ x: los + 9, y: ballY + rng.normal(0, 4) }), rng.next() < 0.5 ? -1 : 1));
+    return actors;
+  };
+}
+
+/** The kickoff team in a line across the field, and the return team set deep. */
+function kickoffUnits(rng: Rng, u: SpecialUnits, offense: string, defense: string, tee: Point) {
+  return (plan: KickPlan): Actor[] => {
+    const actors: Actor[] = [];
+    const add = (id: PlayerId, team: string, role: Role, t: TrackBuilder) => {
+      if (plan.skip.has(id)) return;
+      plan.skip.add(id);
+      actors.push({ id, team, role, track: t.track });
+    };
+    const target = plan.end ?? plan.landing;
+    const coverage = u.kicking.filter((m) => m.role !== "K");
+    coverage.forEach((m, i) => {
+      // Five on each side of the kicker, evenly across.
+      const half = Math.ceil(coverage.length / 2);
+      const y = i < half ? spread(i, half, 4, FIELD_MIDDLE - 5) : spread(i - half, coverage.length - half, FIELD_MIDDLE + 5, FIELD_WIDTH - 4);
+      const t = new TrackBuilder({ x: tee.x - 1, y }).toward(plan.tLand, { x: plan.landing.x - 6 - Math.abs(y - plan.landing.y) * 0.3, y: plan.landing.y + (y - FIELD_MIDDLE) * 0.45 }, 8.5);
+      t.toward(plan.tEnd, { x: target.x + 1.5 + rng.next() * 4, y: target.y + rng.normal(0, 4) }, 8.5);
+      add(m.id, offense, "COVER", t);
+    });
+    // Return team: a front five near midfield, a second line, the returner deep.
+    const front = ofRole(u.receiving, "LB");
+    const second = u.receiving.filter((m) => m.role !== "LB" && m.role !== "KR");
+    const block = (t: TrackBuilder, side: number) =>
+      t.toward(plan.tLand, { x: plan.landing.x - 10 - rng.next() * 6, y: plan.landing.y + side * (4 + rng.next() * 8) }, 7).toward(plan.tEnd, { x: target.x + 2 + rng.next() * 4, y: target.y + side * (1.5 + rng.next() * 3) }, 7);
+    front.forEach((m, i) => add(m.id, defense, "LB", block(new TrackBuilder({ x: tee.x + 11, y: spread(i, front.length, 8, FIELD_WIDTH - 8) }), i < front.length / 2 ? -1 : 1)));
+    second.forEach((m, i) => add(m.id, defense, (m.role === "WR" ? "WR" : "RB") as Role, block(new TrackBuilder({ x: Math.min(tee.x + 28, 95), y: spread(i, second.length, 12, FIELD_WIDTH - 12) }), i < second.length / 2 ? -1 : 1)));
+    return actors;
+  };
 }
 
 function punt(rng: Rng, e: PuntEvent): PlayAnimation {
@@ -454,10 +657,14 @@ function punt(rng: Rng, e: PuntEvent): PlayAnimation {
       const b = new TrackBuilder({ x: los + 1, y: ballY + 2 }).to(1.9, { x: punter.x + 1, y: ballY });
       actors.push({ id: e.blockedBy, team: e.defense, role: "DL", track: b.track });
     }
+    if (e.units) {
+      const loose = { x: punter.x - 3, y: ballY };
+      actors.push(...puntUnits(rng, e.units, e.offense, e.defense, los, ballY)({ landing: loose, tKick: 1.9, tLand: 2.4, end: null, tEnd: 2.8, skip: new Set(actors.map((a) => a.id)) }));
+    }
     return build(e.offense, e.defense, e.start, actors, ball);
   }
   const landing = clampToField({ x: e.touchback ? 105 : los + e.grossYards, y: ballY + rng.normal(0, 8) });
-  return kickPlay(rng, e, e.punter, "P", punter, { x: punter.x + 1, y: ballY }, 2, landing, 4 + rng.next() * 0.6);
+  return kickPlay(rng, e, e.punter, "P", punter, { x: punter.x + 1, y: ballY }, 2, landing, 4 + rng.next() * 0.6, e.units ? puntUnits(rng, e.units, e.offense, e.defense, los, ballY) : undefined);
 }
 
 function kickoff(rng: Rng, e: KickoffEvent): PlayAnimation {
@@ -471,5 +678,5 @@ function kickoff(rng: Rng, e: KickoffEvent): PlayAnimation {
     const returnEnd = e.fumble?.lost ? e.nextYardline : 100 - e.nextYardline;
     landing = clampToField({ x: returnEnd + e.returnYards, y: FIELD_MIDDLE + rng.normal(0, 8) });
   }
-  return kickPlay(rng, e, e.kicker, "K", runUp, tee, 1, landing, e.onside ? 1.2 : 4);
+  return kickPlay(rng, e, e.kicker, "K", runUp, tee, 1, landing, e.onside ? 1.2 : 4, e.units ? kickoffUnits(rng, e.units, e.offense, e.defense, tee) : undefined);
 }

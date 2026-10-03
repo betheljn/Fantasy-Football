@@ -3,6 +3,7 @@ import type { Rng } from "../rng.ts";
 import { clamp, edge, exponential } from "./common.ts";
 import type { KickoffEvent, Situation } from "./events.ts";
 import { coverageUnit, kickerOf, pickCoverageTackler, returnFumble, returnerOf } from "./kicking.ts";
+import { specialUnits } from "./special.ts";
 
 /** League rule: kickoffs are from the 35; a touchback puts the ball at the 30. */
 export const KICKOFF_SPOT = 35;
@@ -21,7 +22,7 @@ export interface KickoffOptions {
   freeKick?: boolean;
 }
 
-export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
+function kickoffPlay(rng: Rng, o: KickoffOptions): KickoffEvent {
   const kicker = kickerOf(o.kicking);
   const from = o.freeKick ? FREE_KICK_SPOT : KICKOFF_SPOT;
   const start: Situation = { quarter: o.quarter, clock: o.clock, down: 1, distance: 10, yardline: from };
@@ -83,4 +84,10 @@ export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
     nextYardline: fumble?.lost ? 100 - end : end,
     duration: Math.round(clamp(5 + returnYards / 8, 4, 15)),
   };
+}
+
+/** A kickoff (or free kick), with everyone on the field recorded. */
+export function simulateKickoff(rng: Rng, o: KickoffOptions): KickoffEvent {
+  const e = kickoffPlay(rng, o);
+  return { ...e, units: specialUnits(o.kicking, o.receiving, "kickoff", e.returner ?? returnerOf(o.receiving).id) };
 }
