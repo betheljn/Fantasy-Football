@@ -718,7 +718,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const rivals = rivalries(league.seed);
     const rivalryBefore = [...(s.dynasty.rivalryGames ?? []), ...rivalryGames(rivals, s.results, sched.season)];
     const rivalryStories = rivalryNews(league, rivals, rivalryBefore, rivalryGames(rivals, played, sched.season));
-    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
+    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam, careers: s.dynasty.careers }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
     const national = nationalFeed(stories);
     // Rivalry results always make the paper, whatever else happened.
     const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];

@@ -20,8 +20,23 @@ import type { InjuryNews } from "../game/injuries.ts";
 import { SEASON_ENDING } from "../game/injuries.ts";
 import type { TradeRecord } from "../contracts/trades.ts";
 import { teamCaptains } from "../contracts/morale.ts";
+import type { CareerLine } from "../dynasty/dynasty.ts";
+import type { PlayerStatKey } from "../stats/boxscore.ts";
 
-export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom";
+/** Career marks worth a story, and what each is called. */
+export const MILESTONES: ReadonlyArray<{ key: PlayerStatKey; marks: readonly number[]; what: string }> = [
+  { key: "passYds", marks: [25_000, 40_000, 50_000, 60_000, 70_000], what: "career passing yards" },
+  { key: "passTd", marks: [200, 300, 400, 500], what: "career touchdown passes" },
+  { key: "rushYds", marks: [7_500, 10_000, 12_500, 15_000], what: "career rushing yards" },
+  { key: "rushTd", marks: [75, 100, 150], what: "career rushing touchdowns" },
+  { key: "recYds", marks: [7_500, 10_000, 12_500, 15_000], what: "career receiving yards" },
+  { key: "recTd", marks: [75, 100], what: "career touchdown catches" },
+  { key: "sacks", marks: [75, 100, 150], what: "career sacks" },
+  { key: "defInt", marks: [30, 50], what: "career interceptions" },
+  { key: "tackles", marks: [750, 1_000, 1_500], what: "career tackles" },
+];
+
+export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom" | "milestone";
 
 export interface Story {
   id: string;
@@ -55,6 +70,8 @@ export interface WeekNewsInput {
   trades?: readonly TradeRecord[];
   /** Your team: a recap of your game and a look at the next one. */
   userTeam?: string;
+  /** Careers before this season (for milestones and the all-time lists). */
+  careers?: ReadonlyMap<PlayerId, CareerLine>;
 }
 
 const NATIONAL_LIMIT = 12;
@@ -120,6 +137,21 @@ function statLine(s: PlayerStats): string {
 }
 
 /** Current streak from results in week order: +n wins, -n losses (ties end a streak). */
+function findPlayerName(league: League, id: PlayerId): string {
+  const f = findPlayer(league, id);
+  return f ? fullName(f.player) : "the old mark";
+}
+
+/** 12345 -> "12,345". */
+function commas(n: number): string {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  return `${n}${v >= 11 && v <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
+}
+
 function streak(results: readonly GameSummary[], abbr: string): number {
   const mine = results.filter((r) => r.home === abbr || r.away === abbr).sort((a, b) => a.week - b.week);
   let n = 0;
@@ -223,6 +255,51 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
       add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 20, teams: [abbr], players: [captain.id], headline: pickLine(r, [`Captain ${fullName(captain)} calls a players-only meeting in ${team.state}`, `${nick(league, abbr)} captain: "We're better than this"`]), body: `After three straight losses (${rec(abbr)}), ${who} gathered the ${team.nickname} without the coaches. "Nobody's pointing fingers. We fix it together."` });
     else
       add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 18, teams: [abbr], players: [captain.id], headline: pickLine(r, [`${nick(league, abbr)} locker room buzzing after four straight`, `Captain ${fullName(captain)} has the ${team.nickname} believing`]), body: `Four wins in a row (${rec(abbr)}), and the ${team.nickname} point to their captain. "${captain.lastName} sets the tone every day," one teammate said.` });
+  }
+
+  // --- career milestones: a round number passed this week, and a new all-time leader ---
+  if (input.careers) {
+    const careers = input.careers;
+    // This week's lines, and every career total before and after the week.
+    const week = new Map<PlayerId, PlayerStats>();
+    const opponent = new Map<PlayerId, string>();
+    for (const { summary } of games)
+      for (const line of Object.values(boxes.get(summary.id)!.players)) {
+        week.set(line.id, line);
+        opponent.set(line.id, summary.home === line.team ? summary.away : summary.home);
+      }
+    const ids = new Set<PlayerId>([...careers.keys(), ...input.stats.players.keys()]);
+    for (const m of MILESTONES) {
+      const total = (id: PlayerId) => (careers.get(id)?.stats[m.key] ?? 0) + (input.stats.players.get(id)?.stats[m.key] ?? 0);
+      let leadBefore: { id: PlayerId; n: number } | null = null;
+      let leadAfter: { id: PlayerId; n: number } | null = null;
+      for (const id of ids) {
+        const after = total(id);
+        const before = after - (week.get(id)?.[m.key] ?? 0);
+        if (!leadBefore || before > leadBefore.n || (before === leadBefore.n && id < leadBefore.id)) leadBefore = { id, n: before };
+        if (!leadAfter || after > leadAfter.n || (after === leadAfter.n && id < leadAfter.id)) leadAfter = { id, n: after };
+      }
+      for (const [id, line] of week) {
+        const now = total(id);
+        const before = now - line[m.key];
+        const mark = [...m.marks].reverse().find((x) => before < x && now >= x);
+        // A new leader on the all-time list (once the list means something).
+        const newLeader = leadAfter?.id === id && leadBefore && leadBefore.id !== id && leadBefore.n >= m.marks[0]!;
+        if (!mark && !newLeader) continue;
+        const info = findPlayer(league, id);
+        if (!info) continue;
+        const who = `${info.player.position} ${fullName(info.player)}`;
+        const opp = opponent.get(id)!;
+        const seasons = (careers.get(id)?.seasons ?? 0) + 1;
+        if (newLeader) {
+          const was = careers.get(leadBefore!.id)?.name ?? findPlayerName(league, leadBefore!.id);
+          add({ key: `alltime-${id}-${m.key}`, kind: "milestone", importance: 60, teams: [line.team], players: [id], headline: `${fullName(info.player)} takes over the league lead in ${m.what}`, body: `${who} (${st(league, line.team)}) passed ${was} against ${nick(league, opp)}. He's at ${commas(now)}, the most in league history.` });
+        } else {
+          const r = rng(`ms-${id}-${m.key}`);
+          add({ key: `ms-${id}-${m.key}`, kind: "milestone", importance: 34 + 6 * m.marks.indexOf(mark!), teams: [line.team], players: [id], headline: pickLine(r, [`${fullName(info.player)} reaches ${commas(mark!)} ${m.what}`, `Milestone: ${fullName(info.player)} passes ${commas(mark!)} ${m.what}`]), body: `${who} (${st(league, line.team)}) got there against ${nick(league, opp)}, in his ${ordinal(seasons)} season in the league. He's at ${commas(now)}.` });
+        }
+      }
+    }
   }
 
   // --- rankings ---

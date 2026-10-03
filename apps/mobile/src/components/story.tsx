@@ -23,9 +23,10 @@ const KIND_LABEL: Record<Story["kind"], string> = {
   rivalry: "Rivalry",
   spring: "Spring",
   lockerroom: "Locker room",
+  milestone: "Milestone",
 };
 
-const KIND_TONE: Partial<Record<Story["kind"], "accent" | "bad" | "gold">> = { upset: "bad", injury: "bad", mvp: "gold", rivalry: "gold", recap: "accent", preview: "accent" };
+const KIND_TONE: Partial<Record<Story["kind"], "accent" | "bad" | "gold">> = { milestone: "gold", upset: "bad", injury: "bad", mvp: "gold", rivalry: "gold", recap: "accent", preview: "accent" };
 
 export function StoryCard({ s, lead, mine, theme: t }: { s: Story; lead?: boolean; mine?: boolean; theme: Theme }) {
   const router = useRouter();

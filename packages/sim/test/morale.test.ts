@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MORALE,
   addGameToSeason,
+  advanceSeason,
   allTeams,
   computeRankings,
   createSeasonStats,
@@ -102,4 +103,31 @@ describe("locker-room news", () => {
       expect(`${s.headline} ${s.body}`).not.toMatch(/undefined|NaN/);
     }
   });
+});
+
+describe("career milestones", () => {
+  it("writes a story when a career passes a round number, from careers before the season", () => {
+    // Careers start in year one, so play two seasons first.
+    const d = advanceSeason(advanceSeason(startDynasty("milestone-test", 4)));
+    const sched = seasonSchedule(d);
+    let league = d.league;
+    const stats = createSeasonStats();
+    const results: GameSummary[] = [];
+    let ranks = computeRankings(league, []);
+    const stories: Story[] = [];
+    for (let w = 1; w <= 22; w++) {
+      const week = playWeek(league, sched, w, (g) => addGameToSeason(stats, g));
+      if (!week.games.length) continue;
+      results.push(...week.games.map((g) => g.summary));
+      const after = computeRankings(week.league, results, ranks);
+      stories.push(...weeklyNews({ league: week.league, schedule: sched, season: sched.season, week: w, games: week.games, results, before: ranks, after, stats, careers: d.careers }));
+      ranks = after;
+      league = week.league;
+    }
+    const ms = stories.filter((s) => s.kind === "milestone");
+    expect(ms.length).toBeGreaterThan(0);
+    // Each mark is passed once per player.
+    expect(new Set(ms.map((s) => s.id.split("-").slice(2).join("-"))).size).toBe(ms.length);
+    for (const s of ms) expect(`${s.headline} ${s.body}`).not.toMatch(/undefined|NaN/);
+  }, 120_000);
 });
