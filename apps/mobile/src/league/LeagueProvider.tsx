@@ -62,6 +62,9 @@ import {
   aiInSeasonMoves,
   localFeed,
   nationalFeed,
+  rivalries,
+  rivalryGames,
+  rivalryNews,
   collectSeason,
   collectWeek,
   startCollection,
@@ -551,9 +554,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // The week's news: the national feed and everything about your team.
     const rankBefore = computeRankings(s.dynasty.league, s.results);
     const rankAfter = computeRankings(league, allResults, rankBefore);
-    const stories = weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam });
+    // Rivalry games this week: trophies kept or changing hands.
+    const rivals = rivalries(league.seed);
+    const rivalryBefore = [...(s.dynasty.rivalryGames ?? []), ...rivalryGames(rivals, s.results, sched.season)];
+    const rivalryStories = rivalryNews(league, rivals, rivalryBefore, rivalryGames(rivals, played, sched.season));
+    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
     const national = nationalFeed(stories);
-    const kept = [...national, ...localFeed(stories, s.userTeam).filter((x) => !national.includes(x))];
+    // Rivalry results always make the paper, whatever else happened.
+    const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
     return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };

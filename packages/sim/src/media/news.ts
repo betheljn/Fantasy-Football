@@ -20,7 +20,7 @@ import type { InjuryNews } from "../game/injuries.ts";
 import { SEASON_ENDING } from "../game/injuries.ts";
 import type { TradeRecord } from "../contracts/trades.ts";
 
-export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview";
+export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry";
 
 export interface Story {
   id: string;

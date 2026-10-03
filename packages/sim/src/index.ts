@@ -66,3 +66,4 @@ export * from "./picks/house.ts";
 export * from "./media/news.ts";
 export * from "./media/radio.ts";
 export * from "./collect/moments.ts";
+export * from "./collect/rivalries.ts";

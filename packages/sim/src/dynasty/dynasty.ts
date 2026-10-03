@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { rivalries, rivalryGames, type RivalryGame } from "../collect/rivalries.ts";
 import { collectSeason, collectWeek, startCollection, type Collection, type Moment, type RecordBook } from "../collect/moments.ts";
 import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
 import { POSITIONS, BASE_STARTERS, type Position } from "../model/positions.ts";
@@ -118,6 +119,8 @@ export interface Dynasty {
   /** League records since the dynasty began, and every moment worth keeping. */
   recordBook?: RecordBook;
   moments?: Moment[];
+  /** Every rivalry game since the dynasty began (for the trophies and series records). */
+  rivalryGames?: RivalryGame[];
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -523,6 +526,7 @@ export function completeOffseason(
       lastWinPct: new Map([...records.values()].map((r) => [r.team, winPct(r)])),
       recordBook: collection.book,
       moments: [...(dynasty.moments ?? []), ...collection.moments],
+      rivalryGames: [...(dynasty.rivalryGames ?? []), ...rivalryGames(rivalries(league.seed), played.season.results, league.season)],
     },
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };

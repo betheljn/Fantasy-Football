@@ -58,11 +58,16 @@ export default function TeamScreen() {
           <Text style={{ color: t.muted, marginTop: 2 }}>
             Payroll {formatMoney(pay)} of {formatMoney(cap)} cap ({((pay / cap) * 100).toFixed(0)}%)
           </Text>
-          {team.abbr === userTeam ? (
-            <Pressable onPress={() => router.push("/depth")} accessibilityRole="button" style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
-              <Text style={{ color: t.accent, fontWeight: "700" }}>Depth chart</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            {team.abbr === userTeam ? (
+              <Pressable onPress={() => router.push("/depth")} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
+                <Text style={{ color: t.accent, fontWeight: "700" }}>Depth chart</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => router.push(`/trophies?team=${team.abbr}`)} accessibilityRole="button" style={{ paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.accent }}>
+              <Text style={{ color: t.accent, fontWeight: "700" }}>Trophy room</Text>
             </Pressable>
-          ) : null}
+          </View>
         </Card>
 
         <Card>

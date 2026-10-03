@@ -428,11 +428,19 @@ function Playoffs({ data }: { data: LeagueData }) {
 function History({ data }: { data: LeagueData }) {
   const t = useTheme();
   const d = useDynasty();
+  const router = useRouter();
   const history = d.save?.dynasty.history ?? [];
   if (history.length === 0) return null;
   return (
     <Card>
-      <SectionTitle>Dynasty history</SectionTitle>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flex: 1 }}>
+          <SectionTitle>Dynasty history</SectionTitle>
+        </View>
+        <Pressable onPress={() => router.push("/trophies")} accessibilityRole="link">
+          <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Trophy room ›</Text>
+        </Pressable>
+      </View>
       {[...history].reverse().map((h) => {
         const mine = h.top25.find((e) => e.team === data.userTeam);
         return (
