@@ -185,7 +185,7 @@ The league's story told back to you, from the event log.
 3. Follow or fade: add a host's pick to your slate; the show brags or eats
    crow about last week
 
-### Milestone 12: collectibles and trophies (current)
+### Milestone 12: collectibles and trophies (done)
 Everything collected marks something that happened in your league; nothing is
 for sale.
 1. Moments and the record book: notable plays, games and seasons become
@@ -196,6 +196,41 @@ for sale.
    awards; traveling rivalry trophies between neighboring states
 3. Hall of Fame: a yearly ballot of retired players (AI media voters plus
    your vote); retired jersey numbers
+
+### Milestone 13: ownership and the business (done)
+The business side; the salary cap stays the same for everyone and market
+size only changes the business. No real money, ever.
+1. The business engine: markets from state population, casual fans and
+   die-hards, stadiums, attendance from winning, hype and price; revenue
+   (tickets, concessions, merch, sponsors, local media, a national TV deal,
+   revenue sharing) against payroll, staff, stadium and debt; season books
+   for every team, fans moving with results
+2. Your levers: ticket and concession prices, stadium upgrades (capacity,
+   video board, suites, dome) paid in cash or bonds, naming rights; AI teams
+   price and build sensibly
+3. The owner: owner + GM, or GM for an AI owner with goals who can fire you;
+   press conferences that move fan mood and owner trust
+
+### Milestone 14: the spring season (current)
+A second, smaller season for the players who don't dress on game day.
+1. Spring league: each division pools its teams' players below the game-day
+   53 into one regional team (gaps filled from free agents); a round robin in
+   two conferences and a final; spring stats, MVP and breakouts (standouts
+   come back a few points better); played every offseason, from the report
+   or when the new season starts
+2. Coverage and picks: spring stories in the news and on the radio show, and
+   a spring board for picks
+
+### Milestone 15: online leagues (planned)
+Private leagues with friends. Decided: Fastify + Prisma + PostgreSQL in
+apps/server, Postgres in local Docker while building, invite code + display
+name to join (no passwords at first). Ask before installing dependencies.
+1. Server scaffold: Fastify, Prisma schema (leagues, members, saves), local
+   Postgres in Docker, health check, tests
+2. Leagues: create a league (commissioner), invite code, join with a name,
+   claim a state; the server runs the sim (results decided on the server)
+3. Weekly advance: everyone readies up (or a timer runs out); AI covers
+   anyone who misses it; the app talks to the server for online leagues
 
 After each step: run it, show sample output, and stop for review.
 

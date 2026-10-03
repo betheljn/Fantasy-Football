@@ -3,7 +3,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { rivalries, rivalryGames, seriesLine, teamName, trophyRoom } from "@dynasty/sim";
+import { retiredNumbers, rivalries, rivalryGames, seriesLine, teamName, trophyRoom } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -26,6 +26,7 @@ export default function TrophyRoomScreen() {
     return trophyRoom(withSeason, abbr, games);
   }, [dynasty, abbr, league.seed, results, schedule.season, d.save?.collection]);
   const st = (x: string) => league.teams[x]?.state ?? x;
+  const retired = retiredNumbers(dynasty, abbr);
   const seasons = dynasty.history.length;
 
   return (
@@ -67,6 +68,23 @@ export default function TrophyRoomScreen() {
             );
           })}
         </Card>
+
+        {retired.length > 0 ? (
+          <Card>
+            <SectionTitle>Retired numbers</SectionTitle>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {retired.map((m) => (
+                <View key={m.id} style={{ alignItems: "center", width: 90 }}>
+                  <Text style={{ color: t.text, fontSize: 26, fontWeight: "900" }}>{m.jersey}</Text>
+                  <Text style={{ color: t.muted, fontSize: 12, textAlign: "center" }}>
+                    {m.position} {m.name}
+                  </Text>
+                  <Text style={{ color: t.muted, fontSize: 11 }}>Hall of Fame {m.season}</Text>
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
 
         <Card>
           <SectionTitle>Awards</SectionTitle>

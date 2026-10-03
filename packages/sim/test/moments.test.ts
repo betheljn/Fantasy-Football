@@ -29,7 +29,7 @@ describe("moments", () => {
 
   it("are the same every time", () => {
     expect(advanceSeason(START).moments).toEqual(ONE.moments);
-  });
+  }, 60_000);
 });
 
 describe("the record book", () => {

@@ -8,6 +8,8 @@ import {
   PLAYOFF_ROUNDS,
   ROUND_NAMES,
   STATES,
+  OWNER_GOALS,
+  teamOwner,
   backLabel,
   injuryLabel,
   injuryReport,
@@ -67,6 +69,8 @@ export default function Home() {
       );
     case "choose":
       return data ? <ChooseTeam data={data} /> : null;
+    case "fired":
+      return data && d.save?.fired ? <Fired data={data} /> : null;
     case "staff":
       return d.staffSeats ? <StaffScreen overview={d.staffSeats} onConfirm={d.confirmStaff} /> : null;
     case "hire":
@@ -108,13 +112,31 @@ function ChooseTeam({ data }: { data: LeagueData }) {
     [data.league],
   );
   const cap = salaryCap(data.league.seed, data.league.season);
+  const [role, setRole] = useState<"owner" | "gm">("owner");
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
       <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Choose your team</Text>
+      <Card>
+        <SectionTitle>Your role</SectionTitle>
+        {(
+          [
+            ["owner", "Owner and GM", "Run everything. Nobody can fire you; the board and the fans grade every season."],
+            ["gm", "GM for an AI owner", "The owner has a goal and a temper. Meet it and you keep the job; miss it too often and you're out."],
+          ] as const
+        ).map(([key, label, note]) => (
+          <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="radio" accessibilityState={{ selected: role === key }} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
+            <Text style={{ color: role === key ? t.accent : t.muted, fontWeight: "900", width: 18 }}>{role === key ? "◉" : "○"}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: t.text, fontWeight: "700" }}>{label}</Text>
+              <Text style={{ color: t.muted, fontSize: 13 }}>{note}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </Card>
       <Text style={{ color: t.muted, marginBottom: 8 }}>Strongest rosters first. A weak team is a longer road — and a better story.</Text>
       {teams.map(({ team, ovr }) => (
         <Card key={team.abbr} style={{ paddingVertical: 4 }}>
-          <LinkRow label={`Choose ${teamName(team)}`} onPress={() => d.chooseTeam(team.abbr)}>
+          <LinkRow label={`Choose ${teamName(team)}`} onPress={() => d.chooseTeam(team.abbr, role)}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Swatch abbr={team.abbr} size={14} />
               <View style={{ flex: 1 }}>
@@ -165,6 +187,7 @@ function SeasonHub({ data }: { data: LeagueData }) {
           {d.phase === "season" ? <Button label={`Picks · ${d.picks.balance.toLocaleString()} pts`} onPress={() => router.push("/picks")} theme={t} small /> : null}
           {d.phase === "season" ? <Button label="Radio" onPress={() => router.push("/radio")} theme={t} small /> : null}
           <Button label="Moments" onPress={() => router.push("/moments")} theme={t} small />
+          <Button label="Business" onPress={() => router.push("/business")} theme={t} small />
         </View>
       </Card>
 
@@ -195,7 +218,11 @@ function SeasonHub({ data }: { data: LeagueData }) {
         </Card>
       ) : null}
 
+      {d.phase === "season" && d.press ? <PressCard /> : null}
+
       {(d.save?.news ?? []).length > 0 && (d.phase === "season" || d.phase === "playoffs" || d.phase === "complete") ? <HeadlinesCard data={data} /> : null}
+
+      {d.phase === "season" || d.phase === "playoffs" || d.phase === "complete" ? <OwnerCard data={data} /> : null}
 
       {d.phase === "season" ? <ScoutingCard data={data} /> : null}
 
@@ -224,6 +251,114 @@ function SeasonHub({ data }: { data: LeagueData }) {
 
       <History data={data} />
       <DangerZone />
+    </ScrollView>
+  );
+}
+
+/** The owner (or the board): their goal, trust in you, fan mood, and last season's verdict. */
+function OwnerCard({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const office = d.save?.office;
+  if (!office) return null;
+  const owner = teamOwner(data.league.seed, data.userTeam);
+  const last = office.reviews.at(-1);
+  return (
+    <Card>
+      <SectionTitle>{office.role === "owner" ? "The board" : `Your owner: ${owner.name}`}</SectionTitle>
+      {office.role === "gm" ? (
+        <>
+          <Text style={{ color: t.text }}>
+            Wants: <Text style={{ fontWeight: "700" }}>{OWNER_GOALS[owner.goal].name}</Text> ({OWNER_GOALS[owner.goal].wants}).
+          </Text>
+          <Meter label="Owner's trust" value={office.trust} warn={office.trust < 35} theme={t} />
+        </>
+      ) : (
+        <Text style={{ color: t.muted }}>You own the team. The board grades each season; nobody can fire you.</Text>
+      )}
+      <Meter label="Fan mood" value={office.fanMood} warn={office.fanMood < 35} theme={t} />
+      {office.expectedWins !== undefined ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Expected this season: about {Math.round(office.expectedWins)} wins.</Text> : null}
+      {last ? (
+        <Text style={{ color: t.muted, fontSize: 13, marginTop: 6 }}>
+          {last.season}: grade {last.grade}. {last.verdict}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+function Meter({ label, value, warn, theme: t }: { label: string; value: number; warn: boolean; theme: Theme }) {
+  return (
+    <View style={{ marginTop: 8 }}>
+      <View style={{ flexDirection: "row" }}>
+        <Text style={{ flex: 1, color: t.muted, fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: warn ? t.score : t.text, fontWeight: "700", fontSize: 12 }}>{value}</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: t.border, marginTop: 3, overflow: "hidden" }}>
+        <View style={{ width: `${value}%`, height: 6, backgroundColor: warn ? t.score : t.accent }} />
+      </View>
+    </View>
+  );
+}
+
+/** After each game: one question from the press, three ways to answer. */
+function PressCard() {
+  const t = useTheme();
+  const d = useDynasty();
+  const p = d.press!;
+  const answered = d.save?.office?.press[p.week];
+  return (
+    <Card>
+      <SectionTitle>Press conference</SectionTitle>
+      <Text style={{ color: t.text, fontWeight: "700", marginBottom: 6 }}>"{p.question}"</Text>
+      {answered === undefined ? (
+        p.answers.map((a, i) => (
+          <Pressable key={i} onPress={() => d.answerPress(i)} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: t.border, marginBottom: 6, opacity: pressed ? 0.6 : 1 })}>
+            <Text style={{ color: t.text }}>{a.text}</Text>
+          </Pressable>
+        ))
+      ) : (
+        <>
+          <Text style={{ color: t.muted }}>You said: "{p.answers[answered]!.text}"</Text>
+          <Text style={{ color: t.accent, marginTop: 4 }}>{p.answers[answered]!.reaction}</Text>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** Fired: the owner's verdict, and the teams that want you. */
+function Fired({ data }: { data: LeagueData }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const fired = d.save!.fired!;
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>You're fired.</Text>
+      <Card>
+        <Text style={{ color: t.text }}>{fired.verdict}</Text>
+        <Text style={{ color: t.muted, marginTop: 6 }}>The phone's already ringing. These teams want a new GM:</Text>
+      </Card>
+      {fired.offers.map((abbr) => {
+        const team = data.league.teams[abbr]!;
+        const owner = teamOwner(data.league.seed, abbr);
+        const rec = data.records.get(abbr);
+        return (
+          <Card key={abbr}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Swatch abbr={abbr} size={14} />
+              <Text style={{ flex: 1, color: t.text, fontWeight: "800" }}>{teamName(team)}</Text>
+              <Text style={{ color: t.muted }}>{rec ? formatRecord(rec) : ""}</Text>
+            </View>
+            <Text style={{ color: t.muted, marginTop: 4 }}>
+              Owner {owner.name} wants: {OWNER_GOALS[owner.goal].name.toLowerCase()}. {owner.bio}
+            </Text>
+            <View style={{ flexDirection: "row", marginTop: 8 }}>
+              <Button label="Take the job" onPress={() => d.takeJob(abbr)} theme={t} primary small />
+            </View>
+          </Card>
+        );
+      })}
     </ScrollView>
   );
 }
@@ -437,6 +572,9 @@ function History({ data }: { data: LeagueData }) {
         <View style={{ flex: 1 }}>
           <SectionTitle>Dynasty history</SectionTitle>
         </View>
+        <Pressable onPress={() => router.push("/halloffame")} accessibilityRole="link" style={{ marginRight: 12 }}>
+          <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Hall of Fame ›</Text>
+        </Pressable>
         <Pressable onPress={() => router.push("/trophies")} accessibilityRole="link">
           <Text style={{ color: t.accent, fontWeight: "700", fontSize: 12 }}>Trophy room ›</Text>
         </Pressable>
@@ -548,6 +686,50 @@ function Report({ report }: { report: OffseasonReport }) {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>{report.season} offseason</Text>
+      {(() => {
+        const r = d.save?.office?.reviews.find((x) => x.season === report.season);
+        return r ? (
+          <Card>
+            <SectionTitle>Season grade: {r.grade}</SectionTitle>
+            {r.fired ? (
+              <>
+                <Text style={{ color: t.text }}>
+                  Fired by {data?.league.teams[r.team ?? ""]?.state ?? "your old team"} after the season. {r.verdict}
+                </Text>
+                <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
+                  A fresh start in {data?.league.teams[data.userTeam]?.state}: your new owner's trust starts at {d.save?.office?.trust}.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: t.text }}>{r.verdict}</Text>
+                <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
+                  {d.save?.office?.role === "gm" ? `Owner's trust ${r.trustChange >= 0 ? "+" : ""}${r.trustChange}, now ${d.save.office.trust}. ` : ""}Fan mood {r.fanChange >= 0 ? "+" : ""}
+                  {r.fanChange}, now {d.save?.office?.fanMood}.
+                </Text>
+              </>
+            )}
+          </Card>
+        ) : null;
+      })()}
+      {(() => {
+        const cls = (d.save?.dynasty.hallOfFame ?? []).filter((m) => m.season === report.season);
+        return cls.length > 0 ? (
+          <Pressable onPress={() => router.push("/halloffame")} accessibilityRole="link">
+            <Card style={{ borderColor: "#f5b83d", borderWidth: 1 }}>
+              <SectionTitle>Hall of Fame class of {report.season}</SectionTitle>
+              {cls.map((m) => (
+                <Text key={m.id} style={{ color: t.text, paddingVertical: 2 }}>
+                  <Text style={{ fontWeight: "800" }}>
+                    {m.position} {m.name}
+                  </Text>{" "}
+                  ({Math.round(m.pct * 100)}%) · #{m.jersey ?? "?"} retired by {m.team}
+                </Text>
+              ))}
+            </Card>
+          </Pressable>
+        ) : null;
+      })()}
       <Card>
         <SectionTitle>The season</SectionTitle>
         <Text style={{ color: t.text }}>
@@ -573,6 +755,36 @@ function Report({ report }: { report: OffseasonReport }) {
       {(report.offers ?? []).length > 0 ? section("Your free-agent offers", report.offers, "") : null}
       {section("New arrivals", report.arrived, "No one new.")}
       {section("Departures", report.departed, "No one left.")}
+      {(() => {
+        const spring = (d.save?.dynasty.springs ?? []).find((x) => x.season === next);
+        const mine = spring?.breakouts.filter((b) => b.team === data?.userTeam) ?? [];
+        return (
+          <Card>
+            <SectionTitle>{next} spring season</SectionTitle>
+            {spring ? (
+              <>
+                <Text style={{ color: t.text }}>
+                  Champions: <Text style={{ fontWeight: "800" }}>{spring.teams.find((x) => x.abbr === spring.champion)?.name}</Text>
+                  {spring.mvp ? `. MVP: ${spring.mvp.position} ${spring.mvp.name} (${spring.mvp.team}).` : "."}
+                </Text>
+                <Text style={{ color: mine.length ? t.accent : t.muted, marginTop: 4 }}>
+                  {mine.length ? `${mine.length} of your players broke out: ${mine.map((b) => `${b.position} ${b.name} (${b.before} → ${b.after})`).join(", ")}.` : "None of your players broke out this spring."}
+                </Text>
+                <View style={{ flexDirection: "row", marginTop: 8 }}>
+                  <Button label="The spring season" onPress={() => router.push("/spring")} theme={t} small />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: t.muted }}>Your practice-squad players play a short spring season in ten regional teams. Standouts break out and come back better.</Text>
+                <View style={{ flexDirection: "row", marginTop: 8 }}>
+                  <Button label="Play the spring season" onPress={d.playSpring} theme={t} small />
+                </View>
+              </>
+            )}
+          </Card>
+        );
+      })()}
       <Button label={`Start the ${next} season`} onPress={d.startNextSeason} theme={t} primary />
     </ScrollView>
   );

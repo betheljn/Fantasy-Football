@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -49,6 +49,19 @@ export interface SaveState {
   radio?: RadioState;
   /** This season's moments and the record book so far (they join the dynasty's in the offseason). */
   collection?: Collection;
+  /** Your Hall of Fame ballot this season (counted in the offseason). */
+  hofVote?: string[];
+  /** Your job: owner or GM, the owner's trust, fan mood, reviews and press conferences. */
+  office?: OfficeState;
+  /** Fired at the end of the season: who's offering you a job. */
+  fired?: { offers: string[]; verdict: string };
+}
+
+export interface OfficeState extends FrontOfficeState {
+  /** Team strength when this season and last season started, and the wins the roster should manage. */
+  startRating?: number;
+  lastStartRating?: number;
+  expectedWins?: number;
 }
 
 export interface RadioState {

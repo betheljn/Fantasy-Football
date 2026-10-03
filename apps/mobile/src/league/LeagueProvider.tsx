@@ -62,6 +62,28 @@ import {
   aiInSeasonMoves,
   localFeed,
   nationalFeed,
+  withSpring,
+  BASE_STARTERS,
+  POSITIONS,
+  afterReview,
+  answerPress,
+  closeSeasonBooks,
+  jobOffers,
+  pressConference,
+  seasonReview,
+  startFrontOffice,
+  teamOwner,
+  teamRatings,
+  type PressConference,
+  acceptNaming,
+  homeGates,
+  namingAvailable,
+  projectProblems,
+  startLeagueBusiness,
+  startProject,
+  type NamingOffer,
+  type ProjectKind,
+  HOF_RULES,
   rivalries,
   rivalryGames,
   rivalryNews,
@@ -105,7 +127,7 @@ import {
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
-import { SAVE_VERSION, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
+import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 
 export const PLAYOFF_ROUND_COUNT = 4;
@@ -130,7 +152,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
+export type Phase = "fired" | "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -146,7 +168,14 @@ export interface DynastyControls {
   /** Back to the save list (this dynasty stays saved). */
   closeDynasty: () => void;
   newDynasty: () => void;
-  chooseTeam: (abbr: string) => void;
+  chooseTeam: (abbr: string, role?: "owner" | "gm") => void;
+  /** Play the spring season now (from the offseason report). */
+  playSpring: () => void;
+  /** Fired: take one of the offered jobs (the offseason goes on with your new team). */
+  takeJob: (abbr: string) => void;
+  /** This week's press conference (after your last game), and answering it. */
+  press: PressConference | null;
+  answerPress: (choice: number) => void;
   playWeek: () => void;
   playRegularSeason: () => void;
   playPlayoffRound: () => void;
@@ -200,6 +229,12 @@ export interface DynastyControls {
   /** Add a pick (or switch its side, or take it off if it's already there on that side). */
   toggleDraft: (pick: SlatePick) => void;
   clearDraft: () => void;
+  /** Your business: prices (before the first home game), stadium projects, naming rights. Each returns what stopped it, if anything. */
+  setPrices: (ticket: number, concessions: number) => string[];
+  startStadiumProject: (kind: ProjectKind, financing: "cash" | "bonds") => string[];
+  acceptNamingOffer: (offer: NamingOffer) => string[];
+  /** Your Hall of Fame ballot: vote for (or take back) a candidate, up to the limit. Open until the offseason. */
+  toggleHofVote: (player: string) => void;
   /** In-season moves (regular season only): injured reserve and free-agent signings. */
   canMakeMoves: boolean;
   placeOnIR: (player: string) => string[];
@@ -344,7 +379,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       .then(({ state: loaded, progress: p }) => {
         setSlot(loaded ? n : null);
         // Saves from before in-season free agents get a pool to sign from.
-        setState(loaded && !loaded.dynasty.league.freeAgents ? { ...loaded, dynasty: { ...loaded.dynasty, league: ensureFreeAgents(loaded.dynasty.league) } } : loaded);
+        let ready = loaded && !loaded.dynasty.league.freeAgents ? { ...loaded, dynasty: { ...loaded.dynasty, league: ensureFreeAgents(loaded.dynasty.league) } } : loaded;
+        // Saves from before owners: you own the team.
+        if (ready?.userTeam && !ready.office) ready = { ...ready, office: startFrontOffice("owner") };
+        setState(ready);
         checkpointRef.current = p;
         setRestoring(p);
         if (loaded) queue(() => touchSlot(n, loaded, p).then(setSlotIndex));
@@ -483,6 +521,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "simming" ? "simming"
     : !state ? "start"
     : state.report ? "report"
+    : state.fired ? "fired"
     : staffStep?.step === "decide" ? "staff"
     : staffStep?.step === "hire" ? "hire"
     : offseason?.freeAgency ? "cuts"
@@ -504,7 +543,15 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const before = s.dynasty.league;
     const talks = aiTradeWeek(before, seasonWindow(before, 0), new Set([s.userTeam]));
     const lineups = logTrades(startLog(before), before, talks.league, talks.trades, 1);
-    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups };
+    // What the owner expects: wins in line with where the roster ranks.
+    const ranked = allTeams(talks.league)
+      .map((t) => ({ abbr: t.abbr, ovr: teamRatings(t).overall }))
+      .sort((a, b) => b.ovr - a.ovr);
+    const idx = ranked.findIndex((x) => x.abbr === s.userTeam);
+    const office: OfficeState = s.office ?? startFrontOffice("owner");
+    const startRating = ranked[idx]?.ovr ?? 60;
+    const nextOffice: OfficeState = { ...office, ...(office.startRating !== undefined ? { lastStartRating: office.startRating } : {}), startRating, expectedWins: Math.round((5 + 10 * (1 - idx / Math.max(1, ranked.length - 1))) * 10) / 10 };
+    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups, office: nextOffice };
   };
 
   const playOneWeek = (s: SaveState, sched: Schedule): SaveState => {
@@ -572,7 +619,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const s = stateRef.current;
     if (!s || !schedule || !playoffs) return null;
     const season = { season: schedule.season, schedule, results: s.results, standings };
-    return { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}), ...(s.collection ? { collection: s.collection } : {}) };
+    return { season, stats: s.stats, playoffs, ...(s.scouting ? { scouting: s.scouting } : {}), ...(s.collection ? { collection: s.collection } : {}), ...(s.hofVote ? { hofVote: s.hofVote } : {}) };
   };
 
   /** After your staff calls: staff moves, retirements and development, then re-signings. */
@@ -621,7 +668,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -643,6 +690,68 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const r = pick === undefined ? gen.next() : gen.next(pick);
     if (r.done) finishDraft(r.value);
     else setDraftTurn(r.value);
+  };
+
+  /** Draft week closes and the offseason opens (after the season's review, or after taking a new job). */
+  const beginOffseasonFlow = (s: SaveState) => {
+    if (!schedule || !playoffs) return;
+    // The AI teams make their draft-week trades before the offseason opens.
+    const traded = new Set(s.trades.flatMap((t) => t.players.map((p) => p.id)));
+    const week = draftWeekTrades(s.dynasty.league, playoffs, new Set([s.userTeam]), traded);
+    // The season's own moments (milestone seasons, the champion), once.
+    const collection = s.collection ?? startCollection(s.dynasty.recordBook);
+    if (!collection.seasonDone) {
+      collectSeason(collection, s.dynasty.league, schedule.season, s.stats, computeRecords(s.dynasty.league, s.results), playoffs, s.userTeam);
+      collection.seasonDone = true;
+    }
+    persist({ ...s, dynasty: { ...s.dynasty, league: week.league }, trades: [...s.trades, ...week.trades], playoffs, collection }, true);
+    checkpoint({ season: schedule.season, picks: [], offers: [], frontOffice: true });
+    setStaffStep({ step: "decide" });
+  };
+
+  /** This week's press conference: about your last game, if you played one. */
+  const pressNow = (s: SaveState | null): PressConference | null => {
+    if (!s?.userTeam || s.weeksPlayed === 0 || s.report) return null;
+    const game = s.results.find((r) => r.week === s.weeksPlayed && (r.home === s.userTeam || r.away === s.userTeam));
+    if (!game) return null;
+    const us = game.home === s.userTeam ? game.homeScore : game.awayScore;
+    const them = game.home === s.userTeam ? game.awayScore : game.homeScore;
+    const opp = game.home === s.userTeam ? game.away : game.home;
+    // Streak, from your games in order.
+    let streak = 0;
+    for (const g of s.results.filter((r) => r.home === s.userTeam || r.away === s.userTeam).sort((a, b) => b.week - a.week)) {
+      const won = g.winner === s.userTeam;
+      if (g.winner === null || (streak > 0 && !won) || (streak < 0 && won)) break;
+      streak += won ? 1 : -1;
+    }
+    const hurt = (s.injuryNews ?? []).find((n) => n.week === s.weeksPlayed && n.team === s.userTeam && n.starter);
+    const rival = rivalryGames(rivalries(s.dynasty.league.seed), [game], s.dynasty.league.season)[0];
+    const trophy = rival ? rivalries(s.dynasty.league.seed).find((r) => r.id === rival.rivalry)?.trophy : undefined;
+    return pressConference(s.dynasty.league.seed, s.dynasty.league.season, {
+      week: s.weeksPlayed,
+      won: us > them,
+      tied: us === them,
+      margin: Math.abs(us - them),
+      opponent: s.dynasty.league.teams[opp]?.nickname ?? opp,
+      streak,
+      ...(hurt ? { starHurt: `${hurt.position} ${hurt.name}` } : {}),
+      ...(trophy && us !== them ? { rivalry: { trophy, won: us > them } } : {}),
+    });
+  };
+
+  /** The spring season before the coming season (once): your depth chart stays yours. */
+  const withSpringPlayed = (s: SaveState): SaveState => {
+    const season = s.dynasty.league.season;
+    if ((s.dynasty.springs ?? []).some((x) => x.season === season)) return s;
+    return { ...s, dynasty: withSpring(s.dynasty, new Set([s.userTeam])) };
+  };
+
+  /** Your fans' mood carries into your crowds. */
+  const withMood = (s: SaveState): SaveState => {
+    const all = s.dynasty.business ?? startLeagueBusiness(s.dynasty.league);
+    const b = all[s.userTeam];
+    if (!b || !s.office) return s;
+    return { ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, mood: s.office.fanMood } } } };
   };
 
   const controls: DynastyControls = {
@@ -691,8 +800,25 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       };
       setTimeout(step, 50);
     },
-    chooseTeam: (abbr) => {
-      if (state) persist(openSeason({ ...state, userTeam: abbr }), true);
+    chooseTeam: (abbr, role = "owner") => {
+      if (state) persist(openSeason({ ...state, userTeam: abbr, office: startFrontOffice(role) }), true);
+    },
+    press: pressNow(state),
+    takeJob: (abbr) => {
+      const s = stateRef.current;
+      if (!s?.fired || !s.fired.offers.includes(abbr)) return;
+      // A new team, a new owner: start fresh with them, then on with the offseason.
+      const next: SaveState = { ...s, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
+      setState(next);
+      stateRef.current = next;
+      beginOffseasonFlow(next);
+    },
+    answerPress: (choice) => {
+      const s = stateRef.current;
+      const p = pressNow(s);
+      if (!s || !p) return;
+      const office = answerPress(s.office ?? startFrontOffice("owner"), p, choice);
+      persist(withMood({ ...s, office }), true);
     },
     playWeek: () => {
       if (state && schedule && !seasonOver) persist(playOneWeek(state, schedule));
@@ -717,18 +843,39 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     },
     startOffseason: () => {
       if (!state || !schedule || !playoffs) return;
-      // Draft week closes: the AI teams make their trades before the offseason opens.
-      const traded = new Set(state.trades.flatMap((t) => t.players.map((p) => p.id)));
-      const week = draftWeekTrades(state.dynasty.league, playoffs, new Set([state.userTeam]), traded);
-      // The season's own moments (milestone seasons, the champion), once.
-      const collection = state.collection ?? startCollection(state.dynasty.recordBook);
-      if (!collection.seasonDone) {
-        collectSeason(collection, state.dynasty.league, schedule.season, state.stats, computeRecords(state.dynasty.league, state.results), playoffs, state.userTeam);
-        collection.seasonDone = true;
+      // The season's review: the owner (or the board) grades it.
+      const office: OfficeState = state.office ?? startFrontOffice("owner");
+      if (!office.reviews.some((r) => r.season === schedule.season)) {
+        const league = state.dynasty.league;
+        const records = computeRecords(league, state.results);
+        const rec = records.get(state.userTeam);
+        const books = closeSeasonBooks(league, state.dynasty.business ?? startLeagueBusiness(league), schedule.season, state.results, records, state.dynasty.lastWinPct ?? new Map(), new Set([state.userTeam]));
+        const team = league.teams[state.userTeam]!;
+        const starters = POSITIONS.flatMap((pos) => team.depthChart[pos].slice(0, BASE_STARTERS[pos]).map((id) => team.roster.find((p) => p.id === id)!).filter(Boolean));
+        const review = seasonReview(teamOwner(league.seed, state.userTeam), office, {
+          season: schedule.season,
+          team: state.userTeam,
+          wins: rec?.wins ?? 0,
+          losses: rec?.losses ?? 0,
+          ties: rec?.ties ?? 0,
+          expectedWins: office.expectedWins ?? 10,
+          playoffs: playoffs.seeds.some((x) => x.team === state.userTeam),
+          champion: playoffs.champion === state.userTeam,
+          profit: books.finances[state.userTeam]?.profit ?? null,
+          ratingBefore: office.lastStartRating ?? office.startRating ?? teamRatings(team).overall,
+          ratingAfter: office.startRating ?? teamRatings(team).overall,
+          starterAge: starters.reduce((n, p) => n + p.age, 0) / Math.max(1, starters.length),
+        }, league.seed);
+        const after: SaveState = withMood({ ...state, office: afterReview(office, review) });
+        if (review.fired) {
+          const weakest = allTeams(league).map((t) => ({ abbr: t.abbr, ovr: teamRatings(t).overall })).sort((a, b) => a.ovr - b.ovr).map((x) => x.abbr);
+          persist({ ...after, fired: { offers: jobOffers(weakest, state.userTeam, league.seed, schedule.season), verdict: review.verdict } }, true);
+          return;
+        }
+        beginOffseasonFlow(after);
+        return;
       }
-      persist({ ...state, dynasty: { ...state.dynasty, league: week.league }, trades: [...state.trades, ...week.trades], playoffs, collection }, true);
-      checkpoint({ season: schedule.season, picks: [], offers: [], frontOffice: true });
-      setStaffStep({ step: "decide" });
+      beginOffseasonFlow(state);
     },
     staffSeats,
     confirmStaff: (fire, renew) => {
@@ -871,6 +1018,44 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
       return [];
     },
+    setPrices: (ticket, concessions) => {
+      const s = stateRef.current;
+      if (!s || !s.userTeam || offseason || staffStep) return ["Not now."];
+      const league = s.dynasty.league;
+      const all = s.dynasty.business ?? startLeagueBusiness(league);
+      const b = all[s.userTeam]!;
+      if (homeGates(league.teams[s.userTeam]!, b, s.results, 0.5).length > 0) return ["Prices are set for the season once the first home game is played. Change them in the offseason."];
+      if (ticket < 20 || ticket > 400 || concessions < 5 || concessions > 100) return ["That price is out of bounds."];
+      persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, ticketPrice: ticket, concessionPrice: concessions } } } }, true);
+      return [];
+    },
+    startStadiumProject: (kind, financing) => {
+      const s = stateRef.current;
+      if (!s || !s.userTeam || offseason || staffStep) return ["Not now."];
+      const all = s.dynasty.business ?? startLeagueBusiness(s.dynasty.league);
+      const b = all[s.userTeam]!;
+      const problems = projectProblems(b, kind, s.userTeam, financing);
+      if (problems.length > 0) return problems;
+      const next = startProject(b, kind, s.userTeam, financing, s.dynasty.league.season);
+      persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: next } } }, true);
+      return [];
+    },
+    acceptNamingOffer: (offer) => {
+      const s = stateRef.current;
+      if (!s || !s.userTeam || offseason || staffStep) return ["Not now."];
+      const all = s.dynasty.business ?? startLeagueBusiness(s.dynasty.league);
+      const b = all[s.userTeam]!;
+      if (!namingAvailable(b, s.dynasty.league.season)) return ["The stadium already carries a sponsor's name."];
+      persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: acceptNaming(b, offer, s.dynasty.league.season) } } }, true);
+      return [];
+    },
+    toggleHofVote: (id) => {
+      const s = stateRef.current;
+      if (!s || offseason || staffStep) return;
+      const now = s.hofVote ?? [];
+      const next = now.includes(id) ? now.filter((x) => x !== id) : now.length < HOF_RULES.votesPerBallot ? [...now, id] : now;
+      persist({ ...s, hofVote: next });
+    },
     draft,
     toggleDraft: (pick) =>
       setDraft((c) => {
@@ -923,8 +1108,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setFrontOffice(on);
       updateCheckpoint((p) => ({ ...p, frontOffice: on }));
     },
+    playSpring: () => {
+      const s = stateRef.current;
+      if (s) persist(withSpringPlayed(s), true);
+    },
     startNextSeason: () => {
-      if (state) persist(openSeason({ ...state, report: null }), true);
+      // The spring season comes first, if it hasn't been played.
+      if (state) persist(openSeason({ ...withSpringPlayed(state), report: null }), true);
     },
     deleteDynasty: () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);

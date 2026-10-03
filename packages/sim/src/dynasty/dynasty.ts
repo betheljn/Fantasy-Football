@@ -1,6 +1,9 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
+import { closeSeasonBooks, startLeagueBusiness, type SeasonFinances, type TeamBusiness } from "../business/business.ts";
+import { hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
 import { rivalries, rivalryGames, type RivalryGame } from "../collect/rivalries.ts";
 import { collectSeason, collectWeek, startCollection, type Collection, type Moment, type RecordBook } from "../collect/moments.ts";
 import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
@@ -102,6 +105,10 @@ export interface CareerLine {
   seasons: number;
   games: number;
   stats: Record<PlayerStatKey, number>;
+  /** Last season he played, his jersey then, and seasons with each team. */
+  lastSeason?: number;
+  jersey?: number;
+  teamSeasons?: Record<string, number>;
 }
 
 export interface Dynasty {
@@ -121,6 +128,14 @@ export interface Dynasty {
   moments?: Moment[];
   /** Every rivalry game since the dynasty began (for the trophies and series records). */
   rivalryGames?: RivalryGame[];
+  /** The Hall of Fame, and each year's vote. */
+  hallOfFame?: Inductee[];
+  hofVotes?: HofVote[];
+  /** Every team's business (market, stadium, fans, prices, cash), and the last few seasons' books. */
+  business?: Record<string, TeamBusiness>;
+  finances?: Record<string, SeasonFinances[]>;
+  /** The last few spring seasons. */
+  springs?: SpringSeason[];
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -207,7 +222,14 @@ export function advanceSeason(dynasty: Dynasty): Dynasty {
   const played = playSeason(dynasty);
   const traded = new Set((played.trades ?? []).flatMap((t) => t.players.map((p) => p.id)));
   const draftWeek = draftWeekTrades(played.league, played.playoffs, new Set(), traded);
-  return finishSeason({ ...dynasty, league: draftWeek.league }, { ...played, trades: [...(played.trades ?? []), ...draftWeek.trades] }).dynasty;
+  const next = finishSeason({ ...dynasty, league: draftWeek.league }, { ...played, trades: [...(played.trades ?? []), ...draftWeek.trades] }).dynasty;
+  return withSpring(next);
+}
+
+/** The spring season before `dynasty.league.season`: played, its breakouts sent home better. */
+export function withSpring(dynasty: Dynasty, keepDepth: ReadonlySet<string> = new Set()): Dynasty {
+  const { spring } = playSpring(dynasty.league, dynasty.league.season);
+  return { ...dynasty, league: applyBreakouts(dynasty.league, spring, keepDepth), springs: [...(dynasty.springs ?? []), spring].slice(-3) };
 }
 
 /**
@@ -234,6 +256,8 @@ export interface PlayedSeason {
   trades?: TradeRecord[];
   /** Moments and the record book through the season (the season-long moments come at the end). */
   collection?: Collection;
+  /** Your Hall of Fame ballot (up to five names). */
+  hofVote?: PlayerId[];
 }
 
 /**
@@ -359,6 +383,9 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoi
     next.seasons++;
     next.games += line.games;
     if (next.teams.at(-1) !== line.team) next.teams.push(line.team);
+    next.lastSeason = season.season;
+    next.jersey = p.jersey;
+    next.teamSeasons = { ...(next.teamSeasons ?? {}), [line.team]: (next.teamSeasons?.[line.team] ?? 0) + 1 };
     for (const k of PLAYER_STAT_KEYS) next.stats[k] = k.endsWith("Long") ? Math.max(next.stats[k], line.stats[k]) : next.stats[k] + line.stats[k];
     careers.set(line.id, next);
   }
@@ -488,6 +515,17 @@ export function completeOffseason(
   const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
   const nextLeague: League = { ...settled.league, season: next, freeAgents };
 
+  // Close the books: every team's season finances, cash and fans.
+  // Your team (the one making its own cuts and offers) runs its own business.
+  const humans = new Set([cutChoices?.team, freeAgencyChoices?.team].filter((x): x is string => !!x));
+  const books = closeSeasonBooks(league, dynasty.business ?? startLeagueBusiness(league), league.season, played.season.results, records, dynasty.lastWinPct ?? new Map(), humans);
+  const finances: Record<string, SeasonFinances[]> = {};
+  for (const [abbr, f] of Object.entries(books.finances)) finances[abbr] = [...(dynasty.finances?.[abbr] ?? []), f].slice(-5);
+
+  // The Hall of Fame vote (on the league as the season ended).
+  const vote = hofVote(league.seed, league.season, hofBallot(dynasty, league.season), played.hofVote);
+  const newClass = inductees(vote, careers);
+
   // The season's moments and records join the dynasty's.
   const collection = played.collection ?? startCollection(dynasty.recordBook);
   if (!collection.seasonDone) collectSeason(collection, league, league.season, played.stats, records, playoffs);
@@ -527,6 +565,10 @@ export function completeOffseason(
       recordBook: collection.book,
       moments: [...(dynasty.moments ?? []), ...collection.moments],
       rivalryGames: [...(dynasty.rivalryGames ?? []), ...rivalryGames(rivalries(league.seed), played.season.results, league.season)],
+      hallOfFame: [...(dynasty.hallOfFame ?? []), ...newClass],
+      hofVotes: [...(dynasty.hofVotes ?? []), vote].slice(-5),
+      business: books.business,
+      finances,
     },
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };

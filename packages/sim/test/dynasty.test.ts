@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  withSpring,
   aiInSeasonMoves,
   aiTradeWeek,
   playWeek,
@@ -136,7 +137,9 @@ describe("playing a season week by week", () => {
     const season = { season: schedule.season, schedule, results, standings: divisionStandings(league, results) };
     const playoffs = simulatePlayoffs(league, season);
     league = draftWeekTrades(league, playoffs, new Set(), traded).league;
-    const { dynasty, log } = finishSeason({ ...START, league }, { season, stats, playoffs });
+    const { dynasty: finished, log } = finishSeason({ ...START, league }, { season, stats, playoffs });
+    // advanceSeason also plays the spring season before the next one.
+    const dynasty = withSpring(finished);
     expect(dynasty.history).toEqual(ONE.history);
     expect(dynasty.league).toEqual(ONE.league);
     expect(log.draft).toHaveLength(350);
