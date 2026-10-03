@@ -444,28 +444,44 @@ function Fired({ data }: { data: LeagueData }) {
 function Playoffs({ data }: { data: LeagueData }) {
   const t = useTheme();
   const router = useRouter();
+  const [allRounds, setAllRounds] = useState(false);
   const { playoffs, playoffRoundsShown, userTeam } = data;
   if (!playoffs) return null;
   const made = playoffs.seeds.find((s) => s.team === userTeam);
   const nextRound = PLAYOFF_ROUNDS[playoffRoundsShown];
+  const played = PLAYOFF_ROUNDS.slice(0, playoffRoundsShown);
   // Your next playoff game, if you're still alive and it's been set.
   const upcoming = nextRound ? playoffs.games.find((g) => g.round === nextRound && (g.summary.home === userTeam || g.summary.away === userTeam)) : undefined;
+  // Your playoff games so far, and the one that ended your run (if one has).
+  const mine = playoffs.games.filter((g) => played.includes(g.round) && (g.summary.home === userTeam || g.summary.away === userTeam));
+  const scoreOf = (g: (typeof mine)[number], team: string) => (g.summary.home === team ? g.summary.homeScore : g.summary.awayScore);
+  const lost = mine.find((g) => {
+    const opp = g.summary.home === userTeam ? g.summary.away : g.summary.home;
+    return scoreOf(g, opp) > scoreOf(g, userTeam);
+  });
+  const champion = made && !lost && mine.some((g) => g.round === PLAYOFF_ROUNDS[PLAYOFF_ROUNDS.length - 1]);
+  let status = "You missed the playoffs this year.";
+  if (champion) status = "Champions! You won it all.";
+  else if (lost) {
+    const opp = lost.summary.home === userTeam ? lost.summary.away : lost.summary.home;
+    status = `Out in the ${ROUND_NAMES[lost.round]}: lost ${scoreOf(lost, opp)}-${scoreOf(lost, userTeam)} to ${opp}.`;
+  } else if (made) status = `You're in as the No. ${made.seed} seed (${made.bid === "division_winner" ? "division champions" : "at-large"}).`;
+  // Only the latest round unless you ask for the whole bracket.
+  const shown = allRounds ? played : played.slice(-1);
   return (
     <Card>
       <SectionTitle>Playoffs</SectionTitle>
-      <Text style={{ color: t.muted, marginBottom: 8 }}>
-        {made ? `You're in as the No. ${made.seed} seed (${made.bid === "division_winner" ? "division champions" : "at-large"}).` : "You missed the playoffs this year."}
-      </Text>
-      {PLAYOFF_ROUNDS.slice(0, playoffRoundsShown).map((round) => (
+      <Text style={{ color: t.muted, marginBottom: 8 }}>{status}</Text>
+      {shown.map((round) => (
         <View key={round} style={{ marginBottom: 8 }}>
           <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>{ROUND_NAMES[round]}</Text>
           {playoffs.games
             .filter((g) => g.round === round)
             .map((g) => {
-              const mine = g.summary.home === userTeam || g.summary.away === userTeam;
+              const isMine = g.summary.home === userTeam || g.summary.away === userTeam;
               return (
                 <LinkRow key={g.summary.id} label={`${g.summary.away} at ${g.summary.home}, watch`} onPress={() => router.push(`/game/${g.summary.id}`)}>
-                  <Text style={{ color: t.text, fontWeight: mine ? "800" : "400", fontVariant: ["tabular-nums"] }}>
+                  <Text style={{ color: t.text, fontWeight: isMine ? "800" : "400", fontVariant: ["tabular-nums"] }}>
                     ({g.awaySeed}) {g.summary.away} {g.summary.awayScore} – ({g.homeSeed}) {g.summary.home} {g.summary.homeScore}
                     {g.summary.overtime ? " OT" : ""}
                   </Text>
@@ -474,6 +490,11 @@ function Playoffs({ data }: { data: LeagueData }) {
             })}
         </View>
       ))}
+      {played.length > 1 ? (
+        <Pressable onPress={() => setAllRounds((v) => !v)} accessibilityRole="button" style={{ paddingVertical: 6 }}>
+          <Text style={{ color: t.accent, fontWeight: "700" }}>{allRounds ? "Show the latest round only" : `Show all ${played.length} rounds`}</Text>
+        </Pressable>
+      ) : null}
       {upcoming ? (
         <View style={{ marginTop: 4 }}>
           <Button label={`Watch your ${ROUND_NAMES[upcoming.round]} game`} onPress={() => router.push(`/game/${upcoming.summary.id}`)} theme={t} />

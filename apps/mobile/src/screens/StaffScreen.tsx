@@ -21,12 +21,14 @@ export function StaffScreen(props: {
   const [fire, setFire] = useState<Set<StaffSlot>>(() => new Set(props.initial?.fire ?? []));
   // Expiring deals are renewed unless you say otherwise.
   const [renew, setRenew] = useState<Set<StaffSlot>>(() => new Set(props.initial?.renew ?? overview.seats.filter((x) => x.expiring).map((x) => x.slot)));
-  const flip = (set: Set<StaffSlot>, setter: (s: Set<StaffSlot>) => void, slot: StaffSlot) => {
-    const n = new Set(set);
-    if (n.has(slot)) n.delete(slot);
-    else n.add(slot);
-    setter(n);
-  };
+  // Each button sets its choice (tapping the one already picked changes nothing).
+  const choose = (setter: (f: (s: Set<StaffSlot>) => Set<StaffSlot>) => void, slot: StaffSlot, on: boolean) =>
+    setter((set) => {
+      const n = new Set(set);
+      if (on) n.add(slot);
+      else n.delete(slot);
+      return n;
+    });
   // Next season: a fired coach's salary still counts (as his buyout); a renewal costs its new ask; open seats need a hire.
   const renewing = overview.seats.filter((x) => x.expiring && renew.has(x.slot)).reduce((s, x) => s + x.renewAsk, 0);
   const committed = overview.committed + renewing;
@@ -40,7 +42,7 @@ export function StaffScreen(props: {
         <SectionTitle>Staff budget</SectionTitle>
         <Line label="Budget" value={formatMoney(overview.budget)} theme={t} />
         <Line label="Committed next season (incl. buyouts)" value={`−${formatMoney(committed)}`} theme={t} />
-        <Line label={`Left for ${open} new hire${open === 1 ? "" : "s"}`} value={formatMoney(overview.budget - committed)} theme={t} strong />
+        <Line label={open ? `Left for ${open} new hire${open === 1 ? "" : "s"}` : "Left over"} value={formatMoney(overview.budget - committed)} theme={t} strong />
       </Card>
       {overview.seats.map((x) => {
         const m = x.member;
@@ -63,13 +65,13 @@ export function StaffScreen(props: {
             <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
               {x.expiring ? (
                 <>
-                  <Choice label={`Renew (${formatMoney(x.renewAsk)}/yr)`} on={!letting} onPress={() => flip(renew, setRenew, x.slot)} theme={t} />
-                  <Choice label="Let go" on={letting} danger onPress={() => flip(renew, setRenew, x.slot)} theme={t} />
+                  <Choice label={`Renew (${formatMoney(x.renewAsk)}/yr)`} on={!letting} onPress={() => choose(setRenew, x.slot, true)} theme={t} />
+                  <Choice label="Let go" on={letting} danger onPress={() => choose(setRenew, x.slot, false)} theme={t} />
                 </>
               ) : (
                 <>
-                  <Choice label="Keep" on={!firing} onPress={() => flip(fire, setFire, x.slot)} theme={t} />
-                  <Choice label={`Fire (${formatMoney(x.buyout)} buyout)`} on={firing} danger onPress={() => flip(fire, setFire, x.slot)} theme={t} />
+                  <Choice label="Keep" on={!firing} onPress={() => choose(setFire, x.slot, false)} theme={t} />
+                  <Choice label={`Fire (${formatMoney(x.buyout)} buyout)`} on={firing} danger onPress={() => choose(setFire, x.slot, true)} theme={t} />
                 </>
               )}
             </View>

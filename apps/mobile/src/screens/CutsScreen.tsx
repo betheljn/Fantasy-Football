@@ -36,7 +36,11 @@ export function CutsScreen({ plan, onDone, initial, confirmLabel }: { plan: Rost
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Roster cuts</Text>
-      <Text style={{ color: t.muted }}>Get down to {plan.max}. Your front office's suggestions are checked; change anything you like.</Text>
+      <Text style={{ color: t.muted }}>
+        {plan.players.length > plan.max
+          ? `Get down to ${plan.max}. Your front office's suggestions are checked; change anything you like.`
+          : `You're at ${plan.players.length} of ${plan.max}, so nobody has to go. You can still cut anyone you like.`}
+      </Text>
       <Card>
         <Line label="Players on the roster" value={String(plan.players.length)} theme={t} />
         <Line label="Cutting" value={String(cuts.size)} theme={t} />

@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { BASE_STARTERS, displayName, playerOverall, teamRatings, type BoxScore, type GameResult, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type GameResult, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
 import { teamColors } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
@@ -298,7 +298,7 @@ export function Recap({
             row.kind === "play" ? (
               <Pressable key={i} onPress={() => onPlay(i)} accessibilityRole="button" style={{ paddingVertical: 4 }}>
                 <Text style={{ color: t.muted, fontSize: 12 }}>
-                  {row.clock} · {row.team} · win chance swung {Math.round(d * 100)} points
+                  {game.plays[i]!.quarter <= 4 ? `Q${periodLabel(game.plays[i]!.quarter)}` : periodLabel(game.plays[i]!.quarter)} {row.clock} · {row.team} · win chance swung {Math.round(d * 100)} points
                 </Text>
                 <Text style={{ color: t.text }}>{row.text}</Text>
               </Pressable>

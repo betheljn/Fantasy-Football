@@ -26,7 +26,7 @@ export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTur
             <Text style={{ color: t.text, fontSize: 20, fontWeight: "800", marginTop: 2 }}>
               Round {turn.round} of {DRAFT_ROUNDS}, pick {turn.pick} (No. {turn.overall})
             </Text>
-            <Text style={{ color: t.muted, marginTop: 4 }}>Tap a player twice to draft him. Your board ranks prospects by what your scouts believe.</Text>
+            <Text style={{ color: t.muted, marginTop: 4 }}>Tap Draft, then Confirm. Your board ranks prospects by what your scouts believe.</Text>
             <Pressable onPress={onAuto} accessibilityRole="button" style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 12, height: 34, borderRadius: 8, justifyContent: "center", borderWidth: 1, borderColor: t.border }}>
               <Text style={{ color: t.text, fontWeight: "600" }}>Auto-draft the rest (best on my board)</Text>
             </Pressable>
@@ -61,7 +61,7 @@ export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTur
             onPress={() => (on ? onPick(id) : setArmed(id))}
             accessibilityRole="button"
             accessibilityLabel={on ? `Confirm drafting ${e.prospect.player.lastName}` : `Draft ${e.prospect.player.lastName}`}
-            style={{ minWidth: 64, height: 34, paddingHorizontal: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: on ? t.accent : t.card, borderWidth: 1, borderColor: t.accent }}
+            style={{ width: 84, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: on ? t.accent : t.card, borderWidth: 1, borderColor: t.accent }}
           >
             <Text style={{ color: on ? t.onAccent : t.accent, fontWeight: "800" }}>{on ? "Confirm" : "Draft"}</Text>
           </Pressable>

@@ -72,6 +72,10 @@ export function deadMoney(c: Contract, season: number): number {
 
 /** Money in $K as "$12.4M" or "$850K". */
 export function formatMoney(k: number): string {
-  if (Math.abs(k) >= 1_000) return `$${(k / 1_000).toFixed(k >= 100_000 ? 0 : 1)}M`;
-  return `$${Math.round(k)}K`;
+  // A minus sign before the dollar sign: −$1.2M.
+  if (k < 0 && Math.round(Math.abs(k)) > 0) return `\u2212${formatMoney(-k)}`;
+  const a = Math.abs(k);
+  if (a >= 1_000) return `$${(a / 1_000).toFixed(a >= 100_000 ? 0 : 1)}M`;
+  const r = Math.round(a);
+  return r === 0 ? "$0" : `$${r}K`;
 }

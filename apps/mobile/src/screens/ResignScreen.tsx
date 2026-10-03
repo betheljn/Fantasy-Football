@@ -9,7 +9,17 @@ import { useTheme, type Theme } from "../theme";
 
 export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
   const t = useTheme();
-  const aiPicks = useMemo(() => new Set(plan.offers.filter((o) => o.aiWants).map((o) => o.player.id)), [plan]);
+  // The front office's picks, cut to what fits (in the order the team handles them, as it would anyway).
+  const aiPicks = useMemo(() => {
+    const picks = new Set<string>();
+    let spent = plan.committed;
+    for (const o of plan.offers) {
+      if (!o.aiWants || spent + o.capHit > plan.budget) continue;
+      picks.add(o.player.id);
+      spent += o.capHit;
+    }
+    return picks;
+  }, [plan]);
   const [keep, setKeep] = useState<Set<string>>(() => (initial ? new Set(initial) : aiPicks));
   const toggle = (id: string) =>
     setKeep((k) => {

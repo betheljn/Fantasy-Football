@@ -67,9 +67,12 @@ export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, front
             </Text>
             <Card>
               <Line label="Cap room (keeping enough to fill the roster)" value={formatMoney(plan.room)} theme={t} />
-              <Line label={`Your offers (${offers.size}, if they all sign)`} value={`−${formatMoney(plan.room - room)}`} theme={t} />
-              <Line label="Room left" value={formatMoney(room)} theme={t} strong />
-              <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} (you'll cut down to 72 after free agency)</Text>
+              <Line label={`Your offers (${offers.size}, if they all sign)`} value={offers.size ? `−${formatMoney(plan.room - room)}` : "$0"} theme={t} />
+              <Line label="Room left" value={formatMoney(room)} theme={t} strong bad={room < 0} />
+              <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} ({plan.rosterSize > 72 ? "you'll cut down to 72 after free agency" : plan.rosterSize < 72 ? "open spots are filled with minimum deals" : "a full 72"})</Text>
+              {room < 0 ? (
+                <Text style={{ color: t.score, fontSize: 13, marginTop: 4, fontWeight: "700" }}>No room for offers: what's left is kept to fill the roster at minimum pay.</Text>
+              ) : null}
             </Card>
             <Pressable
               onPress={() => setFrontOffice(!frontOffice)}
@@ -182,11 +185,11 @@ function Listing(props: {
   );
 }
 
-function Line({ label, value, theme: t, strong }: { label: string; value: string; theme: Theme; strong?: boolean }) {
+function Line({ label, value, theme: t, strong, bad }: { label: string; value: string; theme: Theme; strong?: boolean; bad?: boolean }) {
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 2, gap: 8 }}>
       <Text style={{ flex: 1, color: strong ? t.text : t.muted, fontWeight: strong ? "700" : "400" }}>{label}</Text>
-      <Text style={{ color: strong ? t.accent : t.text, fontWeight: strong ? "800" : "500", fontVariant: ["tabular-nums"] }}>{value}</Text>
+      <Text style={{ color: bad ? t.score : strong ? t.accent : t.text, fontWeight: strong ? "800" : "500", fontVariant: ["tabular-nums"] }}>{value}</Text>
     </View>
   );
 }
