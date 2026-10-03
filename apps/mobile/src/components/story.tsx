@@ -22,6 +22,7 @@ const KIND_LABEL: Record<Story["kind"], string> = {
   preview: "Up next",
   rivalry: "Rivalry",
   spring: "Spring",
+  lockerroom: "Locker room",
 };
 
 const KIND_TONE: Partial<Record<Story["kind"], "accent" | "bad" | "gold">> = { upset: "bad", injury: "bad", mvp: "gold", rivalry: "gold", recap: "accent", preview: "accent" };

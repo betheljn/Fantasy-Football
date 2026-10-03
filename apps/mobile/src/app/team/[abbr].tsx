@@ -15,6 +15,7 @@ import {
   salaryCap,
   staffOverall,
   teamName,
+  teamMorale,
   type StaffMember,
 } from "@dynasty/sim";
 import { useMemo } from "react";
@@ -72,6 +73,35 @@ export default function TeamScreen() {
           Payroll {formatMoney(pay)} of {formatMoney(limit)}
           {rollover > 0 ? ` (${formatMoney(cap)} cap + ${formatMoney(rollover)} rolled over)` : " (the cap)"}
         </Text>
+
+        {(() => {
+          const room = teamMorale(team, results, league.season, cap);
+          const cap1 = room.captains.offense;
+          const cap2 = room.captains.defense;
+          return (
+            <Card>
+              <SectionTitle>Locker room</SectionTitle>
+              <Text style={{ color: t.text }}>
+                Morale: <Text style={{ fontWeight: "800" }}>{room.label}</Text> ({room.value})
+              </Text>
+              {[cap1, cap2].map((c, i) =>
+                c ? (
+                  <Pressable key={c.id} onPress={() => router.push(`/player/${c.id}`)} accessibilityRole="link" style={{ paddingVertical: 3 }}>
+                    <Text style={{ color: t.text }}>
+                      <Text style={{ color: t.muted }}>{i === 0 ? "Offensive" : "Defensive"} captain: </Text>
+                      {c.position} {c.firstName} {c.lastName}
+                    </Text>
+                  </Pressable>
+                ) : null,
+              )}
+              {room.low.length ? (
+                <Text style={{ color: t.score, fontSize: 12, marginTop: 4 }}>
+                  Unhappy: {room.low.slice(0, 3).map((x) => `${x.player.position} ${x.player.lastName} (${x.morale.reasons[0] ?? x.morale.label.toLowerCase()})`).join(", ")}
+                </Text>
+              ) : null}
+            </Card>
+          );
+        })()}
 
         <Card>
           <SectionTitle>Staff</SectionTitle>

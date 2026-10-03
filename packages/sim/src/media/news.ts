@@ -19,8 +19,9 @@ import { computeAwards } from "../dynasty/awards.ts";
 import type { InjuryNews } from "../game/injuries.ts";
 import { SEASON_ENDING } from "../game/injuries.ts";
 import type { TradeRecord } from "../contracts/trades.ts";
+import { teamCaptains } from "../contracts/morale.ts";
 
-export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring";
+export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom";
 
 export interface Story {
   id: string;
@@ -205,6 +206,23 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
     else if (n >= 5) add({ key: `streak-${abbr}`, kind: "streak", importance: 26 + n * 3, teams: [abbr], players: [], headline: `${nick(league, abbr)} win ${n} straight`, body: `${league.teams[abbr]!.state} is ${formatRecord(r)} and rolling.` });
     else if (r.wins === 0 && r.ties === 0 && r.losses >= 5) add({ key: `winless-${abbr}`, kind: "streak", importance: 22, teams: [abbr], players: [], headline: `${nick(league, abbr)} still looking for a win at ${formatRecord(r)}`, body: `${league.teams[abbr]!.state} has lost all ${r.losses} games.` });
     else if (n <= -5) add({ key: `skid-${abbr}`, kind: "streak", importance: 18 + -n * 2, teams: [abbr], players: [], headline: `${nick(league, abbr)} drop ${-n} in a row`, body: `${league.teams[abbr]!.state} has slid to ${formatRecord(r)}.` });
+  }
+
+  // --- the locker room: captains step up when a skid starts, and get the credit for a run ---
+  for (const abbr of new Set(games.flatMap((g) => [g.summary.home, g.summary.away]))) {
+    const n = streak(input.results, abbr);
+    if (n !== -3 && n !== 4) continue;
+    const team = league.teams[abbr];
+    if (!team) continue;
+    const c = teamCaptains(team);
+    const captain = n < 0 ? (c.defense ?? c.offense) : (c.offense ?? c.defense);
+    if (!captain) continue;
+    const who = `${captain.position} ${fullName(captain)}`;
+    const r = rng(`locker-${abbr}`);
+    if (n < 0)
+      add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 20, teams: [abbr], players: [captain.id], headline: pickLine(r, [`Captain ${fullName(captain)} calls a players-only meeting in ${team.state}`, `${nick(league, abbr)} captain: "We're better than this"`]), body: `After three straight losses (${rec(abbr)}), ${who} gathered the ${team.nickname} without the coaches. "Nobody's pointing fingers. We fix it together."` });
+    else
+      add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 18, teams: [abbr], players: [captain.id], headline: pickLine(r, [`${nick(league, abbr)} locker room buzzing after four straight`, `Captain ${fullName(captain)} has the ${team.nickname} believing`]), body: `Four wins in a row (${rec(abbr)}), and the ${team.nickname} point to their captain. "${captain.lastName} sets the tone every day," one teammate said.` });
   }
 
   // --- rankings ---

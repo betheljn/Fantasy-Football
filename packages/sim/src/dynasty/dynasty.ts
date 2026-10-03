@@ -2,6 +2,7 @@
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
 import { teamChoices, type PerTeam } from "../choices.ts";
+import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
 import { closeSeasonBooks, startLeagueBusiness, type SeasonFinances, type TeamBusiness } from "../business/business.ts";
 import { hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
@@ -399,7 +400,12 @@ export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoi
   const retired = processRetirements(staff.league);
   const developed = developLeague(retired.league);
   const winPctNow = new Map([...records.values()].map((r) => [r.team, winPct(r)]));
-  const triggers = { awardWinners: new Set(awards.map((a) => a.player)), playoffTeams: new Set(playoffs.seeds.map((s) => s.team)), winPct: winPctNow };
+  const triggers = {
+    awardWinners: new Set(awards.map((a) => a.player)),
+    playoffTeams: new Set(playoffs.seeds.map((s) => s.team)),
+    winPct: winPctNow,
+    morale: seasonEndMorale(Object.values(league.teams), season.results),
+  };
   return { dynasty, played, awards, standings, careers, order, staff, records, retired, developed, draftClass, scouting, winPct: winPctNow, triggers };
 }
 

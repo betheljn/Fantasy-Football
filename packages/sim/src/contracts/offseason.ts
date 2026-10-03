@@ -48,6 +48,8 @@ export interface IncentiveTriggers {
   playoffTeams: ReadonlySet<string>;
   /** Last season's win pct by team (how attractive a winner is); default .500. */
   winPct?: ReadonlyMap<string, number>;
+  /** How the season ended for each player (captaincy, a late surge or collapse), in mood points. */
+  morale?: ReadonlyMap<PlayerId, number>;
 }
 
 /** Cushion teams keep under the cap when planning (share of the cap). */
@@ -287,7 +289,7 @@ function resignOffer(ctx: OpenYearContext, team: Team, p: Player): ResignOffer {
   const c = p.contract;
   const homegrown = c?.draftedBy === team.abbr;
   const aiWants = wanted(team, p);
-  const m = mood(p, teamAppeal(team, p, ctx.triggers.winPct?.get(team.abbr) ?? 0.5), 1);
+  const m = Math.round(Math.max(0, Math.min(100, mood(p, teamAppeal(team, p, ctx.triggers.winPct?.get(team.abbr) ?? 0.5), 1) + (ctx.triggers.morale?.get(p.id) ?? 0))));
   if (c?.kind === "rookie" && c.pick !== undefined && c.pick <= ctx.firstRound && !c.years.some((y) => y.option)) {
     // A first-rounder finishing his rookie deal: the fifth-year option.
     const salary = Math.max(Math.round(c.years.reduce((s, y) => s + y.salary + y.bonus, 0) / c.years.length), Math.round(OPTION_PRICE * marketValue(p, ctx.capNext, ctx.index)));

@@ -60,6 +60,7 @@ export * from "./gen/contract-gen.ts";
 export * from "./feed/capsheet.ts";
 export * from "./contracts/offseason.ts";
 export * from "./contracts/mood.ts";
+export * from "./contracts/morale.ts";
 export * from "./contracts/staffcontracts.ts";
 export * from "./save/compact.ts";
 export * from "./contracts/trades.ts";

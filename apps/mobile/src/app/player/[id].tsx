@@ -19,6 +19,12 @@ import {
   formatMoney,
   inSeasonContract,
   injuryLabel,
+  isCaptain,
+  playerMorale,
+  salaryCap,
+  teamCaptains,
+  type Player,
+  type Team,
 } from "@dynasty/sim";
 import { Card, Pill, SectionTitle, Swatch } from "../../components/ui";
 import { NEUTRAL_COLORS, teamColors } from "../../field/colors";
@@ -72,6 +78,7 @@ export default function PlayerScreen() {
         </View>
         {p.injury ? <Pill tone="bad" label={`Injured: ${injuryLabel(p.injury)}`} /> : null}
         {p.holdout ? <Pill tone="bad" label={`Holding out for a new deal: ${p.holdout.weeks} more game${p.holdout.weeks === 1 ? "" : "s"}`} /> : null}
+        {team ? <MoraleLine player={p} team={team} theme={t} /> : null}
 
         <Card>
           <Text style={{ color: t.muted, marginTop: 10 }}>
@@ -158,4 +165,18 @@ function seasonLine(pos: string, s: Record<string, number>, games: number): stri
     default:
       return `${g}: ${s.tackles} tackles, ${s.sacks} sacks, ${s.defInt} INT, ${s.passDefended} passes defended`;
   }
+}
+
+/** His morale on his team now, and what's behind it (captains wear a C). */
+function MoraleLine({ player, team, theme: t }: { player: Player; team: Team; theme: Theme }) {
+  const { league, results } = useLeague();
+  const captains = teamCaptains(team);
+  const m = playerMorale(player, team, results, league.season, salaryCap(league.seed, league.season), captains);
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      {isCaptain(captains, player.id) ? <Pill tone="gold" label={`Captain (${captains.offense?.id === player.id ? "offense" : "defense"})`} /> : null}
+      <Pill tone={m.value < 40 ? "bad" : m.value >= 57 ? "good" : "muted"} label={`Morale: ${m.label} (${m.value})`} />
+      {m.reasons.length ? <Text style={{ color: t.muted, fontSize: 12 }}>{m.reasons.slice(0, 2).join(" · ")}</Text> : null}
+    </View>
+  );
 }
