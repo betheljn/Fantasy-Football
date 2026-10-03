@@ -73,13 +73,13 @@ export function WinBar({ game, home }: { game: GameResult; home: number }) {
 export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: { game: GameResult; chances: number[]; pregame: number; upto: number; width: number; height?: number }) {
   const t = useTheme();
   const path = useMemo(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     const n = Math.max(1, game.plays.length);
     const x = (i: number) => ((i + 1) / n) * width;
     const y = (w: number) => (1 - w) * height;
     p.moveTo(0, y(pregame));
     for (let i = 0; i <= upto && i < chances.length; i++) p.lineTo(x(i), y(chances[i]!));
-    return p;
+    return p.detach();
   }, [game, chances, pregame, upto, width, height]);
   const home = teamColors(game.home).primary;
   const away = teamColors(game.away).primary;

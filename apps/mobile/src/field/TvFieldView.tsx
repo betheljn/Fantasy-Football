@@ -4,7 +4,7 @@
 // the ball arcs in real height over its shadow, and the play's moment (banner,
 // confetti) is shared with the top-down view. Everything is projected on the
 // UI thread from the sim's animation data; nothing here decides the play.
-import { Circle, Canvas, Group, Oval, Path, Rect, RoundedRect, Skia, type SkPath } from "@shopify/react-native-skia";
+import { Circle, Canvas, Group, Oval, Path, Rect, RoundedRect, Skia, type SkPathBuilder } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
@@ -58,7 +58,7 @@ function project(cam: Cam, x: number, y: number, z: number): { sx: number; sy: n
 }
 
 /** A straight line on the ground, cut where it passes behind the near plane. */
-function groundLine(path: SkPath, cam: Cam, x1: number, y1: number, x2: number, y2: number) {
+function groundLine(path: SkPathBuilder, cam: Cam, x1: number, y1: number, x2: number, y2: number) {
   "worklet";
   let a = (x1 - cam.x) * cam.dir;
   let b = (x2 - cam.x) * cam.dir;
@@ -84,8 +84,10 @@ function groundLine(path: SkPath, cam: Cam, x1: number, y1: number, x2: number, 
 }
 
 /** A rectangle on the ground (x0..x1 along the field, the full width across), cut at the near plane. */
-function groundBand(path: SkPath, cam: Cam, x0: number, x1: number, y0 = 0, y1 = FIELD_WIDTH) {
+function groundBand(path: SkPathBuilder, cam: Cam, x0: number, x1: number) {
   "worklet";
+  const y0 = 0;
+  const y1 = FIELD_WIDTH;
   const near = cam.x + NEAR * cam.dir;
   // Keep only the part in front of the camera.
   let lo = Math.min(x0, x1);
@@ -118,54 +120,57 @@ export function TvFieldView({ play, time, width, height, offense, defense, endZo
 
   // The field, rebuilt each frame as the camera moves.
   const field = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     groundBand(p, cam.value, -10, 110);
-    return p;
+    return p.detach();
   });
   const stripes = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     for (let x = 0; x < 100; x += 10) groundBand(p, cam.value, x + 5, x + 10);
-    return p;
+    return p.detach();
   });
   const lines = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     const c = cam.value;
     for (let x = 0; x <= 100; x += 5) groundLine(p, c, x, 0, x, FIELD_WIDTH);
     groundLine(p, c, -10, 0, 110, 0);
     groundLine(p, c, -10, FIELD_WIDTH, 110, FIELD_WIDTH);
     groundLine(p, c, -10, 0, -10, FIELD_WIDTH);
     groundLine(p, c, 110, 0, 110, FIELD_WIDTH);
-    return p;
+    return p.detach();
   });
+  const hashLeft = HASHES.left;
+  const hashRight = HASHES.right;
   const hashes = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     const c = cam.value;
     for (let x = 1; x < 100; x++) {
       if (x % 5 === 0) continue;
-      for (const hy of [HASHES.left, HASHES.right]) groundLine(p, c, x, hy - 0.6, x, hy + 0.6);
+      groundLine(p, c, x, hashLeft - 0.6, x, hashLeft + 0.6);
+      groundLine(p, c, x, hashRight - 0.6, x, hashRight + 0.6);
     }
-    return p;
+    return p.detach();
   });
   const leftZone = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     groundBand(p, cam.value, -10, 0);
-    return p;
+    return p.detach();
   });
   const rightZone = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     groundBand(p, cam.value, 100, 110);
-    return p;
+    return p.detach();
   });
   const los = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     groundLine(p, cam.value, play.lineOfScrimmage, 0, play.lineOfScrimmage, FIELD_WIDTH);
-    return p;
+    return p.detach();
   });
   const firstDown = useDerivedValue(() => {
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     const fd = play.firstDownLine;
     if (fd !== null && fd > 0 && fd < 100) groundLine(p, cam.value, fd, 0, fd, FIELD_WIDTH);
-    return p;
+    return p.detach();
   });
 
   // Far players first, so nearer ones stand in front (ordered by where they line up).
