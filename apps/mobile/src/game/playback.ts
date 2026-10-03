@@ -47,6 +47,35 @@ export interface PreparedPlay {
   situation: string;
   /** Score after the play. */
   score: Record<string, number>;
+  /** How the play ended, for the field's moments (banners, a tackle burst, confetti). */
+  outcome: PlayOutcome;
+}
+
+export interface PlayOutcome {
+  /** The banner to show when the play is over, and which team's colors it wears. */
+  banner: { text: string; team: string } | null;
+  touchdown: boolean;
+  /** The ball carrier was brought down (a burst where it happened). */
+  tackled: boolean;
+}
+
+/** What a play's end looks like on the field. */
+function outcomeOf(e: GameResult["plays"][number]["event"]): PlayOutcome {
+  const scrimmage = e.kind === "run" || e.kind === "pass";
+  const touchdown = "touchdown" in e && !!e.touchdown;
+  const turnover = scrimmage ? e.turnover : null;
+  const lost = scrimmage && e.fumble?.lost;
+  const sack = e.kind === "pass" && e.outcome === "sack";
+  let banner: PlayOutcome["banner"] = null;
+  if (turnover?.touchdown) banner = { text: turnover.type === "interception" ? "PICK SIX" : "SCOOP AND SCORE", team: e.defense };
+  else if (touchdown) banner = { text: "TOUCHDOWN", team: e.offense };
+  else if (turnover) banner = { text: turnover.type === "interception" ? "INTERCEPTION" : "FUMBLE", team: e.defense };
+  else if (lost) banner = { text: "FUMBLE", team: e.defense };
+  else if (sack) banner = { text: "SACK", team: e.defense };
+  else if (e.kind === "field_goal") banner = { text: e.made ? "FIELD GOAL IS GOOD" : e.blocked ? "BLOCKED" : "NO GOOD", team: e.made ? e.offense : e.defense };
+  else if (scrimmage && e.firstDown) banner = { text: "FIRST DOWN", team: e.offense };
+  const tackled = scrimmage && !touchdown && !turnover?.touchdown && e.tackler !== null;
+  return { banner, touchdown: touchdown || !!turnover?.touchdown, tackled };
 }
 
 /** Plays that have something to animate (timeouts and pre-snap flags don't). */
@@ -90,6 +119,7 @@ export function prepareGame(game: GameResult, who: PlayerLookup): PreparedPlay[]
       clock: `${p.quarter <= 4 ? `Q${p.quarter}` : periodLabel(p.quarter)} ${formatClock(e.start.clock)}`,
       situation: e.kind === "kickoff" || e.kind === "conversion" ? "" : formatDownDistance(e.start, e.offense, e.defense),
       score: p.score,
+      outcome: outcomeOf(e),
     });
   });
   return out;

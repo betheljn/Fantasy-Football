@@ -267,6 +267,12 @@ real icons (@expo/vector-icons).
    states; team colors used throughout; consistent spacing and type
 4. Game day: pregame (matchup, key players), live scoreboard in team colors
    with a win-chance bar and big plays, postgame recap (leaders, moments)
+   4b. Broadcast field graphics (decided: top-down first, clean broadcast
+       feel): painted field and end zones, players in uniform with numbers
+       and shadows, a football that arcs, a tighter camera that zooms for
+       deep balls, and restrained moments (big hits, first downs, touchdowns,
+       turnovers)
+   4c. A switchable TV-angle camera (2.5D perspective) on the same drawing
 5. Flow polish: the offseason as a guided stepper (solo and online), loading
    and empty states, transitions
 

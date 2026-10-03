@@ -10,7 +10,8 @@ import { lookupFor, pregameEdge, winChances, type GameResult, type Team } from "
 import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
-import { teamColor, uniform } from "../field/colors";
+import { TvFieldView } from "../field/TvFieldView";
+import { teamColors, uniform } from "../field/colors";
 import { usePlayback } from "../field/usePlayback";
 import { buildFeed, type FeedRow } from "../game/feed";
 import { boxScoreAfter, lineScoreAfter, scoreAfter } from "../game/live";
@@ -27,6 +28,7 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("preview");
   const [bigOnly, setBigOnly] = useState(false);
+  const [camera, setCamera] = useState<"top" | "tv">("top");
   const { who, feed, plays, wp } = useMemo(() => {
     const who = lookupFor(home, away);
     return { who, feed: buildFeed(game, who), plays: prepareGame(game, who), wp: winChances(game, pregameEdge(home, away, context?.neutralSite)) };
@@ -80,6 +82,12 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
     );
   };
 
+  // Each end zone is painted for the team defending it.
+  const endZone = (abbr: string) => {
+    const team = abbr === home.abbr ? home : away;
+    const c = teamColors(abbr);
+    return { abbr, name: team.nickname.toUpperCase(), color: c.primary, trim: c.trim };
+  };
   const leftOwner = play ? (play.direction === 1 ? play.offense : play.defense) : game.home;
   const rightOwner = play ? (play.direction === 1 ? play.defense : play.offense) : game.away;
 
@@ -97,15 +105,30 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
 
       {play && tab !== "recap" ? (
         <View style={s.fieldWrap}>
-          <FieldView
-            play={play}
-            time={pb.time}
-            width={fieldW}
-            height={fieldH}
-            offense={uniform(play.offense, play.offense === game.home)}
-            defense={uniform(play.defense, play.defense === game.home)}
-            endZones={{ left: { abbr: leftOwner, color: teamColor(leftOwner) }, right: { abbr: rightOwner, color: teamColor(rightOwner) } }}
-          />
+          {camera === "tv" ? (
+            <TvFieldView
+              play={play}
+              time={pb.time}
+              width={fieldW}
+              height={fieldH}
+              offense={uniform(play.offense, play.offense === game.home)}
+              defense={uniform(play.defense, play.defense === game.home)}
+              endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
+              colorsOf={teamColors}
+            />
+          ) : (
+            <FieldView
+              play={play}
+              time={pb.time}
+              width={fieldW}
+              height={fieldH}
+              offense={uniform(play.offense, play.offense === game.home)}
+              defense={uniform(play.defense, play.defense === game.home)}
+              endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
+              midfield={{ abbr: home.abbr, color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim }}
+              colorsOf={teamColors}
+            />
+          )}
         </View>
       ) : null}
 
@@ -121,6 +144,7 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
         <Control label="▶︎" hint="Next play" onPress={pb.next} theme={theme} />
         <Control label={`${pb.speed}×`} hint="Playback speed" onPress={pb.cycleSpeed} theme={theme} />
         <Control label="Final" hint="Skip to the end of the game" onPress={pb.toEnd} theme={theme} />
+        <Control label={camera === "tv" ? "Top" : "TV"} hint={camera === "tv" ? "Switch to the top-down view" : "Switch to the TV angle"} onPress={() => setCamera(camera === "tv" ? "top" : "tv")} theme={theme} />
       </View>
 
       <View style={{ marginHorizontal: 12, marginTop: 10 }}>

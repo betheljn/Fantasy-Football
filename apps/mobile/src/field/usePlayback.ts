@@ -13,6 +13,9 @@ export const POST_PLAY = 1.1;
 export const SPEEDS = [1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
 
+/** Touchdowns hold a little longer, for the celebration. */
+const holdFor = (play: PreparedPlay) => (play.outcome.touchdown ? 2.4 : POST_PLAY);
+
 export function usePlayback(plays: readonly PreparedPlay[]) {
   const [pos, setPos] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -56,12 +59,17 @@ export function usePlayback(plays: readonly PreparedPlay[]) {
       return;
     }
     if (done) {
-      // Hold on the result, then move on (or stop at the end of the game).
+      // Hold on the result (the clock keeps running, so the play's moment can play out), then move on.
+      const hold = holdFor(play);
+      time.value = withTiming(play.duration + hold, { duration: (hold * 1000) / speed, easing: Easing.linear });
       holdTimer.current = setTimeout(() => {
         if (pos >= last) setPlaying(false);
         else setPos(pos + 1);
-      }, (POST_PLAY * 1000) / speed);
-      return clearHold;
+      }, (hold * 1000) / speed);
+      return () => {
+        clearHold();
+        cancelAnimation(time);
+      };
     }
     const end = play.duration;
     const remaining = Math.max(0, end - time.value);
@@ -100,7 +108,8 @@ export function usePlayback(plays: readonly PreparedPlay[]) {
       setPos(last);
       setDonePos(last);
       cancelAnimation(time);
-      time.value = plays[last]?.duration ?? 0;
+      // Just past the whistle, so the last play's banner shows.
+      time.value = (plays[last]?.duration ?? 0) + 0.5;
     },
     cycleSpeed: () => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]!),
   };
