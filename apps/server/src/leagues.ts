@@ -3,6 +3,8 @@
 // ready up each week (or the deadline plays it). The server builds and plays
 // the dynasty itself; phones never decide anything.
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { advanceLeague, deadlineAfter } from "./advance.ts";
 import { hashToken, memberFor, newInviteCode, newToken } from "./auth.ts";
@@ -16,6 +18,7 @@ function fail(reply: FastifyReply, code: number, error: string) {
   return reply.code(code).send({ error });
 }
 
+const gzipped = promisify(gzip);
 const isUniqueClash = (e: unknown) => (e as { code?: string })?.code === "P2002";
 const clean = (s: string) => s.trim().replace(/\s+/g, " ");
 
@@ -35,7 +38,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
 
   async function view(leagueId: string) {
     const league = await db.league.findUniqueOrThrow({ where: { id: leagueId }, include: { members: { orderBy: { joinedAt: "asc" } } } });
-    const { state, teams } = await loadState(leagueId);
+    const { state, teams, version } = await loadState(leagueId);
     const claimedBy = new Map(league.members.filter((m) => m.team).map((m) => [m.team!, m.id]));
     return {
       id: league.id,
@@ -44,6 +47,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       phase: league.phase,
       season: state.dynasty.league.season,
       weeksPlayed: state.weeksPlayed,
+      /** Changes whenever the save does (the app downloads it again). */
+      saveVersion: version,
       weekHours: league.weekHours,
       deadline: league.deadline?.toISOString() ?? null,
       next: league.phase === "season" ? nextStep(state) : null,
@@ -222,6 +227,9 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   app.get<{ Params: { id: string } }>("/leagues/:id/save", async (req, reply) => {
     if (!(await memberOf(req, reply, req.params.id))) return reply;
     const save = await db.leagueSave.findUniqueOrThrow({ where: { leagueId: req.params.id } });
-    return reply.header("content-type", "application/json").header("x-save-version", String(save.version)).send(save.data);
+    reply.header("content-type", "application/json").header("x-save-version", String(save.version)).header("vary", "accept-encoding");
+    // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
+    if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(save.data));
+    return reply.send(save.data);
   });
 }

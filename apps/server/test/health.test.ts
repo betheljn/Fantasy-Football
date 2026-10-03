@@ -26,3 +26,16 @@ describe("health", () => {
     await down.close();
   });
 });
+
+describe("cross-origin calls", () => {
+  it("answers the browser's preflight and marks responses shareable", async () => {
+    const broken = { $queryRaw: async () => 1, $disconnect: async () => {} } as unknown as Db;
+    const app = buildApp({ db: broken });
+    const pre = await app.inject({ method: "OPTIONS", url: "/leagues", headers: { origin: "http://localhost:8081", "access-control-request-method": "POST" } });
+    expect(pre.statusCode).toBe(204);
+    expect(pre.headers["access-control-allow-headers"]).toContain("authorization");
+    const res = await app.inject({ method: "GET", url: "/health" });
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    await app.close();
+  });
+});

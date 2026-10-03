@@ -127,6 +127,9 @@ import {
   type TradeWindow,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
+import { api } from "../online/api";
+import { saveFromServer } from "../online/save";
+import { activeOnline, myLeagues, setActiveOnline, type MyLeague } from "../online/store";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
 import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
@@ -153,7 +156,7 @@ export interface LeagueData {
   playoffRoundsShown: number;
 }
 
-export type Phase = "fired" | "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
+export type Phase = "online" | "fired" | "loading" | "start" | "building" | "choose" | "season" | "simming" | "playoffs" | "complete" | "offseason" | "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts" | "report";
 
 export interface DynastyControls {
   phase: Phase;
@@ -166,6 +169,13 @@ export interface DynastyControls {
   canStartNew: boolean;
   openSlot: (slot: number) => void;
   deleteSlot: (slot: number) => void;
+  /** An online league open in the app (read-only: the server plays it), and opening or refreshing one. */
+  online: OnlineSession | null;
+  onlineOpening: boolean;
+  onlineError: string | null;
+  openOnline: (me: MyLeague, team: string) => void;
+  /** Fetch the league again if the server has moved it on. */
+  refreshOnline: () => void;
   /** Back to the save list (this dynasty stays saved). */
   closeDynasty: () => void;
   newDynasty: () => void;
@@ -252,6 +262,12 @@ export interface DynastyControls {
   deleteDynasty: () => void;
 }
 
+export interface OnlineSession extends MyLeague {
+  team: string;
+  /** The save version on screen. */
+  version: number;
+}
+
 const LeagueContext = createContext<LeagueData | null>(null);
 const DynastyContext = createContext<DynastyControls | null>(null);
 
@@ -317,6 +333,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const keptRef = useRef<ReadonlySet<string>>(new Set());
   const stateRef = useRef<SaveState | null>(null);
   stateRef.current = state;
+  const [online, setOnline] = useState<OnlineSession | null>(null);
+  const onlineRef = useRef<OnlineSession | null>(null);
+  onlineRef.current = online;
+  const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [onlineOpening, setOnlineOpening] = useState(false);
+  /** Close the online league (it won't reopen at launch). */
+  const leaveOnline = () => {
+    if (!onlineRef.current) return;
+    setOnline(null);
+    onlineRef.current = null;
+    queue(() => setActiveOnline(null));
+  };
 
   /** Saves run one after another, and a burst of quick changes (scouting taps) is written once. */
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
@@ -376,6 +404,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   };
 
   const openSlotNow = (n: number) => {
+    leaveOnline();
     setBusy("loading");
     resetOffseason();
     loadSlot(n)
@@ -394,13 +423,33 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       .finally(() => setBusy(null));
   };
 
-  // Open the slot you were playing last, if any.
+  /** Download an online league's save and open it (read-only). */
+  const loadOnline = (me: MyLeague, team: string) =>
+    api.save(me.id, me.token).then(({ text, version }) => {
+      const loaded = saveFromServer(text, team);
+      leaveSlot();
+      setState(loaded);
+      setOnline({ ...me, team, version });
+      queue(() => setActiveOnline({ id: me.id, team }));
+    });
+
+  /** The online league open last time, if it's still reachable. */
+  const reopenOnline = async () => {
+    const active = await activeOnline();
+    const me = active && (await myLeagues()).find((l) => l.id === active.id);
+    if (active && me) await loadOnline(me, active.team).catch((e: Error) => setOnlineError(e.message));
+  };
+
+  // Open the slot (or online league) you were playing last, if any.
   useEffect(() => {
     readIndex()
-      .then((index) => {
+      .then(async (index) => {
         setSlotIndex(index);
         if (index.active !== null && index.slots.some((x) => x.slot === index.active)) openSlotNow(index.active);
-        else setBusy(null);
+        else {
+          await reopenOnline();
+          setBusy(null);
+        }
       })
       .catch(() => setBusy(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -507,15 +556,16 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const depthLocked = !!state && (state.picks?.open ?? []).some((x) => x.week === state.weeksPlayed + 1 && ownPicks(x.picks, state.userTeam).length > 0);
   const boardJob = useRef<object | null>(null);
 
-  const canMakeMoves = !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
+  // Online leagues are read-only on the phone for now (the server plays them).
+  const canMakeMoves = !online && !!state?.userTeam && !offseason && !staffStep && !state?.report && !busy && !seasonOver;
 
   // Trading: preseason through the deadline, and draft week (season over, playoffs done, offseason not begun).
   const tradeWindow = useMemo((): TradeWindow | null => {
-    if (!state?.userTeam || !league || offseason || staffStep || state.report || busy) return null;
+    if (online || !state?.userTeam || !league || offseason || staffStep || state.report || busy) return null;
     if (!seasonOver) return tradesOpen(state.weeksPlayed) ? seasonWindow(league, state.weeksPlayed) : null;
     if (playoffs && state.playoffRoundsShown >= PLAYOFF_ROUND_COUNT) return draftWeekWindow(league, draftOrder(playoffs));
     return null;
-  }, [state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
+  }, [online, state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
 
   const phase: Phase =
     busy === "loading" ? "loading"
@@ -523,6 +573,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : busy === "offseason" ? "offseason"
     : busy === "simming" ? "simming"
     : !state ? "start"
+    : online ? "online"
     : state.report ? "report"
     : state.fired ? "fired"
     : staffStep?.step === "decide" ? "staff"
@@ -763,6 +814,21 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     return { ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, mood: s.office.fanMood } } } };
   };
 
+  /** Leave the open save slot (writing anything still waiting). */
+  const leaveSlot = () => {
+    const n = slotRef.current;
+    if (saveTimer.current && state && n !== null) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      const s = state;
+      queue(() => writeSlot(n, s, checkpointRef.current));
+    }
+    if (n !== null) queue(() => closeSlot().then(setSlotIndex));
+    resetOffseason();
+    setSlot(null);
+    slotRef.current = null;
+  };
+
   const controls: DynastyControls = {
     phase,
     progress,
@@ -775,21 +841,35 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       queue(() => deleteSlot(n).then(setSlotIndex));
     },
     closeDynasty: () => {
-      // Write anything still waiting, then leave.
-      if (saveTimer.current && state && slot !== null) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-        const s = state;
-        queue(() => writeSlot(slot, s, checkpointRef.current));
-      }
-      queue(() => closeSlot().then(setSlotIndex));
-      resetOffseason();
-      setSlot(null);
+      leaveSlot();
+      leaveOnline();
       setState(null);
+    },
+    online,
+    onlineOpening,
+    onlineError,
+    openOnline: (me, team) => {
+      // Not the app-wide "loading" (that swaps out every screen): the league's screen shows its own progress.
+      setOnlineError(null);
+      setOnlineOpening(true);
+      loadOnline(me, team)
+        .catch((e: Error) => setOnlineError(e.message))
+        .finally(() => setOnlineOpening(false));
+    },
+    refreshOnline: () => {
+      const o = onlineRef.current;
+      if (!o) return;
+      api.save(o.id, o.token).then(({ text, version }) => {
+        // Only if this league is still the one open and it has moved on.
+        if (onlineRef.current?.id !== o.id || version === onlineRef.current.version) return;
+        setState(saveFromServer(text, o.team));
+        setOnline({ ...o, version });
+      }, () => {});
     },
     newDynasty: () => {
       const n = freeSlot(slotIndex);
       if (n === null) return;
+      leaveOnline();
       resetOffseason();
       setSlot(n);
       slotRef.current = n;
@@ -952,10 +1032,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     rosterPlan: rosterPlanValue,
     finishCuts: (cuts) => completeWith(cuts),
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
-    canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
+    canEditDepthChart: !online && !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
     depthLocked,
     setDepthChart: (pos, ids) => {
-      if (!state || offseason || !state.userTeam || seasonOver || depthLocked) return;
+      if (!state || online || offseason || !state.userTeam || seasonOver || depthLocked) return;
       const league = state.dynasty.league;
       const team = league.teams[state.userTeam]!;
       const updated = { ...team, depthChart: { ...team.depthChart, [pos]: ids } };

@@ -17,16 +17,20 @@ import {
   draftWeekTrades,
   finishSeason,
   injuryNews,
+  logTeam,
+  logTrades,
   playWeek,
   seasonSchedule,
   seasonWindow,
   simulatePlayoffs,
   startCollection,
+  startLog,
   withSpring,
   type Collection,
   type GameSummary,
   type InSeasonMove,
   type InjuryNews,
+  type LineupLog,
   type PlayoffResult,
   type Schedule,
   type SeasonStats,
@@ -46,6 +50,8 @@ export interface SeasonProgress {
   playoffs: PlayoffResult | null;
   /** Each week, the friends' teams the AI covered (they didn't ready up). */
   covered: Array<{ week: number; teams: string[] }>;
+  /** Rosters through the season, so every game replays exactly. */
+  lineups: LineupLog;
 }
 
 /** What one advance did, for the members' feed. */
@@ -58,7 +64,7 @@ export type AdvanceSummary =
 export type NextStep = { kind: "week"; week: number } | { kind: "playoffs" } | { kind: "offseason" };
 
 export function emptyProgress(): SeasonProgress {
-  return { results: [], stats: createSeasonStats(), trades: [], collection: startCollection(undefined), injuryNews: [], moves: [], playoffs: null, covered: [] };
+  return { results: [], stats: createSeasonStats(), trades: [], collection: startCollection(undefined), injuryNews: [], moves: [], playoffs: null, covered: [], lineups: { entries: [], departed: [] } };
 }
 
 const schedules = new Map<string, Schedule>();
@@ -85,7 +91,8 @@ const tradedIds = (trades: readonly TradeRecord[]) => new Set(trades.flatMap((t)
 export function openSeason(s: LeagueState): LeagueState {
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
-  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades } };
+  const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
+  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups } };
 }
 
 /**
@@ -113,8 +120,12 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   const runOwn = new Set([...humanTeams(s)].filter((t) => ready.has(t)));
   const covered = [...humanTeams(s)].filter((t) => !ready.has(t)).sort();
   const ai = aiInSeasonMoves(played.league, sched.season, week, runOwn);
+  // (A league started before rosters were logged starts its log now.)
+  let lineups = p.lineups ?? startLog(league0);
+  for (const abbr of new Set(ai.moves.map((m) => m.team))) lineups = logTeam(lineups, ai.league.teams[abbr]!, week + 1);
   // Trade talks for next week, never involving friends' teams.
   const talks = aiTradeWeek(ai.league, seasonWindow(ai.league, week), humanTeams(s), tradedIds(p.trades));
+  lineups = logTrades(lineups, ai.league, talks.league, talks.trades, week + 1);
   const games = played.games.map((g) => g.summary);
   const progress: SeasonProgress = {
     ...p,
@@ -125,6 +136,7 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     injuryNews: [...p.injuryNews, ...hurt],
     moves: [...p.moves, ...ai.moves],
     covered: covered.length ? [...p.covered, { week, teams: covered }] : p.covered,
+    lineups,
   };
   return {
     state: { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },

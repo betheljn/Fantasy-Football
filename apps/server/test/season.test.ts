@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { replayTeams, simulateGame } from "@dynasty/sim";
 import { advance, nextStep, openSeason, scheduleOf } from "../src/season.ts";
 import { newLeagueState, type LeagueState } from "../src/state.ts";
 
@@ -46,5 +47,13 @@ describe("online season", () => {
     expect(s.dynasty.springs?.at(-1)).toBeTruthy();
     expect(nextStep(s)).toEqual({ kind: "week", week: 1 });
     expect(steps.every((k) => k === "week")).toBe(true);
+    // Every game replays exactly from the roster log (trades and moves came after many of them).
+    const before = po.state;
+    for (const g of [before.progress.results[0]!, before.progress.results[300]!, before.progress.results.at(-1)!]) {
+      const teams = replayTeams(before.progress.lineups, before.dynasty.league, g)!;
+      expect(teams).not.toBeNull();
+      const again = simulateGame(teams.home, teams.away, g.seed);
+      expect([again.score[g.home], again.score[g.away]]).toEqual([g.homeScore, g.awayScore]);
+    }
   });
 });

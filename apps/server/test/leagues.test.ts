@@ -60,7 +60,12 @@ describe("leagues", () => {
     // After the start: no joining or claiming; the save names the humans.
     expect((await post("/join", { inviteCode: league.inviteCode, displayName: "Late" })).statusCode).toBe(409);
     expect((await post(`/leagues/${league.id}/claim`, { team: "CA" }, sam)).statusCode).toBe(409);
+    const zipped = await app.inject({ method: "GET", url: `/leagues/${league.id}/save`, headers: { authorization: `Bearer ${sam}`, "accept-encoding": "gzip, deflate" } });
+    expect(zipped.headers["content-encoding"]).toBe("gzip");
+    const { gunzipSync } = await import("node:zlib");
     const save = await get(`/leagues/${league.id}/save`, sam);
+    expect(gunzipSync(zipped.rawPayload).toString()).toBe(save.body);
+    expect(zipped.rawPayload.length).toBeLessThan(save.body.length / 4);
     expect(save.headers["x-save-version"]).toBe("2");
     const state = decodeState(save.body);
     expect(Object.keys(state.humans).sort()).toEqual(["OH", "TX"]);

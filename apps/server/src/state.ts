@@ -30,7 +30,7 @@ export function teamList(s: LeagueState) {
   return allTeams(league).map((t) => ({
     abbr: t.abbr,
     name: `${t.state} ${t.nickname}`,
-    conference: conferenceOf(league, t.abbr).abbr,
+    conference: conferenceOf(league, t.abbr).name,
     division: divisionOf(league, t.abbr).name,
     overall: Math.round(teamRatings(t).overall * 10) / 10,
     wins: records.get(t.abbr)?.wins ?? 0,

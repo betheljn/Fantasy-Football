@@ -16,6 +16,16 @@
         "--clear"
       ],
       "port": 8081
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/server",
+        "dev"
+      ],
+      "port": 8787
     }
   ]
 }

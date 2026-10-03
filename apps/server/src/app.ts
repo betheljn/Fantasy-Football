@@ -16,6 +16,22 @@ export interface AppOptions {
 export function buildApp({ db, logger = false, sweepEveryMs }: AppOptions): FastifyInstance {
   const app = Fastify({ logger });
 
+  // Any origin may call (the app on the web, a phone on the LAN): requests carry
+  // a bearer token, never cookies, so there's nothing for another site to ride on.
+  app.addHook("onRequest", async (req, reply) => {
+    reply.header("access-control-allow-origin", "*");
+    reply.header("access-control-expose-headers", "x-save-version");
+    if (req.method === "OPTIONS") {
+      reply
+        .header("access-control-allow-methods", "GET, POST, OPTIONS")
+        .header("access-control-allow-headers", "authorization, content-type")
+        .header("access-control-max-age", "86400")
+        .code(204)
+        .send();
+    }
+  });
+  app.options("*", async (_req, reply) => reply.code(204).send());
+
   app.get("/health", async () => {
     let database: "up" | "down" = "up";
     try {

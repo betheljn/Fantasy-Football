@@ -29,7 +29,8 @@ function Gate() {
       </View>
     );
   }
-  if (!league?.userTeam && path !== "/") return <Redirect href="/" />;
+  // Online leagues live on the server, so their screens don't need a dynasty here.
+  if (!league?.userTeam && path !== "/" && !path.startsWith("/online")) return <Redirect href="/" />;
   return (
     <Stack
       screenOptions={{

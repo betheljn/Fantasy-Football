@@ -31,6 +31,7 @@ export * from "./league/standings.ts";
 export * from "./league/season.ts";
 export * from "./league/seasonstats.ts";
 export * from "./league/playoffs.ts";
+export * from "./league/lineups.ts";
 export * from "./league/rankings.ts";
 export * from "./dynasty/development.ts";
 export * from "./dynasty/retirement.ts";

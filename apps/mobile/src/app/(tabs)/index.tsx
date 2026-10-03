@@ -29,6 +29,7 @@ import {
   winPct,
 } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
+import { OnlineHub } from "../../online/OnlineHub";
 import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
@@ -48,6 +49,8 @@ export default function Home() {
       return <Centered theme={t}><ActivityIndicator color={t.accent} /></Centered>;
     case "start":
       return <Saves />;
+    case "online":
+      return data ? <OnlineHub /> : null;
     case "building":
       return (
         <Centered theme={t}>
@@ -632,6 +635,7 @@ function History({ data }: { data: LeagueData }) {
 function Saves() {
   const t = useTheme();
   const d = useDynasty();
+  const router = useRouter();
   const [armed, setArmed] = useState<number | null>(null);
   const stateName = (abbr: string) => STATES.find(([, a]) => a === abbr)?.[0] ?? abbr;
   return (
@@ -667,6 +671,9 @@ function Saves() {
       ) : (
         <Text style={{ color: t.muted, textAlign: "center", maxWidth: 300 }}>All save slots are full. Delete one to start another dynasty.</Text>
       )}
+      <View style={{ marginTop: 12 }}>
+        <Button label="Online leagues with friends" onPress={() => router.push("/online")} theme={t} />
+      </View>
     </Centered>
   );
 }

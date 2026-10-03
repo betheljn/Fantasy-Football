@@ -30,7 +30,9 @@ export default function GameRoute() {
     if (g) {
       const summary = results.find((r) => r.id === g.id);
       // Not played yet: play it as it would be now (the same game the week will produce).
+      // Not in an online league: that would show friends the result before the server plays it.
       if (!summary) {
+        if (d.online) return null;
         const live = playGame(league, g);
         return { home: league.teams[g.home]!, away: league.teams[g.away]!, title: `Wk ${g.week}`, game: live.result };
       }
@@ -44,8 +46,8 @@ export default function GameRoute() {
       return { ...teams, title: ROUND_NAMES[p.round], game };
     }
     return null;
-  }, [id, league, schedule, playoffs, results, log]);
-  if (!found) return <Text style={{ padding: 16, color: t.text }}>Unknown game.</Text>;
+  }, [id, league, schedule, playoffs, results, log, d.online]);
+  if (!found) return <Text style={{ padding: 16, color: t.text }}>{d.online ? "This game hasn't been played yet." : "Unknown game."}</Text>;
   return (
     <>
       <Stack.Screen options={{ title: `${found.away.abbr} at ${found.home.abbr} · ${found.title}` }} />
