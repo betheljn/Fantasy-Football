@@ -1,8 +1,10 @@
-// Milestone 17, step 1: a game you can step through. Coach the home team:
-// the game pauses before each of its snaps with the coaches' suggestion;
-// this script takes it, except it always goes for it on 4th down.
+// Milestone 17, steps 1-2: coach the home team's offense. The game pauses
+// before each of its snaps with the coaches' suggestion; this script takes
+// it, except that it always goes for it on 4th down, lines up heavy (13
+// personnel, under center) to run on 3rd and short, and hands its third
+// drive to the offensive coordinator.
 // Usage: node scripts/coach.ts [seed]
-import { Rng, describePlay, formatClock, formatDownDistance, generateTeams, lookupFor, simulateGame, startCoachedGame, type Team } from "../src/index.ts";
+import { Rng, describePlay, formatClock, formatDownDistance, generateTeams, lookupFor, simulateGame, startCoachedGame, type CoachCall, type Team } from "../src/index.ts";
 
 const seed = process.argv[2] ?? "coach";
 const [home, away] = generateTeams(new Rng(`${seed}:teams`), 2) as [Team, Team];
@@ -10,20 +12,35 @@ const game = startCoachedGame(home, away, seed, home.abbr);
 
 let shown = 0;
 let overrides = 0;
+let myDrives = 0;
+let lastDrive = -1;
 while (game.prompt) {
   const p = game.prompt;
   const s = p.situation;
+  if (p.drive !== lastDrive) {
+    lastDrive = p.drive;
+    if (++myDrives === 3) {
+      console.log(`Q${s.quarter} ${formatClock(s.clock)}  drive ${p.drive + 1}: handed to the coordinator`);
+      game.autoDrive();
+      continue;
+    }
+  }
   const gamble = s.down === 4 && (p.suggestion === "punt" || p.suggestion === "field_goal");
-  const call = gamble ? (s.distance <= 3 ? "run" : "pass") : p.suggestion;
-  if (shown < 6 || gamble) {
+  const heavy = s.down === 3 && s.distance <= 2 && (p.suggestion === "run" || p.suggestion === "pass") && p.personnelOptions.includes("13");
+  const call: CoachCall | undefined = gamble
+    ? { call: s.distance <= 3 ? "run" : "pass" }
+    : heavy
+      ? { call: "run", personnel: "13", set: "under_center" }
+      : undefined;
+  if (shown < 4 || call) {
+    const mine = call ? `${call.call}${call.personnel ? ` from ${call.personnel} ${call.set}` : ""}${gamble ? " (going for it)" : ""}` : "ok";
     console.log(
-      `Q${s.quarter} ${formatClock(s.clock)}  ${formatDownDistance(s, p.team, p.opponent)}  ${p.formation.personnel} ${p.formation.set}  ` +
-        `coaches say ${p.suggestion.padEnd(10)} options [${p.options.join(", ")}]  -> ${call}${gamble ? "  (going for it)" : ""}`,
+      `Q${s.quarter} ${formatClock(s.clock)}  ${formatDownDistance(s, p.team, p.opponent).padEnd(18)} coaches: ${p.suggestion.padEnd(10)} from ${p.formation.personnel} ${p.formation.set.padEnd(12)} -> ${mine}`,
     );
     shown++;
   }
-  if (gamble) overrides++;
-  game.answer(gamble ? { call } : undefined);
+  if (call) overrides++;
+  game.answer(call);
 }
 
 const coached = game.result!;

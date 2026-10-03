@@ -10,7 +10,7 @@ import { simulatePass } from "../play/pass.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
 import { chooseDefense, chooseOffense } from "./scheme.ts";
-import type { OffenseFormation } from "../play/formation.ts";
+import { buildOffense, PERSONNEL, type OffenseFormation, type OffenseSet, type Personnel } from "../play/formation.ts";
 import { clockMistakeChance } from "../play/coaching.ts";
 import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
@@ -73,16 +73,29 @@ export interface SnapPrompt {
   margin: number;
   clockRunning: boolean;
   timeouts: { own: number; opponent: number };
-  /** The personnel and alignment the offense has lined up in. */
+  /** The personnel and alignment the coaches sent in (answering nothing keeps it). */
   formation: OffenseFormation;
+  /** Personnel groups the depth chart can fill. */
+  personnelOptions: Personnel[];
   /** What the coaching staff would call (answering nothing takes it). */
   suggestion: PlayCall;
   options: PlayCall[];
 }
 
-/** A person's answer to a prompt. */
+/** A person's answer to a prompt: the play, and optionally a different personnel group or alignment. */
 export interface CoachCall {
   call: PlayCall;
+  personnel?: Personnel;
+  set?: OffenseSet;
+}
+
+/** Personnel groups a team can put on the field (enough backs, tight ends and receivers on its depth chart). */
+export function personnelOptions(team: Team): Personnel[] {
+  const have = (pos: "RB" | "TE" | "WR") => team.depthChart[pos].length;
+  return (Object.keys(PERSONNEL) as Personnel[]).filter((p) => {
+    const n = PERSONNEL[p];
+    return have("RB") >= n.rb && have("TE") >= n.te && have("WR") >= n.wr;
+  });
 }
 
 /** Longest field goal anyone may try (yards). */
@@ -207,11 +220,12 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
 
   for (;;) {
     // Personnel comes first (it shapes the run/pass call); the defense answers what it sees.
-    const offenseFormation = chooseOffense(rng, offense, callContext());
+    let offenseFormation = chooseOffense(rng, offense, callContext());
     const cc = { ...callContext(), personnel: offenseFormation.personnel, set: offenseFormation.set };
     let call = callPlay(rng, cc);
     if (input.coach === off) {
       const options = callOptions(cc, call);
+      const groups = personnelOptions(offense);
       const answer = yield {
         kind: "offense",
         team: off,
@@ -221,12 +235,21 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
         clockRunning,
         timeouts: { own: timeouts[off]!, opponent: timeouts[def]! },
         formation: offenseFormation,
+        personnelOptions: groups,
         suggestion: call,
         options,
       };
       if (answer) {
         if (!options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
         call = answer.call;
+        const personnel = answer.personnel ?? offenseFormation.personnel;
+        const set = answer.set ?? offenseFormation.set;
+        if (personnel !== offenseFormation.personnel || set !== offenseFormation.set) {
+          if (!groups.includes(personnel)) throw new Error(`Can't line up in ${personnel} personnel`);
+          // Keep the coaches' running-back rotation for this snap.
+          const rotated = offenseFormation.rbs[0]?.id !== starters(offense, "RB", 1)[0]?.id;
+          offenseFormation = buildOffense(offense, personnel, set, rotated);
+        }
       }
     }
     const scrimmageCall = call === "run" || call === "pass";

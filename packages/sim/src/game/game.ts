@@ -71,15 +71,20 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
   return r.value;
 }
 
+/** A pause in a coached game: the snap, and which of the game's drives it's in. */
+export type GamePrompt = SnapPrompt & { drive: number };
+
 /** A coached game in progress: the call it's waiting on, or the finished result. */
 export interface CoachedGame {
   /** The snap waiting on a call (null once the game is over). */
-  prompt: SnapPrompt | null;
+  prompt: GamePrompt | null;
   result: GameResult | null;
   /** Answers so far (null = took the coaches' call): with the seed, everything needed to pick the game up again. */
   calls: Array<CoachCall | null>;
   /** Answer the waiting prompt (nothing = take the coaches' call). */
   answer(call?: CoachCall): void;
+  /** Hand the rest of this drive to the offensive coordinator: his calls until the next drive (or the end). */
+  autoDrive(): void;
 }
 
 /** Start (or pick up, given the answers so far) a game that `coach` calls. */
@@ -94,8 +99,12 @@ export function startCoachedGame(home: Team, away: Team, seed: number | string, 
       game.calls.push(call ?? null);
       advance(steps.next(call));
     },
+    autoDrive() {
+      const drive = game.prompt?.drive;
+      while (game.prompt && game.prompt.drive === drive) game.answer();
+    },
   };
-  const advance = (r: IteratorResult<SnapPrompt, GameResult>) => {
+  const advance = (r: IteratorResult<GamePrompt, GameResult>) => {
     game.prompt = r.done ? null : r.value;
     game.result = r.done ? r.value : null;
   };
@@ -111,7 +120,7 @@ export function startCoachedGame(home: Team, away: Team, seed: number | string, 
  * A game, pausing before each snap of the coached team on offense
  * (options.coach) for a call. With nobody coached it never pauses.
  */
-export function* gameSteps(home: Team, away: Team, seed: number | string, options: GameOptions = {}): Generator<SnapPrompt, GameResult, CoachCall | undefined> {
+export function* gameSteps(home: Team, away: Team, seed: number | string, options: GameOptions = {}): Generator<GamePrompt, GameResult, CoachCall | undefined> {
 
   const rng = new Rng(seed);
   const answers: Array<CoachCall | null> = [];
@@ -232,7 +241,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     });
     let step = steps.next();
     while (!step.done) {
-      const answer = yield step.value;
+      const answer = yield { ...step.value, drive: drives.length };
       answers.push(answer ?? null);
       step = steps.next(answer);
     }
