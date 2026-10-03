@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { STAFF_ROLE_NAMES, formatMoney, type StaffOpening, type StaffSeat, type StaffSlot } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 const REASON: Record<string, string> = { fired: "fired", retired: "retired", "contract expired": "deal ended", "hired away": "hired away" };
@@ -35,51 +35,55 @@ export function StaffScreen(props: {
   const open = overview.seats.filter((x) => fire.has(x.slot) || (x.expiring && !renew.has(x.slot))).length;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Your staff</Text>
-      <Text style={{ color: t.muted }}>Keep, renew or replace your coaches and front office. Firing someone pays out the rest of his deal.</Text>
-      <Card>
-        <SectionTitle>Staff budget</SectionTitle>
-        <Line label="Budget" value={formatMoney(overview.budget)} theme={t} />
-        <Line label="Committed next season (incl. buyouts)" value={`−${formatMoney(committed)}`} theme={t} />
-        <Line label={open ? `Left for ${open} new hire${open === 1 ? "" : "s"}` : "Left over"} value={formatMoney(overview.budget - committed)} theme={t} strong />
-      </Card>
-      {overview.seats.map((x) => {
-        const m = x.member;
-        const firing = fire.has(x.slot);
-        const letting = x.expiring && !renew.has(x.slot);
-        return (
-          <Card key={x.slot} style={{ borderColor: firing || letting ? t.score : t.border }}>
-            <Text style={{ color: t.muted, fontSize: 12, fontWeight: "700" }}>{STAFF_ROLE_NAMES[m.role].toUpperCase()}</Text>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 2 }}>
-              <Text style={{ flex: 1, color: t.text, fontSize: 16, fontWeight: "700" }}>
-                {m.firstName} {m.lastName}
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Your staff</Text>
+        <Text style={{ color: t.muted }}>Keep, renew or replace your coaches and front office. Firing someone pays out the rest of his deal.</Text>
+        <Card>
+          <SectionTitle>Staff budget</SectionTitle>
+          <Line label="Budget" value={formatMoney(overview.budget)} theme={t} />
+          <Line label="Committed next season (incl. buyouts)" value={`−${formatMoney(committed)}`} theme={t} />
+          <Line label={open ? `Left for ${open} new hire${open === 1 ? "" : "s"}` : "Left over"} value={formatMoney(overview.budget - committed)} theme={t} strong />
+        </Card>
+        {overview.seats.map((x) => {
+          const m = x.member;
+          const firing = fire.has(x.slot);
+          const letting = x.expiring && !renew.has(x.slot);
+          return (
+            <Card key={x.slot} style={{ borderColor: firing || letting ? t.score : t.border }}>
+              <Text style={{ color: t.muted, fontSize: 12, fontWeight: "700" }}>{STAFF_ROLE_NAMES[m.role].toUpperCase()}</Text>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 2 }}>
+                <Text style={{ flex: 1, color: t.text, fontSize: 16, fontWeight: "700" }}>
+                  {m.firstName} {m.lastName}
+                </Text>
+                <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{x.overall}</Text>
+              </View>
+              <Text style={{ color: t.muted, fontSize: 12, marginTop: 2 }}>
+                age {m.age} · {m.experience} yrs experience
+                {m.contract ? ` · ${formatMoney(m.contract.salary)}/yr through ${m.contract.through}` : ""}
+                {x.mayRetire ? " · may retire" : ""}
               </Text>
-              <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{x.overall}</Text>
-            </View>
-            <Text style={{ color: t.muted, fontSize: 12, marginTop: 2 }}>
-              age {m.age} · {m.experience} yrs experience
-              {m.contract ? ` · ${formatMoney(m.contract.salary)}/yr through ${m.contract.through}` : ""}
-              {x.mayRetire ? " · may retire" : ""}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-              {x.expiring ? (
-                <>
-                  <Choice label={`Renew (${formatMoney(x.renewAsk)}/yr)`} on={!letting} onPress={() => choose(setRenew, x.slot, true)} theme={t} />
-                  <Choice label="Let go" on={letting} danger onPress={() => choose(setRenew, x.slot, false)} theme={t} />
-                </>
-              ) : (
-                <>
-                  <Choice label="Keep" on={!firing} onPress={() => choose(setFire, x.slot, false)} theme={t} />
-                  <Choice label={`Fire (${formatMoney(x.buyout)} buyout)`} on={firing} danger onPress={() => choose(setFire, x.slot, true)} theme={t} />
-                </>
-              )}
-            </View>
-          </Card>
-        );
-      })}
-      <Primary label={props.confirmLabel ?? (open > 0 ? `Continue to hiring (${open} open)` : "Continue")} onPress={() => props.onConfirm(fire, renew)} theme={t} />
-    </ScrollView>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                {x.expiring ? (
+                  <>
+                    <Choice label={`Renew (${formatMoney(x.renewAsk)}/yr)`} on={!letting} onPress={() => choose(setRenew, x.slot, true)} theme={t} />
+                    <Choice label="Let go" on={letting} danger onPress={() => choose(setRenew, x.slot, false)} theme={t} />
+                  </>
+                ) : (
+                  <>
+                    <Choice label="Keep" on={!firing} onPress={() => choose(setFire, x.slot, false)} theme={t} />
+                    <Choice label={`Fire (${formatMoney(x.buyout)} buyout)`} on={firing} danger onPress={() => choose(setFire, x.slot, true)} theme={t} />
+                  </>
+                )}
+              </View>
+            </Card>
+          );
+        })}
+      </ScrollView>
+      <StickyFooter>
+        <Primary label={props.confirmLabel ?? (open > 0 ? `Continue to hiring (${open} open)` : "Continue")} onPress={() => props.onConfirm(fire, renew)} theme={t} />
+      </StickyFooter>
+    </View>
   );
 }
 
@@ -96,34 +100,38 @@ export function HireScreen(props: {
   const room = openings.budget - openings.committed - spent;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Hiring</Text>
-      <Text style={{ color: t.muted }}>Pick someone for each open seat, or leave it to your front office. You hire before the other teams, so nobody can take your choice.</Text>
-      <Card>
-        <Line label="Staff budget" value={formatMoney(openings.budget)} theme={t} />
-        <Line label="Committed (incl. buyouts)" value={`−${formatMoney(openings.committed)}`} theme={t} />
-        <Line label="Your picks" value={`−${formatMoney(spent)}`} theme={t} />
-        <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
-      </Card>
-      {openings.openings.map((o) => (
-        <Opening
-          key={o.slot}
-          opening={o}
-          picked={picks.get(o.slot)}
-          room={room}
-          onPick={(id) =>
-            setPicks((p) => {
-              const n = new Map(p);
-              if (id) n.set(o.slot, id);
-              else n.delete(o.slot);
-              return n;
-            })
-          }
-          theme={t}
-        />
-      ))}
-      <Primary label={props.confirmLabel ?? "Hire and continue"} onPress={() => props.onConfirm(picks)} theme={t} />
-    </ScrollView>
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Hiring</Text>
+        <Text style={{ color: t.muted }}>Pick someone for each open seat, or leave it to your front office. You hire before the other teams, so nobody can take your choice.</Text>
+        <Card>
+          <Line label="Staff budget" value={formatMoney(openings.budget)} theme={t} />
+          <Line label="Committed (incl. buyouts)" value={`−${formatMoney(openings.committed)}`} theme={t} />
+          <Line label="Your picks" value={`−${formatMoney(spent)}`} theme={t} />
+          <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
+        </Card>
+        {openings.openings.map((o) => (
+          <Opening
+            key={o.slot}
+            opening={o}
+            picked={picks.get(o.slot)}
+            room={room}
+            onPick={(id) =>
+              setPicks((p) => {
+                const n = new Map(p);
+                if (id) n.set(o.slot, id);
+                else n.delete(o.slot);
+                return n;
+              })
+            }
+            theme={t}
+          />
+        ))}
+      </ScrollView>
+      <StickyFooter>
+        <Primary label={props.confirmLabel ?? (picks.size ? "Hire and continue" : "Continue (front office hires)")} onPress={() => props.onConfirm(picks)} theme={t} />
+      </StickyFooter>
+    </View>
   );
 }
 

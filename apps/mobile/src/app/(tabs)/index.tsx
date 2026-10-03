@@ -189,7 +189,6 @@ function SeasonHub({ data }: { data: LeagueData }) {
   const div = standings.find((x) => x.teams.some((r) => r.team === userTeam));
   const place = div ? div.teams.findIndex((r) => r.team === userTeam) + 1 : 0;
   const rank = rankings.find((e) => e.team === userTeam)?.rank;
-  const postseason = d.phase === "playoffs" || d.phase === "complete";
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
@@ -206,7 +205,6 @@ function SeasonHub({ data }: { data: LeagueData }) {
       </View>
 
       <NextUp data={data} />
-      {postseason && playoffs ? <Playoffs data={data} /> : null}
       <NeedsYou data={data} />
       <LastWeek data={data} />
     </ScrollView>
@@ -238,6 +236,7 @@ function NextUp({ data }: { data: LeagueData }) {
         <SectionTitle>Playoffs</SectionTitle>
         <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{ROUND_NAMES[round]}</Text>
         <Button label={`Play the ${ROUND_NAMES[round]}`} onPress={d.playPlayoffRound} theme={t} primary />
+        <PlayoffDetails data={data} />
       </Card>
     );
   }
@@ -252,6 +251,7 @@ function NextUp({ data }: { data: LeagueData }) {
         </View>
         <Text style={{ color: t.muted }}>{champ === userTeam ? "That's you. Champions!" : `They beat ${teamName(league.teams[playoffs.runnerUp]!)} in the final.`}</Text>
         <Button label="Start the offseason" onPress={d.startOffseason} theme={t} primary />
+        <PlayoffDetails data={data} folded />
       </Card>
     );
   }
@@ -441,10 +441,11 @@ function Fired({ data }: { data: LeagueData }) {
   );
 }
 
-function Playoffs({ data }: { data: LeagueData }) {
+/** Your playoff run and the bracket, inside the playoff and champion cards (the bracket starts folded away once it's over). */
+function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }) {
   const t = useTheme();
   const router = useRouter();
-  const [allRounds, setAllRounds] = useState(false);
+  const [view, setView] = useState<"none" | "latest" | "all">(folded ? "none" : "latest");
   const { playoffs, playoffRoundsShown, userTeam } = data;
   if (!playoffs) return null;
   const made = playoffs.seeds.find((s) => s.team === userTeam);
@@ -467,11 +468,16 @@ function Playoffs({ data }: { data: LeagueData }) {
     status = `Out in the ${ROUND_NAMES[lost.round]}: lost ${scoreOf(lost, opp)}-${scoreOf(lost, userTeam)} to ${opp}.`;
   } else if (made) status = `You're in as the No. ${made.seed} seed (${made.bid === "division_winner" ? "division champions" : "at-large"}).`;
   // Only the latest round unless you ask for the whole bracket.
-  const shown = allRounds ? played : played.slice(-1);
+  const shown = view === "all" ? played : view === "latest" ? played.slice(-1) : [];
+  const toggle =
+    view === "all"
+      ? { label: folded ? "Hide the bracket" : "Show the latest round only", next: folded ? ("none" as const) : ("latest" as const) }
+      : view === "none" || played.length > 1
+        ? { label: view === "none" ? "See the bracket" : `Show all ${played.length} rounds`, next: "all" as const }
+        : null;
   return (
-    <Card>
-      <SectionTitle>Playoffs</SectionTitle>
-      <Text style={{ color: t.muted, marginBottom: 8 }}>{status}</Text>
+    <View>
+      {!(folded && champion) ? <Text style={{ color: t.muted, marginBottom: 8 }}>{status}</Text> : null}
       {shown.map((round) => (
         <View key={round} style={{ marginBottom: 8 }}>
           <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>{ROUND_NAMES[round]}</Text>
@@ -490,9 +496,9 @@ function Playoffs({ data }: { data: LeagueData }) {
             })}
         </View>
       ))}
-      {played.length > 1 ? (
-        <Pressable onPress={() => setAllRounds((v) => !v)} accessibilityRole="button" style={{ paddingVertical: 6 }}>
-          <Text style={{ color: t.accent, fontWeight: "700" }}>{allRounds ? "Show the latest round only" : `Show all ${played.length} rounds`}</Text>
+      {toggle && played.length > 0 ? (
+        <Pressable onPress={() => setView(toggle.next)} accessibilityRole="button" style={{ paddingVertical: 6 }}>
+          <Text style={{ color: t.accent, fontWeight: "700" }}>{toggle.label}</Text>
         </Pressable>
       ) : null}
       {upcoming ? (
@@ -500,7 +506,7 @@ function Playoffs({ data }: { data: LeagueData }) {
           <Button label={`Watch your ${ROUND_NAMES[upcoming.round]} game`} onPress={() => router.push(`/game/${upcoming.summary.id}`)} theme={t} />
         </View>
       ) : null}
-    </Card>
+    </View>
   );
 }
 

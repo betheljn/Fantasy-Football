@@ -14,8 +14,12 @@ import {
   createScouting,
   generateDraftClass,
   knowledge,
+  draftWithBoards,
+  offseasonContractPlan,
   offseasonDraft,
+  offseasonFreeAgencyPlan,
   offseasonRosterPlan,
+  resignFits,
   resolveContracts,
   runDraft,
   runOffseasonFreeAgency,
@@ -184,6 +188,22 @@ describe("a staged offseason with your own scouting and draft picks", () => {
     const { dynasty } = completeOffseason(state, r.value);
     for (const id of mine) expect(dynasty.league.teams[me]!.roster.some((p) => p.id === id)).toBe(true);
     for (const t of allTeams(dynasty.league)) expect(validateTeam(t)).toEqual([]);
+  }, 60_000);
+});
+
+describe("re-signing budget", () => {
+  it("keeps enough back to fill the roster, so nobody opens free agency over the cap", () => {
+    const begun = beginOffseason(START, playSeasonLike());
+    // The screen's fit check: keeping everyone fits only while the rest of the roster can still be filled at the minimum.
+    const plan = offseasonContractPlan(begun, allTeams(START.league)[0]!.abbr);
+    const fits = resignFits(plan, new Set(plan.offers.map((o) => o.player.id)));
+    const kept = plan.offers.filter((o) => fits.get(o.player.id));
+    const spent = kept.reduce((s, o) => s + o.capHit, 0);
+    expect(plan.committed + spent + Math.max(0, plan.openSpots - kept.length) * plan.minimum).toBeLessThanOrEqual(plan.budget);
+
+    const state = resolveContracts(begun);
+    const draft = draftWithBoards(state, new Map());
+    for (const t of allTeams(START.league)) expect(offseasonFreeAgencyPlan(state, draft, t.abbr).room).toBeGreaterThanOrEqual(0);
   }, 60_000);
 });
 

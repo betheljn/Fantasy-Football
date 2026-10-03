@@ -165,6 +165,17 @@ export function Button({ label, onPress, primary, small, disabled }: { label: st
   );
 }
 
+/** A bar pinned under a long screen that holds its main action, so it's always in reach. */
+export function StickyFooter({ children, note }: { children: ReactNode; note?: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ backgroundColor: t.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, gap: 6 }}>
+      {note ? <Text style={{ color: t.muted, fontSize: 12, textAlign: "center" }}>{note}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
 /** A labeled text box. */
 export function Field({ label, ...props }: { label: string } & TextInputProps) {
   const t = useTheme();

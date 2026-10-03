@@ -135,7 +135,37 @@ export interface ContractPlan {
   budget: number;
   /** Already committed to players under contract next season. */
   committed: number;
+  /** Roster spots still open after players under contract and the draft class (each held at the minimum until filled). */
+  openSpots: number;
+  /** The league minimum salary next season. */
+  minimum: number;
   offers: ResignOffer[];
+}
+
+/** Money held back to fill the roster at the minimum once `kept` expiring players have re-signed. */
+export function fillReserve(plan: Pick<ContractPlan, "openSpots" | "minimum">, kept: number): number {
+  return Math.max(0, plan.openSpots - kept) * plan.minimum;
+}
+
+/**
+ * Which of the players you'd keep fit, walking the offers in the order the
+ * team handles them (if all say yes): each must fit the budget while still
+ * leaving enough to fill the rest of the roster at the minimum.
+ */
+export function resignFits(plan: ContractPlan, keep: ReadonlySet<PlayerId>): Map<PlayerId, boolean> {
+  const fits = new Map<PlayerId, boolean>();
+  let committed = plan.committed;
+  let kept = 0;
+  for (const o of plan.offers) {
+    if (!keep.has(o.player.id)) continue;
+    const ok = committed + o.capHit + fillReserve(plan, kept + 1) <= plan.budget;
+    fits.set(o.player.id, ok);
+    if (ok) {
+      committed += o.capHit;
+      kept++;
+    }
+  }
+  return fits;
 }
 
 interface OpenYearContext {
@@ -181,8 +211,11 @@ function teamBudget(ctx: OpenYearContext, before: Team, team: Team) {
   // Budget for re-signing: the cap, minus what's committed, the rookie class and a cushion.
   const rookieBill = (ctx.picks.get(team.abbr) ?? []).reduce((s, pk) => s + rookieScale(pk, ctx.capNext), 0);
   const budget = ctx.capNext + rollover - incentives - rookieBill - PLANNING_BUFFER * ctx.capNext;
-  const committed = team.roster.filter((p) => continuing(p, ctx.next)).reduce((s, p) => s + capHit(p.contract!, ctx.next), 0) + pendingDead(team, ctx.next);
-  return { rollover, incentives, rookieBill, budget, committed };
+  const staying = team.roster.filter((p) => continuing(p, ctx.next));
+  const committed = staying.reduce((s, p) => s + capHit(p.contract!, ctx.next), 0) + pendingDead(team, ctx.next);
+  // Spots the roster still needs filled; re-signings fill them first, the rest are held at the minimum.
+  const openSpots = Math.max(0, ROSTER_MAX - staying.length - (ctx.picks.get(team.abbr)?.length ?? 0));
+  return { rollover, incentives, rookieBill, budget, committed, openSpots, minimum: minimumSalary(ctx.capNext) };
 }
 
 /** Expiring players, most valued first (the order teams work through them). */
@@ -250,6 +283,7 @@ export function openContractYear(played: League, league: League, triggers: Incen
     const plan = teamBudget(ctx, played.teams[abbr]!, team);
     const { rollover, incentives, budget } = plan;
     let committed = plan.committed;
+    let kept = 0;
     let accelerated = 0;
     let roster = [...team.roster];
     const release = (p: Player, kind: ContractMoveKind) => {
@@ -271,11 +305,13 @@ export function openContractYear(played: League, league: League, triggers: Incen
         release(p, "declined");
         continue;
       }
-      if (committed + offer.capHit > budget) {
+      // Keep enough back to fill the rest of the roster at the minimum.
+      if (committed + offer.capHit + fillReserve(plan, kept + 1) > budget) {
         release(p, "released");
         continue;
       }
       committed += offer.capHit;
+      kept++;
       roster = roster.map((q) => (q.id === p.id ? { ...q, contract: offer.deal } : q));
       moves.push({ kind: offer.kind === "option" ? "option" : "re-signed", team: abbr, player: p, contract: offer.deal });
     }
@@ -295,9 +331,9 @@ export function openContractYear(played: League, league: League, triggers: Incen
         ...(c.draftedBy ? { draftedBy: c.draftedBy } : {}),
       });
       const extra = capHit(deal, next) - capHit(c, next);
-      if (committed + extra > budget) continue;
-      // The unpaid bonus from the old deal accelerates onto this season's cap.
+      // The unpaid bonus from the old deal accelerates onto this season's cap, so it has to fit too.
       const leftover = c.years.filter((y) => y.season >= next).reduce((s, y) => s + y.bonus, 0);
+      if (committed + extra + leftover + fillReserve(plan, kept) > budget) continue;
       committed += extra + leftover;
       accelerated += leftover;
       roster = roster.map((q) => (q.id === p.id ? { ...q, contract: deal } : q));
@@ -324,6 +360,11 @@ export function signDraftPicks(league: League, picks: readonly DraftPick[], next
 function spendable(team: Team, capNext: number, next: number): number {
   const open = Math.max(0, ROSTER_MAX - team.roster.length);
   return capNext + (team.cap?.rollover ?? 0) - payroll(team, next) - open * minimumSalary(capNext) - PLANNING_BUFFER * capNext;
+}
+
+/** What a team can pay one more player: its room, plus the minimum held for the open spot he'd fill. */
+function signingRoom(team: Team, capNext: number, next: number): number {
+  return spendable(team, capNext, next) + (team.roster.length < ROSTER_MAX ? minimumSalary(capNext) : 0);
 }
 
 export interface FreeAgencyResult {
@@ -365,8 +406,10 @@ interface FreeAgencyContext {
 function aiBid(ctx: FreeAgencyContext, t: Team, p: Player, ask: number, years: number): Contract | null {
   const atPos = t.roster.filter((q) => q.position === p.position);
   if (atPos.length >= ROSTER_TEMPLATE[p.position] + 2) return null;
-  if (!wanted({ ...t, roster: [...t.roster, p] }, p)) return null;
-  const room = spendable(t, ctx.capNext, ctx.next);
+  // Short at his position (below the roster minimum): any capable player will do.
+  const need = atPos.length < ROSTER_MIN[p.position] && playerOverall(p) >= 45;
+  if (!need && !wanted({ ...t, roster: [...t.roster, p] }, p)) return null;
+  const room = signingRoom(t, ctx.capNext, ctx.next);
   const noise = new Rng(`${ctx.seed}:${ctx.next}:fa:${p.id}:${t.abbr}`).normal(0, 0.05);
   const eagerness = 1 + (wouldStart(t, p) ? 0.12 : 0) + noise;
   let annual = ask * eagerness * (1 - hometownDiscount(p, t));
@@ -419,7 +462,7 @@ export function runFreeAgency(
         const mine = own.offers.get(p.id);
         if (mine) {
           deal = veteranContract(p, capNext, { kind: "veteran", signed: next, years: mine.years, annual: mine.annual });
-          if (capHit(deal, next) > spendable(t, capNext, next)) deal = null;
+          if (capHit(deal, next) > signingRoom(t, capNext, next)) deal = null;
         } else deal = own.frontOffice ? aiBid(ctx, t, p, ask, years) : null;
       } else deal = aiBid(ctx, t, p, ask, years);
       if (!deal) continue;

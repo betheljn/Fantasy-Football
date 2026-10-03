@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { POSITIONS, formatMoney, type Position, type RosterPlan, type RosterPlanPlayer } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 export function CutsScreen({ plan, onDone, initial, confirmLabel }: { plan: RosterPlan; onDone: (cuts: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
@@ -34,53 +34,56 @@ export function CutsScreen({ plan, onDone, initial, confirmLabel }: { plan: Rost
   const ok = kept <= plan.max && over.length === 0;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Roster cuts</Text>
-      <Text style={{ color: t.muted }}>
-        {plan.players.length > plan.max
-          ? `Get down to ${plan.max}. Your front office's suggestions are checked; change anything you like.`
-          : `You're at ${plan.players.length} of ${plan.max}, so nobody has to go. You can still cut anyone you like.`}
-      </Text>
-      <Card>
-        <Line label="Players on the roster" value={String(plan.players.length)} theme={t} />
-        <Line label="Cutting" value={String(cuts.size)} theme={t} />
-        <Line label="Roster after cuts" value={`${kept} / ${plan.max}`} theme={t} strong color={kept > plan.max ? t.score : t.accent} />
-        <Line label="Cap saved next season" value={formatMoney(savings)} theme={t} />
-        <Line label="Dead money left behind" value={formatMoney(dead)} theme={t} />
-        {kept < plan.max ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>{plan.max - kept} open spot{plan.max - kept === 1 ? "" : "s"} will be filled with undrafted free agents at the minimum.</Text> : null}
-        {kept > plan.max ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Cut {kept - plan.max} more.</Text> : null}
-        {short.length ? (
-          <Text style={{ color: t.muted, marginTop: 4 }}>
-            Short at {short.map((p) => `${p} (need ${plan.positionMin[p]})`).join(", ")}: undrafted free agents will fill those spots.
-          </Text>
-        ) : null}
-        {over.length ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Too many at {over.map((p) => `${p} (max ${plan.positionMax[p]})`).join(", ")}.</Text> : null}
-      </Card>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Small label="Front office cuts" onPress={() => setCuts(new Set(plan.aiCuts))} theme={t} />
-        <Small label="Clear" onPress={() => setCuts(new Set())} theme={t} />
-      </View>
-
-      {POSITIONS.map((pos) => (
-        <Card key={pos}>
-          <SectionTitle>
-            {pos} · {count(pos)} (min {plan.positionMin[pos]}, max {plan.positionMax[pos]})
-          </SectionTitle>
-          {byPos.get(pos)!.map((p) => (
-            <Row key={p.player.id} entry={p} cut={cuts.has(p.player.id)} onToggle={() => toggle(p.player.id)} theme={t} />
-          ))}
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Roster cuts</Text>
+        <Text style={{ color: t.muted }}>
+          {plan.players.length > plan.max
+            ? `Get down to ${plan.max}. Your front office's suggestions are checked; change anything you like.`
+            : `You're at ${plan.players.length} of ${plan.max}, so nobody has to go. You can still cut anyone you like.`}
+        </Text>
+        <Card>
+          <Line label="Players on the roster" value={String(plan.players.length)} theme={t} />
+          <Line label="Cutting" value={String(cuts.size)} theme={t} />
+          <Line label="Roster after cuts" value={`${kept} / ${plan.max}`} theme={t} strong color={kept > plan.max ? t.score : t.accent} />
+          <Line label="Cap saved next season" value={formatMoney(savings)} theme={t} />
+          <Line label="Dead money left behind" value={formatMoney(dead)} theme={t} />
+          {kept < plan.max ? <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>{plan.max - kept} open spot{plan.max - kept === 1 ? "" : "s"} will be filled with undrafted free agents at the minimum.</Text> : null}
+          {kept > plan.max ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Cut {kept - plan.max} more.</Text> : null}
+          {short.length ? (
+            <Text style={{ color: t.muted, marginTop: 4 }}>
+              Short at {short.map((p) => `${p} (need ${plan.positionMin[p]})`).join(", ")}: undrafted free agents will fill those spots.
+            </Text>
+          ) : null}
+          {over.length ? <Text style={{ color: t.score, fontWeight: "700", marginTop: 4 }}>Too many at {over.map((p) => `${p} (max ${plan.positionMax[p]})`).join(", ")}.</Text> : null}
         </Card>
-      ))}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Small label="Front office cuts" onPress={() => setCuts(new Set(plan.aiCuts))} theme={t} />
+          <Small label="Clear" onPress={() => setCuts(new Set())} theme={t} />
+        </View>
 
-      <Pressable
-        onPress={() => ok && onDone(cuts)}
-        disabled={!ok}
-        accessibilityRole="button"
-        style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: ok ? t.accent : t.border, opacity: pressed ? 0.7 : 1 })}
-      >
-        <Text style={{ color: ok ? t.onAccent : t.muted, fontWeight: "800", fontSize: 16 }}>{ok ? (confirmLabel ?? "Finish the offseason") : "Fix the roster to continue"}</Text>
-      </Pressable>
-    </ScrollView>
+        {POSITIONS.map((pos) => (
+          <Card key={pos}>
+            <SectionTitle>
+              {pos} · {count(pos)} (min {plan.positionMin[pos]}, max {plan.positionMax[pos]})
+            </SectionTitle>
+            {byPos.get(pos)!.map((p) => (
+              <Row key={p.player.id} entry={p} cut={cuts.has(p.player.id)} onToggle={() => toggle(p.player.id)} theme={t} />
+            ))}
+          </Card>
+        ))}
+      </ScrollView>
+      <StickyFooter note={`Roster after cuts: ${kept} of ${plan.max}`}>
+        <Pressable
+          onPress={() => ok && onDone(cuts)}
+          disabled={!ok}
+          accessibilityRole="button"
+          style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: ok ? t.accent : t.border, opacity: pressed ? 0.7 : 1 })}
+        >
+          <Text style={{ color: ok ? t.onAccent : t.muted, fontWeight: "800", fontSize: 16 }}>{ok ? (confirmLabel ?? "Finish the offseason") : "Fix the roster to continue"}</Text>
+        </Pressable>
+      </StickyFooter>
+    </View>
   );
 }
 

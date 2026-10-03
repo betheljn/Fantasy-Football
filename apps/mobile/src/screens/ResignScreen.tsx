@@ -3,22 +3,16 @@
 // budget; the offseason then runs with your choices.
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { DEV_TRAIT_NAMES, formatMoney, moodLabel, playerOverall, type ContractPlan, type ResignOffer } from "@dynasty/sim";
-import { Card, SectionTitle } from "../components/ui";
+import { DEV_TRAIT_NAMES, fillReserve, formatMoney, moodLabel, playerOverall, resignFits, type ContractPlan, type ResignOffer } from "@dynasty/sim";
+import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: ContractPlan; onDone: (keep: ReadonlySet<string>) => void; initial?: readonly string[]; confirmLabel?: string }) {
   const t = useTheme();
   // The front office's picks, cut to what fits (in the order the team handles them, as it would anyway).
   const aiPicks = useMemo(() => {
-    const picks = new Set<string>();
-    let spent = plan.committed;
-    for (const o of plan.offers) {
-      if (!o.aiWants || spent + o.capHit > plan.budget) continue;
-      picks.add(o.player.id);
-      spent += o.capHit;
-    }
-    return picks;
+    const fit = resignFits(plan, new Set(plan.offers.filter((o) => o.aiWants).map((o) => o.player.id)));
+    return new Set([...fit].filter(([, ok]) => ok).map(([id]) => id));
   }, [plan]);
   const [keep, setKeep] = useState<Set<string>>(() => (initial ? new Set(initial) : aiPicks));
   const toggle = (id: string) =>
@@ -29,65 +23,64 @@ export function ResignScreen({ plan, onDone, initial, confirmLabel }: { plan: Co
       return n;
     });
 
-  // Walk the list in the order the team handles it: once the budget runs out, later picks won't fit.
-  let running = plan.committed;
-  const fits = new Map<string, boolean>();
-  for (const o of plan.offers) {
-    if (!keep.has(o.player.id)) continue;
-    const ok = running + o.capHit <= plan.budget;
-    fits.set(o.player.id, ok);
-    if (ok) running += o.capHit;
-  }
-  const room = plan.budget - running;
+  // Walk the list in the order the team handles it (as the sim does): once the budget runs out, later picks won't fit.
+  const fits = resignFits(plan, keep);
   const fitting = plan.offers.filter((o) => fits.get(o.player.id) === true);
+  const running = plan.committed + fitting.reduce((s, o) => s + o.capHit, 0);
+  const reserve = fillReserve(plan, fitting.length);
+  const room = plan.budget - running - reserve;
   const overflow = keep.size - fitting.length;
   const expectedCost = fitting.reduce((s, o) => s + o.capHit * o.chance, 0);
   // The budget keeps a small cushion under the cap.
   const cushion = plan.cap + plan.rollover - plan.incentives - plan.rookieBill - plan.budget;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Re-sign your players</Text>
-      <Text style={{ color: t.muted }}>
-        {plan.offers.length} contracts are up. Choose who to keep. Players who aren't happy may say no — the odds are shown. The rest become free agents.
-      </Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Re-sign your players</Text>
+        <Text style={{ color: t.muted }}>
+          {plan.offers.length} contracts are up. Choose who to keep. Players who aren't happy may say no — the odds are shown. The rest become free agents.
+        </Text>
 
-      <Card>
-        <SectionTitle>{plan.season} cap</SectionTitle>
-        <Line label="Cap" value={formatMoney(plan.cap)} theme={t} />
-        {plan.rollover ? <Line label="Rollover from last year" value={`+${formatMoney(plan.rollover)}`} theme={t} /> : null}
-        {plan.incentives ? <Line label="Incentives earned last year" value={`−${formatMoney(plan.incentives)}`} theme={t} /> : null}
-        <Line label="Set aside for your draft picks" value={`−${formatMoney(plan.rookieBill)}`} theme={t} />
-        <Line label="Already under contract" value={`−${formatMoney(plan.committed)}`} theme={t} />
-        <Line label="Cushion kept under the cap" value={`−${formatMoney(cushion)}`} theme={t} />
-        <Line label={`Chosen (${fitting.length}, if all say yes)`} value={`−${formatMoney(running - plan.committed)}`} theme={t} />
-        <View style={{ height: 1, backgroundColor: t.border, marginVertical: 6 }} />
-        <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
-        <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Expected cost counting the odds: {formatMoney(expectedCost)}</Text>
-        {overflow > 0 ? (
-          <Text style={{ color: t.score, fontSize: 13, marginTop: 4, fontWeight: "700" }}>
-            {overflow} of your picks won't fit and will leave. Let someone go to make room.
-          </Text>
-        ) : null}
-      </Card>
+        <Card>
+          <SectionTitle>{plan.season} cap</SectionTitle>
+          <Line label="Cap" value={formatMoney(plan.cap)} theme={t} />
+          {plan.rollover ? <Line label="Rollover from last year" value={`+${formatMoney(plan.rollover)}`} theme={t} /> : null}
+          {plan.incentives ? <Line label="Incentives earned last year" value={`−${formatMoney(plan.incentives)}`} theme={t} /> : null}
+          <Line label="Set aside for your draft picks" value={`−${formatMoney(plan.rookieBill)}`} theme={t} />
+          <Line label="Already under contract" value={`−${formatMoney(plan.committed)}`} theme={t} />
+          <Line label="Cushion kept under the cap" value={`−${formatMoney(cushion)}`} theme={t} />
+          <Line label={`Chosen (${fitting.length}, if all say yes)`} value={`−${formatMoney(running - plan.committed)}`} theme={t} />
+          {reserve > 0 ? <Line label={`Kept to fill ${plan.openSpots - fitting.length} open spot${plan.openSpots - fitting.length === 1 ? "" : "s"} at the minimum`} value={`−${formatMoney(reserve)}`} theme={t} /> : null}
+          <View style={{ height: 1, backgroundColor: t.border, marginVertical: 6 }} />
+          <Line label="Room left" value={formatMoney(room)} theme={t} strong color={room < 0 ? t.score : t.accent} />
+          <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Expected cost counting the odds: {formatMoney(expectedCost)}</Text>
+          {overflow > 0 ? (
+            <Text style={{ color: t.score, fontSize: 13, marginTop: 4, fontWeight: "700" }}>
+              {overflow} of your picks won't fit and will leave. Let someone go to make room.
+            </Text>
+          ) : null}
+        </Card>
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Small label="Front office picks" onPress={() => setKeep(new Set(aiPicks))} theme={t} />
-        <Small label="Keep none" onPress={() => setKeep(new Set())} theme={t} />
-      </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Small label="Front office picks" onPress={() => setKeep(new Set(aiPicks))} theme={t} />
+          <Small label="Keep none" onPress={() => setKeep(new Set())} theme={t} />
+        </View>
 
-      {plan.offers.map((o) => (
-        <OfferRow key={o.player.id} offer={o} kept={keep.has(o.player.id)} fits={fits.get(o.player.id) ?? true} onToggle={() => toggle(o.player.id)} theme={t} />
-      ))}
-
-      <Pressable
-        onPress={() => onDone(keep)}
-        accessibilityRole="button"
-        style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
-      >
-        <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? "Continue to the draft"}</Text>
-      </Pressable>
-    </ScrollView>
+        {plan.offers.map((o) => (
+          <OfferRow key={o.player.id} offer={o} kept={keep.has(o.player.id)} fits={fits.get(o.player.id) ?? true} onToggle={() => toggle(o.player.id)} theme={t} />
+        ))}
+      </ScrollView>
+      <StickyFooter note={`Keeping ${fitting.length} · ${formatMoney(room)} room left`}>
+        <Pressable
+          onPress={() => onDone(keep)}
+          accessibilityRole="button"
+          style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
+        >
+          <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? "Continue to the draft"}</Text>
+        </Pressable>
+      </StickyFooter>
+    </View>
   );
 }
 

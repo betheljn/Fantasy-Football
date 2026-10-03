@@ -19,7 +19,7 @@ import {
   type FreeAgentOffer,
   type Position,
 } from "@dynasty/sim";
-import { Card, Chips } from "../components/ui";
+import { Card, Chips, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
 interface Props {
@@ -41,80 +41,93 @@ export function FreeAgencyScreen({ plan, offers, setOffer, moodAt, onOpen, front
   const [editing, setEditing] = useState<string | null>(null);
   const hit = (l: FreeAgentListing, o: FreeAgentOffer) => capHit(veteranContract(l.player, plan.cap, { kind: "veteran", signed: plan.season, years: o.years, annual: o.annual }), plan.season);
   // Players sign best first, so walk the market in that order: offers that no longer fit are skipped.
+  // Each signing can also use the minimum held back for the open spot he fills (as the sim does).
   let room = plan.room;
+  let roster = plan.rosterSize;
+  const held = () => (roster < 72 ? plan.minimum : 0);
   const fits = new Map<string, boolean>();
   for (const l of plan.pool) {
     const o = offers.get(l.player.id);
     if (!o) continue;
     const h = hit(l, o);
-    fits.set(l.player.id, h <= room);
-    if (h <= room) room -= h;
+    const ok = h <= room + held();
+    fits.set(l.player.id, ok);
+    if (ok) {
+      room += held() - h;
+      roster++;
+    }
   }
+  // What you could still pay one more player.
+  const next = room + held();
   const rows = useMemo(() => (pos === "ALL" ? plan.pool : plan.pool.filter((l) => l.player.position === pos)), [plan, pos]);
 
   return (
-    <FlatList
-      data={rows}
-      keyExtractor={(l) => l.player.id}
-      initialNumToRender={15}
-      contentContainerStyle={{ paddingBottom: 32 }}
-      ListHeaderComponent={
-        <View>
-          <View style={{ padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Free agency</Text>
-            <Text style={{ color: t.muted }}>
-              {plan.pool.length} players on the market. Make offers to the ones you want — each signs where he'd be happiest, so money isn't everything.
-            </Text>
-            <Card>
-              <Line label="Cap room (keeping enough to fill the roster)" value={formatMoney(plan.room)} theme={t} />
-              <Line label={`Your offers (${offers.size}, if they all sign)`} value={offers.size ? `−${formatMoney(plan.room - room)}` : "$0"} theme={t} />
-              <Line label="Room left" value={formatMoney(room)} theme={t} strong bad={room < 0} />
-              <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} ({plan.rosterSize > 72 ? "you'll cut down to 72 after free agency" : plan.rosterSize < 72 ? "open spots are filled with minimum deals" : "a full 72"})</Text>
-              {room < 0 ? (
-                <Text style={{ color: t.score, fontSize: 13, marginTop: 4, fontWeight: "700" }}>No room for offers: what's left is kept to fill the roster at minimum pay.</Text>
-              ) : null}
-            </Card>
-            <Pressable
-              onPress={() => setFrontOffice(!frontOffice)}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: frontOffice }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <View style={{ width: 42, height: 24, borderRadius: 12, padding: 2, backgroundColor: frontOffice ? t.accent : t.border, alignItems: frontOffice ? "flex-end" : "flex-start" }}>
-                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
-              </View>
-              <Text style={{ flex: 1, color: t.text }}>
-                Let my front office bid on everyone else{" "}
-                <Text style={{ color: t.muted }}>(your offers always come first)</Text>
+    <View style={{ flex: 1 }}>
+      <FlatList
+        data={rows}
+        keyExtractor={(l) => l.player.id}
+        initialNumToRender={15}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        ListHeaderComponent={
+          <View>
+            <View style={{ padding: 16, gap: 10 }}>
+              <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Free agency</Text>
+              <Text style={{ color: t.muted }}>
+                {plan.pool.length} players on the market. Make offers to the ones you want — each signs where he'd be happiest, so money isn't everything.
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={onOpen}
-              accessibilityRole="button"
-              style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
-            >
-              <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? (offers.size > 0 ? `Open free agency (${offers.size} offer${offers.size === 1 ? "" : "s"})` : "Open free agency (no offers)")}</Text>
-            </Pressable>
+              <Card>
+                <Line label="Cap room (keeping enough to fill the roster)" value={formatMoney(plan.room)} theme={t} />
+                <Line label={`Your offers (${offers.size}, if they all sign)`} value={offers.size ? `−${formatMoney(plan.room - room)}` : "$0"} theme={t} />
+                <Line label="Room for another signing" value={formatMoney(next)} theme={t} strong bad={next < plan.minimum} />
+                <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Roster now: {plan.rosterSize} ({plan.rosterSize > 72 ? "you'll cut down to 72 after free agency" : plan.rosterSize < 72 ? "open spots are filled with minimum deals" : "a full 72"})</Text>
+                {next < plan.minimum ? (
+                  <Text style={{ color: t.score, fontSize: 13, marginTop: 4, fontWeight: "700" }}>No room for another offer: what's left is kept to fill the roster at minimum pay.</Text>
+                ) : null}
+              </Card>
+              <Pressable
+                onPress={() => setFrontOffice(!frontOffice)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: frontOffice }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
+                <View style={{ width: 42, height: 24, borderRadius: 12, padding: 2, backgroundColor: frontOffice ? t.accent : t.border, alignItems: frontOffice ? "flex-end" : "flex-start" }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
+                </View>
+                <Text style={{ flex: 1, color: t.text }}>
+                  Let my front office bid on everyone else{" "}
+                  <Text style={{ color: t.muted }}>(your offers always come first)</Text>
+                </Text>
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+              <Chips options={(["ALL", ...POSITIONS] as const).map((p) => ({ key: p, label: p === "ALL" ? "All" : p }))} value={pos} onChange={setPos} />
+            </View>
           </View>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
-            <Chips options={(["ALL", ...POSITIONS] as const).map((p) => ({ key: p, label: p === "ALL" ? "All" : p }))} value={pos} onChange={setPos} />
-          </View>
-        </View>
-      }
-      renderItem={({ item: l }) => (
-        <Listing
-          listing={l}
-          offer={offers.get(l.player.id)}
-          fits={fits.get(l.player.id) ?? true}
-          open={editing === l.player.id}
-          onToggle={() => setEditing((e) => (e === l.player.id ? null : l.player.id))}
-          setOffer={(o) => setOffer(l.player.id, o)}
-          moodAt={(annual) => moodAt(l, annual)}
-          minimum={plan.minimum}
-          theme={t}
-        />
-      )}
-    />
+        }
+        renderItem={({ item: l }) => (
+          <Listing
+            listing={l}
+            offer={offers.get(l.player.id)}
+            fits={fits.get(l.player.id) ?? true}
+            open={editing === l.player.id}
+            onToggle={() => setEditing((e) => (e === l.player.id ? null : l.player.id))}
+            setOffer={(o) => setOffer(l.player.id, o)}
+            moodAt={(annual) => moodAt(l, annual)}
+            minimum={plan.minimum}
+            theme={t}
+          />
+        )}
+      />
+      <StickyFooter note={offers.size ? `${offers.size} offer${offers.size === 1 ? "" : "s"} · ${formatMoney(next)} room for another` : undefined}>
+        <Pressable
+          onPress={onOpen}
+          accessibilityRole="button"
+          style={({ pressed }) => ({ height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.accent, opacity: pressed ? 0.7 : 1 })}
+        >
+          <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 16 }}>{confirmLabel ?? (offers.size > 0 ? `Open free agency (${offers.size} offer${offers.size === 1 ? "" : "s"})` : "Open free agency (no offers)")}</Text>
+        </Pressable>
+      </StickyFooter>
+    </View>
   );
 }
 
