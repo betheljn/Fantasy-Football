@@ -1,0 +1,55 @@
+// Online leagues. A league is one dynasty played by friends: the server holds
+// its save and runs the sim (results are decided on the server, never on a
+// phone). Members join with the league's invite code and a display name, and
+// get a device token (stored hashed) instead of a password.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model League {
+  id         String   @id @default(cuid())
+  name       String
+  /** Code friends use to join (unique, short, easy to type). */
+  inviteCode String   @unique
+  /** The dynasty's seed. */
+  seed       String
+  /** Where the league is: "lobby" (claiming states), "season", "offseason". */
+  phase      String   @default("lobby")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  members    Member[]
+  save       LeagueSave?
+}
+
+model Member {
+  id             String   @id @default(cuid())
+  leagueId       String
+  league         League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  displayName    String
+  /** The device token, hashed (the token itself is only ever shown once). */
+  tokenHash      String   @unique
+  /** The state they run (null until claimed). */
+  team           String?
+  isCommissioner Boolean  @default(false)
+  /** Ready for the next week to be played. */
+  ready          Boolean  @default(false)
+  joinedAt       DateTime @default(now())
+
+  @@unique([leagueId, team])
+  @@unique([leagueId, displayName])
+}
+
+model LeagueSave {
+  leagueId  String   @id
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  /** The dynasty as compact save text (the sim's own format). */
+  data      String
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
+}

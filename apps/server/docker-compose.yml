@@ -1,0 +1,20 @@
+# Local Postgres for building online leagues. Port 5433 so it never clashes
+# with another Postgres on this machine.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: dynasty
+      POSTGRES_PASSWORD: dynasty
+      POSTGRES_DB: dynasty
+    ports:
+      - "5433:5432"
+    volumes:
+      - dynasty-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dynasty"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  dynasty-db:
