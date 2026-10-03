@@ -4,6 +4,7 @@
 // spring team; the ten teams play a round robin in two conferences, then a
 // spring championship. Standouts break out: they come back to their teams a
 // few points better, and a breakout backup can win a real job.
+import type { Story } from "../media/news.ts";
 import { Rng } from "../rng.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { POSITIONS, type Position } from "../model/positions.ts";
@@ -260,4 +261,53 @@ export function applyBreakouts(league: League, spring: SpringSeason, keepDepth: 
     teams[abbr] = { ...t, roster, depthChart: keepDepth.has(abbr) ? t.depthChart : buildDepthChart(roster) };
   }
   return { ...league, teams };
+}
+
+/** Odds on each spring team winning it all: a payout multiplier from its strength (the house keeps an edge). */
+export function springOdds(league: League, season: number): Array<{ abbr: string; name: string; payout: number }> {
+  const teams = springTeams(league, season);
+  const strength = teams.map((t) => {
+    const starters = POSITIONS.flatMap((pos) => t.depthChart[pos].slice(0, 2).map((id) => t.roster.find((p) => p.id === id)!).filter(Boolean));
+    return starters.reduce((n, p) => n + playerOverall(p), 0) / Math.max(1, starters.length);
+  });
+  // Softmax on strength: a few points of talent is a real edge in a short season.
+  const w = strength.map((s) => Math.exp((s - Math.max(...strength)) / 2.5));
+  const total = w.reduce((a, b) => a + b, 0);
+  return teams.map((t, i) => {
+    const p = w[i]! / total;
+    return { abbr: t.abbr, name: `${t.state} ${t.nickname}`, payout: Math.round(Math.max(2, Math.min(30, 0.8 / p)) * 10) / 10 };
+  });
+}
+
+/** The spring in the news (as the first stories of the new season). */
+export function springNews(spring: SpringSeason, league: League): Story[] {
+  const name = (abbr: string) => spring.teams.find((t) => t.abbr === abbr)?.name ?? abbr;
+  const st = (abbr: string) => league.teams[abbr]?.state ?? abbr;
+  const fin = spring.games.at(-1)!;
+  const out: Story[] = [
+    {
+      id: `${spring.season}-0-spring-champion`,
+      season: spring.season,
+      week: 0,
+      kind: "spring",
+      headline: `The ${name(spring.champion)} win the spring title`,
+      body: `They beat the ${name(spring.runnerUp)} ${Math.max(fin.homeScore, fin.awayScore)}-${Math.min(fin.homeScore, fin.awayScore)} in the final.${spring.mvp ? ` Spring MVP: ${spring.mvp.position} ${spring.mvp.name} (${st(spring.mvp.team)}), ${spring.mvp.line}.` : ""}`,
+      teams: [],
+      players: spring.mvp ? [spring.mvp.player] : [],
+      importance: 45,
+    },
+  ];
+  for (const b of spring.breakouts)
+    out.push({
+      id: `${spring.season}-0-spring-${b.player}`,
+      season: spring.season,
+      week: 0,
+      kind: "spring",
+      headline: `${st(b.team)} ${b.position} ${b.name} breaks out in the spring`,
+      body: `${b.line}. He comes back a ${b.after} (from ${b.before}).`,
+      teams: [b.team],
+      players: [b.player],
+      importance: 26 + (b.after - b.before) * 2,
+    });
+  return out;
 }

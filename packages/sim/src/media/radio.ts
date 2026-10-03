@@ -182,6 +182,11 @@ const REACT: Record<Story["kind"], Voice> = {
   trade: { numbers: ["On paper they won that trade. Paper's all I've got.", "Fair value, give or take a draft pick."], hottake: ["Fleeced. Absolutely fleeced. I won't say by whom."], veteran: ["New guy has to learn a playbook in a week. Don't expect miracles."] },
   mvp: { numbers: ["His per-game numbers are the best in the league. Not close.", "The award usually follows the numbers."], hottake: ["It's not a race. It's a coronation.", "I've had him as MVP since week one. Look it up."], veteran: ["Ask the guys who have to tackle him who the MVP is."] },
   recap: { numbers: [""], hottake: [""], veteran: [""] },
+  spring: {
+    numbers: ["Spring stats come with a big asterisk. Still, the per-snap numbers were real.", "Small sample, but the efficiency jumps off the page.", "I'd want to see it against starters. But I'd want to see it."],
+    hottake: ["That kid is starting by week three. Book it.", "Spring legend. Fall legend. Same thing.", "If he's not on the field opening day, somebody should be fired."],
+    veteran: ["Spring ball is where you find out who wants it. That one wants it.", "I came up through the spring league. That's how you earn it.", "Practice-squad guys play for their lives in the spring. You can tell."],
+  },
   rivalry: { numbers: ["Rivalry games run about four points closer than you'd expect. I checked."], hottake: ["That trophy belongs in one place and everybody knows where."], veteran: ["Throw the records out in a rivalry game. I've lived it."] },
   preview: { numbers: [""], hottake: [""], veteran: [""] },
 };

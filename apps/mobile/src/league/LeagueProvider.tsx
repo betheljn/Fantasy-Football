@@ -62,6 +62,7 @@ import {
   aiInSeasonMoves,
   localFeed,
   nationalFeed,
+  springNews,
   withSpring,
   BASE_STARTERS,
   POSITIONS,
@@ -171,6 +172,8 @@ export interface DynastyControls {
   chooseTeam: (abbr: string, role?: "owner" | "gm") => void;
   /** Play the spring season now (from the offseason report). */
   playSpring: () => void;
+  /** Pick the spring champion before it's played (one pick a year). */
+  betSpring: (team: string, name: string, stake: number, payout: number) => string[];
   /** Fired: take one of the offered jobs (the offseason goes on with your new team). */
   takeJob: (abbr: string) => void;
   /** This week's press conference (after your last game), and answering it. */
@@ -743,7 +746,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const withSpringPlayed = (s: SaveState): SaveState => {
     const season = s.dynasty.league.season;
     if ((s.dynasty.springs ?? []).some((x) => x.season === season)) return s;
-    return { ...s, dynasty: withSpring(s.dynasty, new Set([s.userTeam])) };
+    const dynasty = withSpring(s.dynasty, new Set([s.userTeam]));
+    const spring = dynasty.springs!.at(-1)!;
+    // Your spring futures pick settles.
+    const picks = s.picks ?? newPicks();
+    const bets = (picks.springBets ?? []).map((b) => (b.season === season && b.won === undefined ? { ...b, won: b.team === spring.champion } : b));
+    const paid = bets.filter((b) => b.season === season && b.won).reduce((n, b) => n + Math.round(b.stake * b.payout), 0);
+    return { ...s, dynasty, picks: { ...picks, balance: picks.balance + paid, springBets: bets }, news: [...(s.news ?? []), ...springNews(spring, dynasty.league)] };
   };
 
   /** Your fans' mood carries into your crowds. */
@@ -1107,6 +1116,17 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     setFrontOffice: (on) => {
       setFrontOffice(on);
       updateCheckpoint((p) => ({ ...p, frontOffice: on }));
+    },
+    betSpring: (team, name, stake, payout) => {
+      const s = stateRef.current;
+      if (!s) return ["Not now."];
+      const season = s.dynasty.league.season;
+      if ((s.dynasty.springs ?? []).some((x) => x.season === season)) return ["The spring has been played."];
+      const picks = s.picks ?? newPicks();
+      if ((picks.springBets ?? []).some((b) => b.season === season)) return ["You've already made your spring pick."];
+      if (stake > picks.balance) return ["Not enough points."];
+      persist({ ...s, picks: { ...picks, balance: picks.balance - stake, springBets: [...(picks.springBets ?? []), { season, team, name, stake, payout }] } }, true);
+      return [];
     },
     playSpring: () => {
       const s = stateRef.current;

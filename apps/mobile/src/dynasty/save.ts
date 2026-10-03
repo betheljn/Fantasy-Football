@@ -78,6 +78,8 @@ export interface PicksState {
   open: Slate[];
   /** Every settled slate, oldest first. */
   history: SettledSlate[];
+  /** Spring futures: your pick for the spring champion (one a year). */
+  springBets?: Array<{ season: number; team: string; name: string; stake: number; payout: number; won?: boolean }>;
 }
 
 /**

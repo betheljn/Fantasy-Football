@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAME_DAY, applyBreakouts, allTeams, playSpring, playerOverall, springPlayers, springTeams, startDynasty, validateTeam } from "../src/index.ts";
+import { springNews, springOdds, GAME_DAY, applyBreakouts, allTeams, playSpring, playerOverall, springPlayers, springTeams, startDynasty, validateTeam } from "../src/index.ts";
 
 const DYNASTY = startDynasty("spring-test", 2);
 const LEAGUE = DYNASTY.league;
@@ -41,6 +41,25 @@ describe("the spring season", () => {
       const p = after.teams[b.team]!.roster.find((x) => x.id === b.player)!;
       expect(playerOverall(p)).toBe(b.after);
       expect(b.after).toBeGreaterThan(b.before);
+    }
+  });
+});
+
+describe("spring coverage and picks", () => {
+  it("odds favor the stronger spring teams, with the house's edge", () => {
+    const odds = springOdds(LEAGUE, LEAGUE.season);
+    expect(odds).toHaveLength(10);
+    const implied = odds.reduce((n, o) => n + 1 / o.payout, 0);
+    expect(implied).toBeGreaterThan(1);
+    for (const o of odds) expect(o.payout).toBeGreaterThanOrEqual(2);
+  });
+
+  it("makes the news: the champion and every breakout", () => {
+    const news = springNews(spring, LEAGUE);
+    expect(news).toHaveLength(1 + spring.breakouts.length);
+    for (const s of news) {
+      expect(s.kind).toBe("spring");
+      expect(s.headline).not.toMatch(/undefined/);
     }
   });
 });

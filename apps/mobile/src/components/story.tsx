@@ -19,6 +19,7 @@ const KIND_LABEL: Record<Story["kind"], string> = {
   recap: "Your game",
   preview: "Up next",
   rivalry: "Rivalry",
+  spring: "Spring",
 };
 
 export function StoryCard({ s, lead, mine, theme: t }: { s: Story; lead?: boolean; mine?: boolean; theme: Theme }) {

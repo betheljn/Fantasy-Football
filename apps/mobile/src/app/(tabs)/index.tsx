@@ -9,6 +9,7 @@ import {
   ROUND_NAMES,
   STATES,
   OWNER_GOALS,
+  springOdds,
   teamOwner,
   backLabel,
   injuryLabel,
@@ -252,6 +253,37 @@ function SeasonHub({ data }: { data: LeagueData }) {
       <History data={data} />
       <DangerZone />
     </ScrollView>
+  );
+}
+
+/** Pick the spring champion before it's played: odds from each spring team's strength. */
+function SpringPick({ season }: { season: number }) {
+  const t = useTheme();
+  const d = useDynasty();
+  const data = useLeagueMaybe();
+  const [stake, setStake] = useState(50);
+  const [message, setMessage] = useState<string | null>(null);
+  const odds = useMemo(() => (data ? springOdds(data.league, season).sort((a, b) => a.payout - b.payout) : []), [data, season]);
+  const bet = (d.save?.picks?.springBets ?? []).find((b) => b.season === season);
+  if (bet) return <Text style={{ color: t.text, marginTop: 8 }}>Your spring pick: the {bet.name}, {bet.stake} points at {bet.payout}x.</Text>;
+  return (
+    <View style={{ marginTop: 8 }}>
+      <Text style={{ color: t.text, fontWeight: "700" }}>Pick the spring champion ({d.picks.balance.toLocaleString()} points)</Text>
+      <View style={{ flexDirection: "row", gap: 6, marginVertical: 6 }}>
+        {[25, 50, 100].map((n) => (
+          <Pressable key={n} onPress={() => setStake(n)} accessibilityRole="button" style={{ paddingHorizontal: 10, height: 28, borderRadius: 14, justifyContent: "center", borderWidth: 1, borderColor: stake === n ? t.accent : t.border }}>
+            <Text style={{ color: stake === n ? t.accent : t.muted, fontWeight: "700", fontSize: 12 }}>{n} pts</Text>
+          </Pressable>
+        ))}
+      </View>
+      {odds.map((o) => (
+        <Pressable key={o.abbr} onPress={() => setMessage(d.betSpring(o.abbr, o.name, stake, o.payout).join(" ") || null)} accessibilityRole="button" style={{ flexDirection: "row", paddingVertical: 4 }}>
+          <Text style={{ flex: 1, color: t.text }}>{o.name}</Text>
+          <Text style={{ color: t.accent, fontWeight: "700" }}>{o.payout}x</Text>
+        </Pressable>
+      ))}
+      {message ? <Text style={{ color: t.score }}>{message}</Text> : null}
+    </View>
   );
 }
 
@@ -767,6 +799,14 @@ function Report({ report }: { report: OffseasonReport }) {
                   Champions: <Text style={{ fontWeight: "800" }}>{spring.teams.find((x) => x.abbr === spring.champion)?.name}</Text>
                   {spring.mvp ? `. MVP: ${spring.mvp.position} ${spring.mvp.name} (${spring.mvp.team}).` : "."}
                 </Text>
+                {(() => {
+                  const bet = (d.save?.picks?.springBets ?? []).find((b) => b.season === next);
+                  return bet ? (
+                    <Text style={{ color: bet.won ? t.accent : t.muted, marginTop: 4 }}>
+                      Your pick, the {bet.name}: {bet.won ? `won ${Math.round(bet.stake * bet.payout).toLocaleString()} points!` : `lost ${bet.stake} points.`}
+                    </Text>
+                  ) : null;
+                })()}
                 <Text style={{ color: mine.length ? t.accent : t.muted, marginTop: 4 }}>
                   {mine.length ? `${mine.length} of your players broke out: ${mine.map((b) => `${b.position} ${b.name} (${b.before} → ${b.after})`).join(", ")}.` : "None of your players broke out this spring."}
                 </Text>
@@ -777,6 +817,7 @@ function Report({ report }: { report: OffseasonReport }) {
             ) : (
               <>
                 <Text style={{ color: t.muted }}>Your practice-squad players play a short spring season in ten regional teams. Standouts break out and come back better.</Text>
+                <SpringPick season={next} />
                 <View style={{ flexDirection: "row", marginTop: 8 }}>
                   <Button label="Play the spring season" onPress={d.playSpring} theme={t} small />
                 </View>

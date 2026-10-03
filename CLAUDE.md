@@ -211,7 +211,7 @@ size only changes the business. No real money, ever.
 3. The owner: owner + GM, or GM for an AI owner with goals who can fire you;
    press conferences that move fan mood and owner trust
 
-### Milestone 14: the spring season (current)
+### Milestone 14: the spring season (done)
 A second, smaller season for the players who don't dress on game day.
 1. Spring league: each division pools its teams' players below the game-day
    53 into one regional team (gaps filled from free agents); a round robin in

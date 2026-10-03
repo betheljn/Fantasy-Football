@@ -38,7 +38,7 @@ export default function NewsScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
             {weeks.map((w) => (
               <Pressable key={w} onPress={() => setWeek(w)} accessibilityRole="button" style={{ paddingHorizontal: 10, height: 28, borderRadius: 14, justifyContent: "center", borderWidth: 1, borderColor: shown === w ? t.accent : t.border }}>
-                <Text style={{ color: shown === w ? t.accent : t.muted, fontWeight: "700", fontSize: 12 }}>Week {w}</Text>
+                <Text style={{ color: shown === w ? t.accent : t.muted, fontWeight: "700", fontSize: 12 }}>{w === 0 ? "Spring" : `Week ${w}`}</Text>
               </Pressable>
             ))}
           </ScrollView>
