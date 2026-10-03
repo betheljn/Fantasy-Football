@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   Rng,
   TIMEOUT_WINDOW,
+  coachScheduledGame,
+  coachingReport,
+  generateLeague,
+  generateSchedule,
+  playWeek,
   generateTeams,
   halfSecondsLeft,
   packageOptions,
@@ -167,5 +172,55 @@ describe("coached games", () => {
     game.autoDrive();
     expect(game.prompt === null || game.prompt.drive !== first).toBe(true);
     expect(game.calls.slice(before).every((c) => c === null)).toBe(true);
+  });
+
+  it("shows the game so far at every pause, a true start of the final game", () => {
+    const { result, prompts } = coach("sofar", HOME.abbr, random);
+    let last = -1;
+    for (const p of prompts) {
+      const n = p.sofar.plays.length;
+      expect(n).toBeGreaterThanOrEqual(last);
+      last = n;
+      expect(p.sofar.plays).toEqual(result.plays.slice(0, n));
+      expect(p.sofar.score).toEqual(n ? result.plays[n - 1]!.score : { [HOME.abbr]: 0, [AWAY.abbr]: 0 });
+    }
+  });
+
+  it("hands the rest of the half to the coaches", () => {
+    const game = startCoachedGame(HOME, AWAY, "half", HOME.abbr);
+    game.autoHalf();
+    expect(game.prompt!.situation.quarter).toBeGreaterThanOrEqual(3);
+    game.autoHalf();
+    expect(game.prompt === null || game.prompt.situation.quarter >= 5).toBe(true);
+  });
+
+  it("plays the week with the game you coached, and keeps your calls on the result", () => {
+    const league = generateLeague("coached-week");
+    const schedule = generateSchedule(league);
+    const g = schedule.games.find((x) => x.week === 1)!;
+    const coached = coachScheduledGame(league, g, g.home);
+    const rng = new Rng("week-picks");
+    while (coached.prompt) coached.answer(random(coached.prompt, rng));
+    const week = playWeek(league, schedule, 1, undefined, { game: g.id, team: g.home, calls: coached.calls });
+    const mine = week.games.find((x) => x.summary.id === g.id)!;
+    expect(mine.result).toEqual(coached.result);
+    expect(mine.summary.coached).toEqual({ team: g.home, calls: coached.calls });
+    // Everyone else's games are untouched.
+    const plain = playWeek(league, schedule, 1);
+    for (const x of plain.games) if (x.summary.id !== g.id) expect(week.games.find((y) => y.summary.id === x.summary.id)!.result).toEqual(x.result);
+  });
+
+  it("reports how your calls went", () => {
+    const gamble: Picker = (p) => (p.kind === "offense" && p.situation.down === 4 && (p.suggestion === "punt" || p.suggestion === "field_goal") ? { call: "run" } : undefined);
+    const { result } = coach("report", HOME.abbr, gamble);
+    const report = coachingReport(HOME, AWAY, "report", HOME.abbr, result.coached!.calls);
+    expect(report.calls).toBe(result.coached!.calls.length);
+    expect(report.changed).toBe(result.coached!.calls.filter((c) => c !== null).length);
+    expect(report.fourthDowns.tried).toBe(report.changed);
+    expect(report.offense.coaches.plays).toBeGreaterThan(30);
+    // Leaving everything to the coaches changes nothing.
+    const none = coachingReport(HOME, AWAY, "report", HOME.abbr, coach("report", HOME.abbr, () => undefined).result.coached!.calls);
+    expect(none.changed).toBe(0);
+    expect(none.offense.mine.plays).toBe(0);
   });
 });

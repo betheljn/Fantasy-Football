@@ -4,7 +4,7 @@ import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
 import { simulateKickoff } from "../play/kickoff.ts";
 import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
-import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
+import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DrivePlay, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
@@ -71,8 +71,12 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
   return r.value;
 }
 
-/** A pause in a coached game: the snap, and which of the game's drives it's in. */
-export type GamePrompt = SnapPrompt & { drive: number };
+/** A pause in a coached game: the call, which of the game's drives it's in, and the game so far. */
+export type GamePrompt = SnapPrompt & {
+  drive: number;
+  /** Everything played up to this call, as a game result (not final: no winner). */
+  sofar: GameResult;
+};
 
 /** A coached game in progress: the call it's waiting on, or the finished result. */
 export interface CoachedGame {
@@ -83,9 +87,16 @@ export interface CoachedGame {
   calls: Array<CoachCall | null>;
   /** Answer the waiting prompt (nothing = take the coaches' call). */
   answer(call?: CoachCall): void;
-  /** Hand the rest of this drive to the offensive coordinator: his calls until the next drive (or the end). */
+  /** Hand the rest of this drive to the coordinators: their calls until the next drive (or the end). */
   autoDrive(): void;
+  /** Hand the rest of this half (or this overtime period) to the coaches. */
+  autoHalf(): void;
+  /** The game so far (the final result once it's over). */
+  readonly sofar: GameResult;
 }
+
+/** Which half a quarter is in (each overtime period on its own). */
+const halfOf = (quarter: number) => (quarter <= 2 ? 1 : quarter <= 4 ? 2 : quarter);
 
 /** Start (or pick up, given the answers so far) a game that `coach` calls. */
 export function startCoachedGame(home: Team, away: Team, seed: number | string, coach: string, options: Omit<GameOptions, "coach" | "calls"> = {}, calls: ReadonlyArray<CoachCall | null> = []): CoachedGame {
@@ -104,6 +115,13 @@ export function startCoachedGame(home: Team, away: Team, seed: number | string, 
     autoDrive() {
       const drive = game.prompt?.drive;
       while (game.prompt && game.prompt.drive === drive) game.answer();
+    },
+    autoHalf() {
+      const half = game.prompt && halfOf(game.prompt.situation.quarter);
+      while (game.prompt && halfOf(game.prompt.situation.quarter) === half) game.answer();
+    },
+    get sofar() {
+      return game.result ?? game.prompt!.sofar;
     },
   };
   const advance = (r: IteratorResult<GamePrompt, GameResult>) => {
@@ -152,6 +170,36 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
   };
 
   const margin = (team: string) => score[team]! - score[other(team).abbr]!;
+
+  /** The game so far, with the drive under way (`live`) added on, for a pause. */
+  const snapshot = (live: readonly DrivePlay[] = []): GameResult => {
+    const now = { ...score };
+    const periods = { [home.abbr]: [...periodScores[home.abbr]!], [away.abbr]: [...periodScores[away.abbr]!] };
+    const extra: GamePlay[] = live.map((p, i) => {
+      for (const [team, pts] of Object.entries(pointsForEvent(p.event))) {
+        now[team]! += pts;
+        const q = periods[team]!;
+        while (q.length < p.quarter) q.push(0);
+        q[p.quarter - 1]! += pts;
+      }
+      return { seq: plays.length + i, event: p.event, quarter: p.quarter, clockAfter: p.clockAfter, score: { ...now }, ...(p.injuries ? { injuries: p.injuries } : {}) };
+    });
+    const last = extra.at(-1) ?? plays.at(-1);
+    return {
+      seed: String(seed),
+      home: home.abbr,
+      away: away.abbr,
+      openingReceiver,
+      plays: [...plays, ...extra],
+      drives: [...drives],
+      score: now,
+      periodScores: periods,
+      overtime: quarter >= 5,
+      winner: null,
+      final: { quarter: last?.quarter ?? quarter, clock: last?.clockAfter ?? clock },
+      injuries: [...injuries.all],
+    };
+  };
 
   /**
    * Overtime ends once someone leads and the trailing team has already had
@@ -209,7 +257,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       if (ko.touchdown) {
         let two: boolean | undefined;
         if (options.coach === receiving.abbr) {
-          const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length };
+          const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length, sofar: snapshot() };
           answers.push(answer ?? null);
           two = tryAnswer(answer);
         }
@@ -235,6 +283,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     const offense = teams[pending.team]!;
     const defense = other(offense.abbr);
     if (quarter >= 5) otPossessed.add(offense.abbr);
+    const live: DrivePlay[] = [];
     const steps = driveSteps(rng, {
       offense,
       defense,
@@ -245,11 +294,11 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       timeouts,
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
-      ...(options.coach ? { coach: options.coach } : {}),
+      ...(options.coach ? { coach: options.coach, log: live } : {}),
     });
     let step = steps.next();
     while (!step.done) {
-      const answer = yield { ...step.value, drive: drives.length };
+      const answer = yield { ...step.value, drive: drives.length, sofar: snapshot(live) };
       answers.push(answer ?? null);
       step = steps.next(answer);
     }

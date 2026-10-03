@@ -78,13 +78,25 @@ function outcomeOf(e: GameResult["plays"][number]["event"]): PlayOutcome {
   return { banner, touchdown: touchdown || !!turnover?.touchdown, tackled };
 }
 
-/** Plays that have something to animate (timeouts and pre-snap flags don't). */
-export function prepareGame(game: GameResult, who: PlayerLookup): PreparedPlay[] {
+/**
+ * Plays that have something to animate (timeouts and pre-snap flags don't).
+ * A game still being played grows a play at a time: pass the same `cache`
+ * each time and only the new plays are worked out.
+ */
+export function prepareGame(game: GameResult, who: PlayerLookup, cache?: Map<number, PreparedPlay | null>): PreparedPlay[] {
   const out: PreparedPlay[] = [];
   game.plays.forEach((p, index) => {
+    const cached = cache?.get(p.seq);
+    if (cached !== undefined) {
+      if (cached) out.push(cached);
+      return;
+    }
     const e = p.event;
     const anim = choreograph(e, `${game.seed}:${p.seq}`);
-    if (!anim) return;
+    if (!anim) {
+      cache?.set(p.seq, null);
+      return;
+    }
     const right = attacksRight(game.openingReceiver, anim.offense, p.quarter);
     const field = (x: number, y: number) => toFieldCoords({ x, y }, right);
     const line = (x: number) => field(x, 0).x;
@@ -98,7 +110,7 @@ export function prepareGame(game: GameResult, who: PlayerLookup): PreparedPlay[]
     } catch {
       // Unknown player (shouldn't happen): leave the number off.
     }
-    out.push({
+    const prepared: PreparedPlay = {
       index,
       duration: anim.duration,
       offense: anim.offense,
@@ -120,7 +132,9 @@ export function prepareGame(game: GameResult, who: PlayerLookup): PreparedPlay[]
       situation: e.kind === "kickoff" || e.kind === "conversion" ? "" : formatDownDistance(e.start, e.offense, e.defense),
       score: p.score,
       outcome: outcomeOf(e),
-    });
+    };
+    cache?.set(p.seq, prepared);
+    out.push(prepared);
   });
   return out;
 }

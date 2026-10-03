@@ -4,6 +4,7 @@
 // hub drives it (useDynasty). The sim decides everything; this only sequences it.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  type CoachCall,
   addGameToSeason,
   allTeams,
   buildDynasty,
@@ -189,7 +190,12 @@ export interface DynastyControls {
   /** This week's press conference (after your last game), and answering it. */
   press: PressConference | null;
   answerPress: (choice: number) => void;
-  playWeek: () => void;
+  /** Play the coming week (with the calls of the game you just coached, if given). */
+  playWeek: (coached?: { game: string; calls: Array<CoachCall | null> }) => void;
+  /** Your game this week, coached so far (null if you haven't started coaching it). */
+  coaching: { game: string; calls: Array<CoachCall | null> } | null;
+  /** Save your calls in the game you're coaching (null clears them: the coaches take the whole game). */
+  saveCoaching: (game: string, calls: Array<CoachCall | null> | null) => void;
   playRegularSeason: () => void;
   playPlayoffRound: () => void;
   startOffseason: () => void;
@@ -663,7 +669,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // A save from before lineups were logged starts its log now.
     let lineups = s.lineups ?? startLog(s.dynasty.league);
     // The week's games (injured players sit), then injuries move on a week.
-    const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g));
+    // Your game is played with your calls, if you coached it (the coaches make any you didn't).
+    const mine = s.coaching && s.coaching.season === sched.season ? sched.games.find((g) => g.id === s.coaching!.game && g.week === week) : undefined;
+    const coached = mine && s.coaching ? { game: mine.id, team: s.userTeam, calls: s.coaching.calls } : undefined;
+    const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g), coached);
     const collection = collectWeek(s.collection ?? startCollection(s.dynasty.recordBook), s.dynasty.league, sched.season, week_.games, s.userTeam);
     const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
     // Settle this week's slates, then the weekly top-up.
@@ -715,7 +724,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];
     // Regular season over: the playoffs are decided now, on these rosters.
     const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
-    return { ...s, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
+    // A coached game is done once its week is played.
+    const { coaching: _played, ...rest } = s;
+    return { ...rest, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -961,8 +972,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const office = answerPress(s.office ?? startFrontOffice("owner"), p, choice);
       persist(withMood({ ...s, office }), true);
     },
-    playWeek: () => {
-      if (state && schedule && !seasonOver) persist(playOneWeek(state, schedule));
+    playWeek: (coached) => {
+      if (!state || !schedule || seasonOver) return;
+      const s = coached ? { ...state, coaching: { season: schedule.season, ...coached } } : state;
+      persist(playOneWeek(s, schedule), true);
+    },
+    coaching: state?.coaching && schedule && state.coaching.season === schedule.season ? { game: state.coaching.game, calls: state.coaching.calls } : null,
+    saveCoaching: (game, calls) => {
+      if (!state || !schedule) return;
+      if (calls === null) {
+        const { coaching: _gone, ...rest } = state;
+        persist(rest);
+      } else persist({ ...state, coaching: { season: schedule.season, game, calls } });
     },
     playRegularSeason: () => {
       if (!state || !schedule || seasonOver) return;

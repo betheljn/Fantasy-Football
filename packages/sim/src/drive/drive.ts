@@ -74,6 +74,8 @@ export interface DriveInput {
   injuries?: InjuryTracker;
   /** A team whose calls are made by a person: the drive pauses for its calls (see SnapPrompt). */
   coach?: string;
+  /** Where to log the drive's plays as they happen (so a paused game can show the drive so far). */
+  log?: DrivePlay[];
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -290,7 +292,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
   const def = defense.abbr;
   const points: Record<string, number> = { [off]: 0, [def]: 0 };
   const timeouts: Record<string, number> = { ...input.timeouts };
-  const plays: DrivePlay[] = [];
+  const plays: DrivePlay[] = input.log ?? [];
 
   let quarter = input.quarter;
   let clock = input.clock;

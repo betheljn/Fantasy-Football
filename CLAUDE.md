@@ -276,7 +276,7 @@ real icons (@expo/vector-icons).
 5. Flow polish: the offseason as a guided stepper (solo and online), loading
    and empty states, transitions
 
-### Milestone 17: coach your own game (planned)
+### Milestone 17: coach your own game (done)
 Call the plays in your own games instead of only watching. The sim still
 decides every outcome; you only make the choices the AI coaches make now.
 Coached games are solo play at first (online games stay AI-coached).

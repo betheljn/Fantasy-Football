@@ -22,7 +22,7 @@ function teamsFor(log: Parameters<typeof replayTeams>[0], league: League, summar
 export default function GameRoute() {
   const t = useTheme();
   const d = useDynasty();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, final } = useLocalSearchParams<{ id: string; final?: string }>();
   const { league, schedule, playoffs, results, userTeam, weeksPlayed } = useLeague();
   const router = useRouter();
   const log = d.save?.lineups;
@@ -34,11 +34,14 @@ export default function GameRoute() {
       // Not in an online league: that would show friends the result before the server plays it.
       if (!summary) {
         if (d.online) return null;
-        const live = playGame(league, g);
+        // A game you've started coaching plays on with your calls (the coaches make the rest).
+        const coached = d.coaching?.game === g.id ? { team: userTeam, calls: d.coaching.calls } : undefined;
+        const live = playGame(league, g, coached);
         return { home: league.teams[g.home]!, away: league.teams[g.away]!, title: `Week ${g.week}`, week: g.week, game: live.result, unplayed: true };
       }
       const teams = teamsFor(log, league, summary);
-      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed) };
+      const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls } : {};
+      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, coached) };
     }
     const p = playoffs?.games.find((x) => x.summary.id === id);
     if (p) {
@@ -47,7 +50,7 @@ export default function GameRoute() {
       return { ...teams, title: ROUND_NAMES[p.round], week: 99, game, neutralSite: p.neutralSite };
     }
     return null;
-  }, [id, league, schedule, playoffs, results, log, d.online]);
+  }, [id, league, schedule, playoffs, results, log, d.online, d.coaching, userTeam]);
   if (!found) return <Text style={{ padding: 16, color: t.text }}>{d.online ? "This game hasn't been played yet." : "Unknown game."}</Text>;
   // Each team's record going into the game.
   const before = (abbr: string) => {
@@ -81,6 +84,7 @@ export default function GameRoute() {
         away={found.away}
         context={{ title: found.title, records: { [found.home.abbr]: before(found.home.abbr), [found.away.abbr]: before(found.away.abbr) }, neutralSite: "neutralSite" in found ? found.neutralSite : false }}
         finish={finish}
+        startAtEnd={final === "1"}
       />
     </>
   );

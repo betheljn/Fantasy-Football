@@ -51,15 +51,18 @@ function ballValue(e: GameResult["plays"][number]["event"]): { team: string; poi
 /**
  * The home team's chance to win before kickoff and after each play (aligned
  * with game.plays). Timeouts and penalties leave it where it was. After the
- * last play it's settled: 1, 0, or 0.5 for a tie.
+ * last play it's settled: 1, 0, or 0.5 for a tie; for a game still being
+ * played, pass who has the ball `next` (and from where, on their own side).
  */
-export function winChances(game: GameResult, edge: number): { pregame: number; after: number[] } {
+export function winChances(game: GameResult, edge: number, next?: { team: string; yardline: number }): { pregame: number; after: number[] } {
   const pregame = phi(edge / GAME_SD);
   const after: number[] = [];
   const plays = game.plays;
+  // A finished game's last play only settles it; a game in progress looks on to the next snap.
+  const end = next ? plays.length : plays.length - 1;
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i]!;
-    if (i === plays.length - 1) {
+    if (!next && i === plays.length - 1) {
       after.push(game.winner === game.home ? 1 : game.winner === game.away ? 0 : 0.5);
       continue;
     }
@@ -71,8 +74,8 @@ export function winChances(game: GameResult, edge: number): { pregame: number; a
     const lead = (p.score[game.home] ?? 0) - (p.score[game.away] ?? 0);
     // Whoever snaps next has the ball (skipping timeouts and penalties).
     let j = i + 1;
-    while (j < plays.length - 1 && QUIET.has(plays[j]!.event.kind)) j++;
-    const ball = ballValue(plays[j]!.event);
+    while (j < end && QUIET.has(plays[j]!.event.kind)) j++;
+    const ball = j < plays.length ? ballValue(plays[j]!.event) : { team: next!.team, points: 0.4 + (next!.yardline - 25) * 0.06 };
     const withBall = ball.team === game.home ? ball.points : -ball.points;
     const sd = GAME_SD * Math.sqrt(f) + 0.75;
     after.push(phi((lead + withBall + edge * f) / sd));

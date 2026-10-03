@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type GameResult, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
 import { teamColors } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
@@ -236,6 +236,7 @@ export function Recap({
   onPlay,
   onPlayer,
   finish,
+  report,
 }: {
   game: GameResult;
   box: BoxScore;
@@ -247,6 +248,8 @@ export function Recap({
   onPlay: (index: number) => void;
   onPlayer: (id: string) => void;
   finish?: { label: string; onPress: () => void };
+  /** A game you coached: how your calls went. */
+  report?: CoachingReport | null;
 }) {
   const t = useTheme();
   const winner = game.winner;
@@ -291,6 +294,7 @@ export function Recap({
         ) : null}
         <FlowChart game={game} chances={chances} pregame={pregame} upto={chances.length - 1} width={width - 48} />
       </Card>
+      {report ? <CallsCard report={report} /> : null}
       {swings.length ? (
         <Card style={{ gap: 6 }}>
           <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Turning points</Text>
@@ -307,5 +311,39 @@ export function Recap({
         </Card>
       ) : null}
     </View>
+  );
+}
+
+/** "12 plays, 71 yards (5.9 a play), 4 first downs". */
+function lineText(l: PlayLine): string {
+  if (l.plays === 0) return "none";
+  const extra = [l.touchdowns ? `${l.touchdowns} TD` : "", l.turnovers ? `${l.turnovers} turnover${l.turnovers === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+  return `${l.plays} play${l.plays === 1 ? "" : "s"}, ${l.yards} yds (${(l.yards / l.plays).toFixed(1)} a play), ${l.firstDowns} first down${l.firstDowns === 1 ? "" : "s"}${extra ? `, ${extra}` : ""}`;
+}
+
+/** How a coached game's calls went: the snaps you changed against the ones you left to your coaches. */
+function CallsCard({ report: r }: { report: CoachingReport }) {
+  const t = useTheme();
+  const row = (label: string, text: string) => (
+    <Text style={{ color: t.text }}>
+      <Text style={{ color: t.muted }}>{label}: </Text>
+      {text}
+    </Text>
+  );
+  return (
+    <Card style={{ gap: 6 }}>
+      <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Your calls</Text>
+      <Text style={{ color: t.text, fontWeight: "700" }}>
+        {r.changed === 0 ? `You took your coaches' call all ${r.calls} times.` : `You changed ${r.changed} of ${r.calls} calls from your coaches'.`}
+      </Text>
+      {r.offense.mine.plays ? row("Your offensive calls", lineText(r.offense.mine)) : null}
+      {r.offense.mine.plays ? row("Your coaches' calls", lineText(r.offense.coaches)) : null}
+      {r.defense.mine.plays ? row("Against your defenses", lineText(r.defense.mine)) : null}
+      {r.defense.mine.plays ? row("Against the coordinator's", lineText(r.defense.coaches)) : null}
+      {r.fourthDowns.tried ? row("Went for it on 4th", `${r.fourthDowns.converted} of ${r.fourthDowns.tried} converted`) : null}
+      {r.tries.twoPoint ? row("Went for two", `${r.tries.made} of ${r.tries.twoPoint} good`) : null}
+      {r.tries.kickedInstead ? row("Kicked when the chart said go for two", String(r.tries.kickedInstead)) : null}
+      {r.timeouts ? row("Timeouts you called", String(r.timeouts)) : null}
+    </Card>
   );
 }

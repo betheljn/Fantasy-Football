@@ -16,7 +16,11 @@ export type Speed = (typeof SPEEDS)[number];
 /** Touchdowns hold a little longer, for the celebration. */
 const holdFor = (play: PreparedPlay) => (play.outcome.touchdown ? 2.4 : POST_PLAY);
 
-export function usePlayback(plays: readonly PreparedPlay[]) {
+/**
+ * `follow`: the plays grow as a game is played (a coached game). New plays
+ * play on from where you are instead of starting the game over.
+ */
+export function usePlayback(plays: readonly PreparedPlay[], follow = false) {
   const [pos, setPos] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -36,14 +40,40 @@ export function usePlayback(plays: readonly PreparedPlay[]) {
 
   const finish = useCallback((at: number) => setDonePos(at), []);
 
-  // A new game: back to the first play.
+  /** Plays seen so far (-1 before the first). */
+  const seen = useRef(-1);
+  const live = useRef({ pos, playing });
+  live.current = { pos, playing };
+  // A new game: back to the first play. Following a game in progress: play on into the new plays.
   useEffect(() => {
+    const before = seen.current;
+    seen.current = plays.length;
+    if (follow && before === -1 && plays.length > 0) {
+      // Picking a game back up: start on the latest play, already played.
+      const at = plays.length - 1;
+      shownPos.current = at;
+      setPos(at);
+      setDonePos(at);
+      setPlaying(false);
+      time.value = (plays[at]?.duration ?? 0) + 0.5;
+      return;
+    }
+    if (follow && before > 0 && plays.length >= before) {
+      // Still working through earlier plays: they run on into the new ones by themselves.
+      if (plays.length === before || live.current.playing) return;
+      clearHold();
+      shownPos.current = -1;
+      setPos(live.current.pos >= before - 1 ? before : live.current.pos);
+      setDonePos(-1);
+      setPlaying(true);
+      return;
+    }
     clearHold();
     shownPos.current = -1;
     setPos(0);
     setDonePos(-1);
-    setPlaying(false);
-  }, [plays]);
+    setPlaying(follow && plays.length > 0);
+  }, [plays, follow, time]);
 
   useEffect(() => {
     if (!play) return;

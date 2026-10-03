@@ -3,6 +3,13 @@ import type { PlayerId } from "../model/player.ts";
 import { hashString } from "../rng.ts";
 import type { League } from "./league.ts";
 import type { GameKind } from "./schedule.ts";
+import type { CoachCall } from "../drive/drive.ts";
+
+/** A coached team and its calls, in order (null = took the coaches' call). */
+export interface CoachedCalls {
+  team: string;
+  calls: Array<CoachCall | null>;
+}
 
 /** The outcome of one scheduled game: all standings need. */
 export interface GameSummary {
@@ -20,6 +27,8 @@ export interface GameSummary {
   seed: string;
   /** Players who sat out injured, by team (with the seed and the rosters, the game replays exactly). */
   out?: Record<string, PlayerId[]>;
+  /** A game a person coached: the team and its calls (replay with simulateGame's coach/calls options). */
+  coached?: CoachedCalls;
 }
 
 export interface WLT {

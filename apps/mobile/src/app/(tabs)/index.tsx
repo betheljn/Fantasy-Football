@@ -288,20 +288,28 @@ function NextUp({ data }: { data: LeagueData }) {
         <Text style={{ color: t.text, fontSize: 17, fontWeight: "700" }}>Bye week: your team rests.</Text>
       )}
       {upcoming ? (
-        <Button label="Play your game" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} primary />
+        <Button label={d.coaching?.game === upcoming.id ? "Keep coaching your game" : "Coach your game"} onPress={() => router.push(`/coach/${upcoming.id}`)} theme={t} primary />
       ) : (
-        <Button label={`Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} primary />
+        <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} primary />
       )}
       <View style={{ flexDirection: "row", gap: 8 }}>
         {upcoming ? (
           <View style={{ flex: 1 }}>
-            <Button label={`Sim week ${nextWeek}`} onPress={d.playWeek} theme={t} small />
+            <Button label="Watch" onPress={() => router.push(`/game/${upcoming.id}`)} theme={t} small />
+          </View>
+        ) : null}
+        {upcoming ? (
+          <View style={{ flex: 1 }}>
+            <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} small />
           </View>
         ) : null}
         <View style={{ flex: 1 }}>
-          <Button label="Sim to playoffs" onPress={d.playRegularSeason} theme={t} small />
+          <Button label="To playoffs" onPress={d.playRegularSeason} theme={t} small />
         </View>
       </View>
+      {upcoming && d.coaching?.game === upcoming.id ? (
+        <Text style={{ color: t.muted, fontSize: 12 }}>Simming the week keeps your calls so far; your coaches finish the game.</Text>
+      ) : null}
     </Card>
   );
 }

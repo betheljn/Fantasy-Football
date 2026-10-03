@@ -6,7 +6,7 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
+import { coachingReport, lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
 import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
@@ -22,7 +22,7 @@ import { Leaders, Pregame, Recap, Scoreboard, WinBar, type GameContext } from ".
 type Tab = "preview" | "plays" | "leaders" | "box" | "recap";
 
 /** Watch one finished game (the sim has already decided it; this only replays it). */
-export function GameView({ game, home, away, context, finish }: { game: GameResult; home: Team; away: Team; context?: GameContext; finish?: { label: string; onPress: () => void } }) {
+export function GameView({ game, home, away, context, finish, startAtEnd }: { game: GameResult; home: Team; away: Team; context?: GameContext; finish?: { label: string; onPress: () => void }; startAtEnd?: boolean }) {
   const theme = useTheme();
   const s = styles(theme);
   const router = useRouter();
@@ -34,7 +34,18 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
     return { who, feed: buildFeed(game, who), plays: prepareGame(game, who), wp: winChances(game, pregameEdge(home, away, context?.neutralSite)) };
   }, [game, home, away, context?.neutralSite]);
 
+  // A game you coached: how your calls went (worked out when the recap opens).
+  const report = useMemo(
+    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, game.coached.team, game.coached.calls) : null),
+    [tab, game, home, away],
+  );
+
   const pb = usePlayback(plays);
+  // Coming straight from a game you just played: open on the final whistle.
+  useEffect(() => {
+    if (startAtEnd) pb.toEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startAtEnd, plays]);
   const play = pb.play;
   const atEnd = pb.pos === plays.length - 1 && pb.done;
   // Everything up to this play in game.plays has happened (and can be shown).
@@ -167,7 +178,7 @@ export function GameView({ game, home, away, context, finish }: { game: GameResu
           </ScrollView>
         ) : tab === "recap" && box ? (
           <ScrollView>
-            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} />
+            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} report={report} />
           </ScrollView>
         ) : tab === "leaders" && box ? (
           <ScrollView>
