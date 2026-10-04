@@ -24,6 +24,7 @@ import {
   type TradeProposal,
   type TradeVerdict,
   type TradeWindow,
+  type CoachCall,
 } from "@dynasty/sim";
 import { scheduleOf } from "./season.ts";
 import type { LeagueState } from "./state.ts";
@@ -32,7 +33,12 @@ export type Move =
   | { kind: "depth"; pos: Position; ids: string[] }
   | { kind: "ir"; player: string }
   | { kind: "sign"; player: string }
-  | { kind: "trade"; proposal: TradeProposal };
+  | { kind: "trade"; proposal: TradeProposal }
+  /** Your calls so far in your game this week (empty: leave it all to your coaches). */
+  | { kind: "coach"; game: string; calls: Array<CoachCall | null> };
+
+/** Most calls a coached game can have (a long overtime game has well under this). */
+export const MAX_CALLS = 600;
 
 export type MoveResult = { state: LeagueState; problems: []; verdict?: TradeVerdict } | { state: null; problems: string[]; verdict?: TradeVerdict };
 
@@ -96,6 +102,16 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
 
   if (!seasonOn) return refuse("Moves can be made during the regular season.");
   const own = league.teams[team]!;
+
+  if (move.kind === "coach") {
+    const g = scheduleOf(s).games.find((x) => x.id === move.game);
+    if (!g || g.week !== week || (g.home !== team && g.away !== team)) return refuse("That isn't your game this week.");
+    if (s.humans[g.home === team ? g.away : g.home]) return refuse("Games between friends are left to the coaches for now.");
+    if (move.calls.length > MAX_CALLS) return refuse("Too many calls.");
+    const { [team]: _old, ...others } = s.coaching ?? {};
+    const coaching = move.calls.length ? { ...others, [team]: { game: move.game, calls: move.calls } } : others;
+    return { state: { ...s, coaching }, problems: [] };
+  }
 
   if (move.kind === "depth") {
     if (!POSITIONS.includes(move.pos)) return refuse(`No position ${move.pos}.`);

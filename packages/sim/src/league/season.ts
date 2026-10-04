@@ -50,7 +50,8 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     seed,
     rules: result.rules ?? 1,
     ...out,
-    ...(coached ? { coached: { team: coached.team, calls: [...coached.calls] } } : {}),
+    // The calls as played (any that no longer fit became the coaches').
+    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)] } } : {}),
   };
   return { summary, result };
 }
@@ -72,11 +73,12 @@ export function playWeek(
   schedule: Schedule,
   week: number,
   onGame?: (game: GameResult, scheduled: ScheduledGame) => void,
-  /** A game a person coached this week (by game id), played with their calls. */
-  coached?: { game: string } & CoachedCalls,
+  /** Games people coached this week (by game id), played with their calls. */
+  coached?: ({ game: string } & CoachedCalls) | ReadonlyArray<{ game: string } & CoachedCalls>,
 ): { league: League; games: Array<{ summary: GameSummary; result: GameResult }> } {
+  const byGame = new Map((coached === undefined ? [] : Array.isArray(coached) ? coached : [coached as { game: string } & CoachedCalls]).map((c) => [c.game, c]));
   const games = schedule.games.filter((g) => g.week === week).map((g) => {
-    const played = playGame(league, g, coached?.game === g.id ? coached : undefined);
+    const played = playGame(league, g, byGame.get(g.id));
     onGame?.(played.result, g);
     return played;
   });

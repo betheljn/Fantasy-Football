@@ -980,6 +980,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     coaching: state?.coaching && schedule && state.coaching.season === schedule.season ? { game: state.coaching.game, calls: state.coaching.calls } : null,
     saveCoaching: (game, calls) => {
       if (!state || !schedule) return;
+      // Online, the calls go to the league (it plays the week with them); the phone keeps a copy to pick up from.
+      if (online) {
+        const { coaching: _old, ...rest } = state;
+        setState(calls === null ? rest : { ...rest, coaching: { season: schedule.season, game, calls } });
+        sendMove({ kind: "coach", game, calls: calls ?? [] });
+        return;
+      }
       if (calls === null) {
         const { coaching: _gone, ...rest } = state;
         persist(rest);

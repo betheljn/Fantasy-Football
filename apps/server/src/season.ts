@@ -124,7 +124,11 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   const league0 = s.dynasty.league;
   // Stats are added in place: work on a copy so the state passed in is left alone.
   const stats = structuredClone(p.stats);
-  const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g));
+  // Friends' coached games are played with their calls (anything they didn't call is their coaches').
+  const coached = Object.entries(s.coaching ?? {})
+    .filter(([, c]) => sched.games.some((g) => g.id === c.game && g.week === week))
+    .map(([team, c]) => ({ game: c.game, team, calls: c.calls }));
+  const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g), coached);
   const collection = collectWeek(structuredClone(p.collection), league0, sched.season, played.games);
   const hurt = injuryNews(league0, played.games.flatMap((g) => g.result.injuries), week);
   // Injured reserve and signings: the AI's teams, plus friends who didn't ready up.
@@ -150,9 +154,15 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     lineups,
   };
   return {
-    state: { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
+    state: { ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
     summary: { kind: "week" as const, season: sched.season, week, games, covered, trades: talks.trades.length, moves: ai.moves.length },
   };
+}
+
+/** The week's coached calls are used up once it's played. */
+function withoutCoaching(s: LeagueState): LeagueState {
+  const { coaching: _done, ...rest } = s;
+  return rest;
 }
 
 function seasonResult(s: LeagueState) {

@@ -72,7 +72,18 @@ export function simulateGame(home: Team, away: Team, seed: number | string, opti
   const steps = gameSteps(home, away, seed, options);
   let i = 0;
   let r = steps.next();
-  while (!r.done) r = steps.next(options.calls?.[i++] ?? undefined);
+  while (!r.done) {
+    // A call that doesn't fit this moment (the game went differently since it was made) is the coaches' call.
+    let call = options.calls?.[i++] ?? undefined;
+    if (call) {
+      try {
+        checkAnswer(r.value, call);
+      } catch {
+        call = undefined;
+      }
+    }
+    r = steps.next(call);
+  }
   return r.value;
 }
 

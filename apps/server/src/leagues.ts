@@ -9,7 +9,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { advanceLeague, changeLeague, deadlineAfter } from "./advance.ts";
 import { fail, hashToken, newInviteCode, newToken, requireMember } from "./auth.ts";
 import type { Db } from "./db.ts";
-import { applyMove, type Move } from "./moves.ts";
+import { MAX_CALLS, applyMove, type Move } from "./moves.ts";
 import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
@@ -203,6 +203,22 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
    * or a trade offer to an AI team (made if their GM accepts). Refused moves
    * come back with the rule that stopped them (and a trade's verdict).
    */
+  // One coaching call: a play (with personnel and alignment), a defense, a timeout or a try.
+  const callSchema = {
+    type: "object",
+    additionalProperties: false,
+    maxProperties: 3,
+    properties: {
+      call: { enum: ["run", "pass", "punt", "field_goal", "kneel", "spike"] },
+      personnel: { enum: ["10", "11", "12", "13", "21"] },
+      set: { enum: ["shotgun", "under_center"] },
+      package: { enum: ["base", "nickel", "dime", "goal_line"] },
+      coverage: { enum: ["cover_0", "cover_1", "cover_2", "cover_3", "cover_4"] },
+      blitz: { type: "integer", minimum: 0, maximum: 2 },
+      timeout: { type: "boolean" },
+      try: { enum: ["kick", "two_point"] },
+    },
+  } as const;
   const moveSchema = {
     type: "object",
     required: ["move"],
@@ -212,6 +228,11 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           { type: "object", required: ["kind", "pos", "ids"], properties: { kind: { const: "depth" }, pos: { type: "string", maxLength: 3 }, ids: { type: "array", items: idSchema, maxItems: 72 } } },
           { type: "object", required: ["kind", "player"], properties: { kind: { enum: ["ir", "sign"] }, player: idSchema } },
           { type: "object", required: ["kind", "proposal"], properties: { kind: { const: "trade" }, proposal: proposalSchema } },
+          {
+            type: "object",
+            required: ["kind", "game", "calls"],
+            properties: { kind: { const: "coach" }, game: { type: "string", maxLength: 80 }, calls: { type: "array", maxItems: MAX_CALLS, items: { anyOf: [{ type: "null" }, callSchema] } } },
+          },
         ],
       },
     },
@@ -251,8 +272,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     if (!member) return reply;
     const { state, version, data: raw } = await loadState(req.params.id);
     reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
-    // In the offseason, other friends' calls for the open stage stay private.
-    const data = state.offseason ? encodeState(forMember(state, member.team)) : raw;
+    // In the offseason, other friends' calls for the open stage stay private (and everyone's coaching calls).
+    const data = state.offseason || state.coaching ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
     if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));
     return reply.send(data);

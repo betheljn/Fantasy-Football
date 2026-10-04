@@ -19,7 +19,11 @@ export default function CoachRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { league, schedule, results, userTeam, weeksPlayed } = useLeague();
   const g = schedule.games.find((x) => x.id === id);
-  const playable = !!g && !d.online && d.phase === "season" && g.week === weeksPlayed + 1 && (g.home === userTeam || g.away === userTeam) && !results.some((r) => r.id === id);
+  const mine = !!g && (g.home === userTeam || g.away === userTeam);
+  // Online: your games against AI teams (games between friends are left to the coaches for now).
+  const friendly = !!g && !!d.online && !!d.online.humans[g.home === userTeam ? g.away : g.home];
+  const seasonOn = d.online ? d.canMakeMoves : d.phase === "season";
+  const playable = !!g && mine && !friendly && seasonOn && g.week === weeksPlayed + 1 && !results.some((r) => r.id === id);
   // One game for the whole visit, picked up from any calls already made.
   const [game] = useState(() => (playable && g ? coachScheduledGame(league, g, userTeam, d.coaching?.game === g.id ? d.coaching.calls : []) : null));
 
@@ -47,7 +51,7 @@ export default function CoachRoute() {
     };
   }, []);
 
-  if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>This game can't be coached now.</Text>;
+  if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>{friendly ? "Games between friends are left to the coaches for now." : "This game can't be coached now."}</Text>;
   return (
     <>
       <Stack.Screen options={{ title: `${g.away} at ${g.home} · Week ${g.week}` }} />
@@ -60,14 +64,26 @@ export default function CoachRoute() {
           if (timer.current) clearTimeout(timer.current);
           timer.current = setTimeout(() => latest.current(), SAVE_AFTER_MS);
         }}
-        finish={{
-          label: `Record it and play the rest of week ${g.week}`,
-          onPress: () => {
-            done.current = true;
-            d.playWeek({ game: g.id, calls: [...game.calls] });
-            router.replace(`/game/${g.id}?final=1`);
-          },
-        }}
+        finish={
+          d.online
+            ? {
+                // Online, the league plays the week (with your calls) when everyone's ready.
+                label: "Send my calls to the league",
+                onPress: () => {
+                  latest.current();
+                  done.current = true;
+                  router.replace("/");
+                },
+              }
+            : {
+                label: `Record it and play the rest of week ${g.week}`,
+                onPress: () => {
+                  done.current = true;
+                  d.playWeek({ game: g.id, calls: [...game.calls] });
+                  router.replace(`/game/${g.id}?final=1`);
+                },
+              }
+        }
       />
     </>
   );

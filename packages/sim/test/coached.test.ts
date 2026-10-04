@@ -223,4 +223,15 @@ describe("coached games", () => {
     expect(none.changed).toBe(0);
     expect(none.offense.mine.plays).toBe(0);
   });
+
+  it("a call that no longer fits (the game went differently) becomes the coaches' call, and the result says so", () => {
+    const { result } = coach("stale", HOME.abbr, random);
+    const calls = [...result.coached!.calls];
+    // A punt on every snap: illegal on most downs.
+    const stale = calls.map((c) => (c && "call" in c ? { call: "punt" as const } : c));
+    const g = simulateGame(HOME, AWAY, "stale", { coach: HOME.abbr, calls: stale });
+    expect(g.coached!.calls.some((c, i) => stale[i] && c === null)).toBe(true);
+    // Replaying with the calls as used gives the same game.
+    expect(simulateGame(HOME, AWAY, "stale", { coach: HOME.abbr, calls: g.coached!.calls })).toEqual(g);
+  });
 });

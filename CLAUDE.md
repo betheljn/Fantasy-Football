@@ -279,7 +279,7 @@ real icons (@expo/vector-icons).
 ### Milestone 17: coach your own game (done)
 Call the plays in your own games instead of only watching. The sim still
 decides every outcome; you only make the choices the AI coaches make now.
-Coached games are solo play at first (online games stay AI-coached).
+Online, friends coach their games against AI teams; games between friends are left to the coaches.
 1. Sim: a game you can step through, pausing for your call before each snap
    (like the draft's steps); the same seed and the same calls always give the
    same game, and your calls are kept so past games replay exactly

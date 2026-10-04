@@ -1,7 +1,7 @@
 // An online league's save, as the server sends it, turned into the app's own
 // save state so every league screen (standings, teams, box scores, replays)
 // works on it unchanged. Read-only: nothing here is ever saved on the phone.
-import { fromSaveJson, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord } from "@dynasty/sim";
+import { fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord } from "@dynasty/sim";
 import { SAVE_VERSION, type SaveState } from "../dynasty/save";
 
 /** The server's league state (apps/server/src/state.ts and season.ts). */
@@ -11,6 +11,8 @@ interface ServerState {
   humans: Record<string, string>;
   weeksPlayed: number;
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
+  /** Your calls in your game this week (the server sends only yours). */
+  coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
   progress: {
     results: GameSummary[];
     stats: SeasonStats;
@@ -49,6 +51,7 @@ export function saveFromServer(text: string, userTeam: string): { save: SaveStat
     injuryNews: p.injuryNews,
     moves: p.moves,
     collection: p.collection,
+    ...(s.coaching?.[userTeam] ? { coaching: { season: s.dynasty.league.season, ...s.coaching[userTeam]! } } : {}),
   };
   return { save, humans: s.humans, offseason: s.offseason ?? null };
 }
