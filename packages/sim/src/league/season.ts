@@ -48,6 +48,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     overtime: result.overtime,
     winner: result.winner,
     seed,
+    rules: result.rules ?? 1,
     ...out,
     ...(coached ? { coached: { team: coached.team, calls: [...coached.calls] } } : {}),
   };

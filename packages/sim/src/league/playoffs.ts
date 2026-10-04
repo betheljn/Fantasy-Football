@@ -117,6 +117,7 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
         overtime: result.overtime,
         winner: result.winner,
         seed,
+        rules: result.rules ?? 1,
         ...(h.out.length + v.out.length > 0 ? { out: { [home.team]: h.out, [away.team]: v.out } } : {}),
       },
     });

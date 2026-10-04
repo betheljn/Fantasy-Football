@@ -27,6 +27,8 @@ export interface GameSummary {
   seed: string;
   /** Players who sat out injured, by team (with the seed and the rosters, the game replays exactly). */
   out?: Record<string, PlayerId[]>;
+  /** The rules it was played under (absent = 1, before rules were recorded); replay with simulateGame's rules option. */
+  rules?: number;
   /** A game a person coached: the team and its calls (replay with simulateGame's coach/calls options). */
   coached?: CoachedCalls;
 }

@@ -5,6 +5,13 @@ import type { Direction, Fumble, Situation, StopReason, Turnover } from "./event
 import type { DefenseFormation, Formations } from "./formation.ts";
 
 /** Everything a single play needs. Plays never mutate this. */
+/**
+ * The rules games are played under. Games record theirs so past games replay
+ * exactly after the sim is retuned: 1 = the original run game; 2 = a real
+ * fullback in two-back sets and tougher goal-line runs.
+ */
+export const RULES_VERSION = 2;
+
 export interface PlayContext {
   offense: Team;
   defense: Team;
@@ -13,6 +20,8 @@ export interface PlayContext {
   homeField?: number;
   /** Who's on the field and the defensive call; defaults to 11 personnel vs base Cover 3. */
   formations?: Formations;
+  /** The rules version (default: the current one). */
+  rules?: number;
 }
 
 /**

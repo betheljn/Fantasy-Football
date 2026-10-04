@@ -77,6 +77,8 @@ export interface DriveInput {
   coach?: string;
   /** Where to log the drive's plays as they happen (so a paused game can show the drive so far). */
   log?: DrivePlay[];
+  /** The rules version (default: the current one). */
+  rules?: number;
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -367,12 +369,12 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     const marginAfterTd =
       input.score[team.abbr]! + points[team.abbr]! - (input.score[other.abbr]! + points[other.abbr]!);
     const two = input.coach === team.abbr ? tryAnswer(yield tryPrompt(team, other.abbr, quarter, clock, marginAfterTd, timeouts)) : undefined;
-    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two), clock);
+    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two, input.rules), clock);
   };
 
   for (;;) {
     // Personnel comes first (it shapes the run/pass call); the defense answers what it sees.
-    let offenseFormation = chooseOffense(rng, offense, callContext());
+    let offenseFormation = chooseOffense(rng, offense, callContext(), input.rules);
     const cc = { ...callContext(), personnel: offenseFormation.personnel, set: offenseFormation.set };
     let call = callPlay(rng, cc);
     if (input.coach === off) {
@@ -396,7 +398,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
           if (!groups.includes(personnel)) throw new Error(`Can't line up in ${personnel} personnel`);
           // Keep the coaches' running-back rotation for this snap.
           const rotated = offenseFormation.rbs[0]?.id !== starters(offense, "RB", 1)[0]?.id;
-          offenseFormation = buildOffense(offense, personnel, set, rotated);
+          offenseFormation = buildOffense(offense, personnel, set, rotated, input.rules);
         }
       }
     }
@@ -432,6 +434,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       defense,
       situation: cc.situation,
       homeField,
+      ...(input.rules !== undefined ? { rules: input.rules } : {}),
       ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
     };
 
@@ -601,11 +604,12 @@ export function simulateConversion(
   marginAfterTd: number,
   /** A coach's call; otherwise the head coach goes by the chart. */
   twoPoint?: boolean,
+  rules?: number,
 ): ConversionEvent {
   const base = { kind: "conversion" as const, offense: team.abbr, defense: other.abbr, team: team.abbr, duration: 0 };
   if (twoPoint ?? goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness)) {
     const start: Situation = { quarter, clock, down: 1, distance: 2, yardline: 98 };
-    const ctx: PlayContext = { offense: team, defense: other, situation: start };
+    const ctx: PlayContext = { offense: team, defense: other, situation: start, ...(rules !== undefined ? { rules } : {}) };
     const play = rng.chance(0.6) ? simulatePass(rng, ctx) : simulateRun(rng, ctx);
     // A turnover returned the length of the field scores two for the defense. With the
     // offense bunched at the goal line, the field ahead of the defender is often open.

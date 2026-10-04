@@ -39,7 +39,9 @@ describe("building formations", () => {
       expect(ids).toHaveLength(11);
       expect(new Set(ids).size).toBe(11);
       const c = PERSONNEL[personnel];
-      expect(o.rbs.every((p) => p.position === "RB")).toBe(true);
+      expect(o.rbs[0]!.position).toBe("RB");
+      // The fullback in two-back sets is the best lead blocker, a back or a tight end.
+      expect(o.rbs.every((p) => p.position === "RB" || p.position === "TE")).toBe(true);
       expect([o.rbs.length, o.tes.length, o.wrs.length]).toEqual([c.rb, c.te, c.wr]);
       expect(receivers(o)).toHaveLength(5);
     }

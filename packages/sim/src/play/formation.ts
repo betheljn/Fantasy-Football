@@ -6,6 +6,7 @@ import { coverageSkill, passRushing, routeRunning } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { FormationInfo } from "./events.ts";
+import { RULES_VERSION } from "./common.ts";
 
 /** Offensive personnel, NFL-style: first digit RBs, second TEs (WRs make up the rest of 5). */
 export type Personnel = "10" | "11" | "12" | "13" | "21";
@@ -81,16 +82,24 @@ export function offensePlayers(o: OffenseFormation): Player[] {
  * Put the offense on the field. In one-back sets RB2 spells RB1 on some snaps
  * (`rotateRb`); in 21 personnel RB1 carries and RB2 lines up as the fullback.
  */
-export function buildOffense(team: Team, personnel: Personnel, set: OffenseSet, rotateRb = false): OffenseFormation {
+export function buildOffense(team: Team, personnel: Personnel, set: OffenseSet, rotateRb = false, rules = RULES_VERSION): OffenseFormation {
   const counts = PERSONNEL[personnel];
   const [rb1, rb2] = starters(team, "RB", 2);
-  const rbs = counts.rb === 2 ? [rb1!, rb2 ?? rb1!] : [rotateRb && rb2 ? rb2 : rb1!];
+  const tes = starters(team, "TE", counts.te);
+  let rbs = counts.rb === 2 ? [rb1!, rb2 ?? rb1!] : [rotateRb && rb2 ? rb2 : rb1!];
+  if (counts.rb === 2 && rules >= 2) {
+    // The fullback: the best lead blocker among the other backs and the tight ends not already out there.
+    const taken = new Set([rb1!.id, ...tes.map((p) => p.id)]);
+    const pool = team.roster.filter((p) => (p.position === "RB" || p.position === "TE") && !taken.has(p.id) && !p.injury);
+    const fb = pool.reduce<Player | undefined>((b, p) => (!b || p.ratings.leadBlock > b.ratings.leadBlock || (p.ratings.leadBlock === b.ratings.leadBlock && p.id < b.id) ? p : b), undefined);
+    rbs = [rb1!, fb ?? rb2 ?? rb1!];
+  }
   return {
     personnel,
     set,
     qb: starters(team, "QB")[0]!,
     rbs,
-    tes: starters(team, "TE", counts.te),
+    tes,
     wrs: starters(team, "WR", counts.wr),
     ol: starters(team, "OL", 5),
   };

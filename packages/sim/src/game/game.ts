@@ -6,6 +6,7 @@ import { simulateKickoff } from "../play/kickoff.ts";
 import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
 import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DrivePlay, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
+import { RULES_VERSION } from "../play/common.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
 export const OVERTIME_TIMEOUTS = 2;
@@ -44,6 +45,8 @@ export interface GameResult {
   final: { quarter: number; clock: number };
   /** Everyone hurt in the game, in order. */
   injuries: Injury[];
+  /** The rules it was played under. */
+  rules?: number;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
   coached?: { team: string; calls: Array<CoachCall | null> };
 }
@@ -57,6 +60,8 @@ export interface GameOptions {
   coach?: string;
   /** The coached team's answers, in order, to replay a coached game (missing ones take the coaches' call). */
   calls?: ReadonlyArray<CoachCall | null>;
+  /** The rules to play under (default: the current ones); replays pass the game's own. */
+  rules?: number;
 }
 
 /**
@@ -261,7 +266,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
           answers.push(answer ?? null);
           two = tryAnswer(answer);
         }
-        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two);
+        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules);
         record(conv, quarter, clock);
         pending = { kind: "kickoff", kickingTeam: receiving.abbr };
         if (quarter >= 5) otPossessed.add(receiving.abbr); // a return TD counts as a possession
@@ -295,6 +300,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
       ...(options.coach ? { coach: options.coach, log: live } : {}),
+      ...(options.rules !== undefined ? { rules: options.rules } : {}),
     });
     let step = steps.next();
     while (!step.done) {
@@ -329,6 +335,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     winner: diff === 0 ? null : diff > 0 ? home.abbr : away.abbr,
     final: { quarter, clock },
     injuries: injuries.all,
+    rules: options.rules ?? RULES_VERSION,
     ...(options.coach ? { coached: { team: options.coach, calls: answers } } : {}),
   };
 }

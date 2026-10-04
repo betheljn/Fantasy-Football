@@ -40,13 +40,14 @@ export default function GameRoute() {
         return { home: league.teams[g.home]!, away: league.teams[g.away]!, title: `Week ${g.week}`, week: g.week, game: live.result, unplayed: true };
       }
       const teams = teamsFor(log, league, summary);
+      // Replayed under the rules it was played with (older games, the older rules).
       const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls } : {};
-      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, coached) };
+      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1 }) };
     }
     const p = playoffs?.games.find((x) => x.summary.id === id);
     if (p) {
       const teams = teamsFor(log, league, p.summary);
-      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite });
+      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite, rules: p.summary.rules ?? 1 });
       return { ...teams, title: ROUND_NAMES[p.round], week: 99, game, neutralSite: p.neutralSite };
     }
     return null;

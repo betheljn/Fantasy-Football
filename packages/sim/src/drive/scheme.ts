@@ -39,7 +39,7 @@ function isShortYardage(c: Situational): boolean {
 }
 
 /** Offensive personnel and alignment for this snap. */
-export function chooseOffense(rng: Rng, team: Team, c: Situational): OffenseFormation {
+export function chooseOffense(rng: Rng, team: Team, c: Situational, rules?: number): OffenseFormation {
   const pace = paceFor(c);
   // Team tendency: a good second tight end relative to the third receiver means more 12.
   const te2 = starters(team, "TE", 2)[1];
@@ -63,7 +63,7 @@ export function chooseOffense(rng: Rng, team: Team, c: Situational): OffenseForm
   // RB2 spells RB1 on some snaps; a lead back with less stamina needs more breathers.
   const rb1 = starters(team, "RB", 1)[0];
   const rotation = RB_ROTATION * (rb1 ? clamp(1 - 0.3 * edge(rb1.ratings.stamina), 0.75, 1.4) : 1);
-  return buildOffense(team, personnel, set, rng.chance(rotation));
+  return buildOffense(team, personnel, set, rng.chance(rotation), rules);
 }
 
 /** Prevent defense: protecting a lead late, give up anything underneath but nothing deep. */

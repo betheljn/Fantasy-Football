@@ -13,6 +13,7 @@ import {
   spotBall,
   stopReasonFor,
   weightedPick,
+  RULES_VERSION,
   type PlayContext,
 } from "./common.ts";
 import type { RunPlayEvent } from "./events.ts";
@@ -24,6 +25,10 @@ import { coachingEdges, offenseProfile } from "./coaching.ts";
 export const RUN_NUMBERS_EDGE = 0.3;
 /** Mean rushing yards before any matchup edges. */
 const RUN_BASE = 4.1;
+/** Line edge a fullback's lead block is worth (rules 2), scaled by how good a lead blocker he is. */
+export const FULLBACK_LEAD = 0.22;
+/** Goal-line runs (rules 2): within this many yards, a shorter mean gain and a tighter spread. */
+export const GOAL_LINE = { within: 5, squeeze: 1.4, spread: 2.4 };
 
 export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const { situation: sit } = ctx;
@@ -46,16 +51,23 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   // everyone involved; how many there are on each side is the separate numbers edge.
   // Blockers lean on power against strong fronts and finesse against quick ones;
   // a fullback's job is lead blocking.
+  const rules = ctx.rules ?? RULES_VERSION;
   const blockers = runBlockers(o);
   const box = boxDefenders(d);
   const powerFront = clamp(0.5 + (avg(d.dl, (p) => p.ratings.strength) - avg(d.dl, (p) => p.ratings.agility)) / 60, 0.3, 0.7);
   const blockQuality = (p: Player) =>
     p.position === "RB" ? p.ratings.leadBlock : p.ratings.runBlockPower * powerFront + p.ratings.runBlockFinesse * (1 - powerFront);
-  const block = avg(blockers, blockQuality);
+  // Rules 2: the fullback leads through the hole (his own edge) rather than being averaged into the line.
+  const lead = rules >= 2 && fullback && rusher !== fullback ? fullback : null;
+  const block = rules >= 2 ? avg(blockers.filter((p) => p !== fullback), blockQuality) : avg(blockers, blockQuality);
   const stop = avg(box, (p) => runDefense(p.ratings));
   const numbers = blockers.length - box.length;
   const line =
-    (block - stop) / 15 + RUN_NUMBERS_EDGE * numbers + HOME_FIELD.runLine * (ctx.homeField ?? 0) + coachingEdges(ctx.offense, ctx.defense).run;
+    (block - stop) / 15 +
+    RUN_NUMBERS_EDGE * numbers +
+    (lead ? FULLBACK_LEAD * (1 + edge(lead.ratings.leadBlock)) : 0) +
+    HOME_FIELD.runLine * (ctx.homeField ?? 0) +
+    coachingEdges(ctx.offense, ctx.defense).run;
 
   // The runner: vision finds the hole, moves and power win yards after contact, burst breaks it open.
   const r = rusher.ratings;
@@ -70,7 +82,11 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const springs = edge(avg(o.ol, (p) => p.ratings.impactBlocking));
   const chase = edge(avg(d.all, (p) => p.ratings.pursuit));
 
-  let yards = Math.max(-5, rng.normal(RUN_BASE + 1.0 * line + 0.9 * runner - (runBlitz ? 0.3 : 0), runBlitz ? 3.8 : 3.2));
+  // Rules 2: the field shrinks at the goal line (no room behind the defense, everyone packed in).
+  const toGoal = 100 - sit.yardline;
+  const goalLine = rules >= 2 && toGoal <= GOAL_LINE.within;
+  const mean = RUN_BASE + 1.0 * line + 0.9 * runner - (runBlitz ? 0.3 : 0) - (goalLine ? GOAL_LINE.squeeze : 0);
+  let yards = Math.max(-5, rng.normal(mean, goalLine ? GOAL_LINE.spread : runBlitz ? 3.8 : 3.2));
   const breakaway = clamp(
     0.035 + 0.02 * burst + 0.01 * wiggle + 0.015 * line + 0.008 * springs - 0.01 * chase + (runBlitz ? 0.015 : 0),
     0.01,

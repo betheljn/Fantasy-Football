@@ -296,7 +296,7 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
           add({ key: `alltime-${id}-${m.key}`, kind: "milestone", importance: 60, teams: [line.team], players: [id], headline: `${fullName(info.player)} takes over the league lead in ${m.what}`, body: `${who} (${st(league, line.team)}) passed ${was} against ${nick(league, opp)}. He's at ${commas(now)}, the most in league history.` });
         } else {
           const r = rng(`ms-${id}-${m.key}`);
-          add({ key: `ms-${id}-${m.key}`, kind: "milestone", importance: 34 + 6 * m.marks.indexOf(mark!), teams: [line.team], players: [id], headline: pickLine(r, [`${fullName(info.player)} reaches ${commas(mark!)} ${m.what}`, `Milestone: ${fullName(info.player)} passes ${commas(mark!)} ${m.what}`]), body: `${who} (${st(league, line.team)}) got there against ${nick(league, opp)}, in his ${ordinal(seasons)} season in the league. He's at ${commas(now)}.` });
+          add({ key: `ms-${id}-${m.key}-${mark}`, kind: "milestone", importance: 34 + 6 * m.marks.indexOf(mark!), teams: [line.team], players: [id], headline: pickLine(r, [`${fullName(info.player)} reaches ${commas(mark!)} ${m.what}`, `Milestone: ${fullName(info.player)} passes ${commas(mark!)} ${m.what}`]), body: `${who} (${st(league, line.team)}) got there against ${nick(league, opp)}, in his ${ordinal(seasons)} season in the league. He's at ${commas(now)}.` });
         }
       }
     }
