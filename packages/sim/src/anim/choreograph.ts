@@ -660,6 +660,9 @@ function punt(rng: Rng, e: PuntEvent): PlayAnimation {
     if (e.units) {
       const loose = { x: punter.x - 3, y: ballY };
       actors.push(...puntUnits(rng, e.units, e.offense, e.defense, los, ballY)({ landing: loose, tKick: 1.9, tLand: 2.4, end: null, tEnd: 2.8, skip: new Set(actors.map((a) => a.id)) }));
+      // The returner was waiting deep for a kick that never came.
+      const kr = e.units.receiving.find((m) => m.role === "KR");
+      if (kr && !actors.some((a) => a.id === kr.id)) actors.push({ id: kr.id, team: e.defense, role: "KR", track: new TrackBuilder({ x: Math.min(los + 40, 98), y: ballY }).hold(1.9).toward(2.8, loose, 8).track });
     }
     return build(e.offense, e.defense, e.start, actors, ball);
   }

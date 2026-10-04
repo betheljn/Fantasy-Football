@@ -105,8 +105,19 @@ export function prepareGame(game: GameResult, who: PlayerLookup, cache?: Map<num
       return { t: keys.map((k) => k.t), x: pts.map((q) => q.x), y: pts.map((q) => q.y) };
     };
     const jersey = new Map<string, number>();
+    // On kicks, only the players the play is about wear a number (22 numbers is just noise).
+    const kick = e.kind === "punt" || e.kind === "kickoff" || e.kind === "field_goal" || (e.kind === "conversion" && !e.play);
+    const featured = new Set<string>(
+      kick
+        ? [
+            ...anim.actors.filter((a) => a.role === "K" || a.role === "P" || a.role === "KR").map((a) => a.id),
+            ...("blockedBy" in e && e.blockedBy ? [e.blockedBy] : []),
+            ...("tackler" in e && e.tackler ? [e.tackler] : []),
+          ]
+        : anim.actors.map((a) => a.id),
+    );
     try {
-      for (const a of anim.actors) jersey.set(a.id, who(a.id).jersey);
+      for (const a of anim.actors) if (featured.has(a.id)) jersey.set(a.id, who(a.id).jersey);
     } catch {
       // Unknown player (shouldn't happen): leave the number off.
     }
