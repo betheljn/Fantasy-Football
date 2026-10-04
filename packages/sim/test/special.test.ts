@@ -65,3 +65,30 @@ describe("ratings", () => {
     runDynasty(d, 2, (x) => check(allTeams(x.league)));
   }, 300_000);
 });
+
+describe("blocked field goals (rules 3)", () => {
+  it("are recovered or returned, the defense scores the touchdown, and older rules keep the old outcome", () => {
+    let returned = 0;
+    let scored = 0;
+    for (let i = 0; i < 400 && scored === 0; i++) {
+      const [h, a] = generateTeams(new Rng(`bfg-${i}`), 2) as [Team, Team];
+      const g = simulateGame(h, a, i);
+      for (const p of g.plays) {
+        const e = p.event;
+        if (e.kind !== "field_goal" || !e.blocked) continue;
+        returned++;
+        expect(e.returnedBy).toBeTruthy();
+        if (e.touchdown) {
+          scored++;
+          // The defense's six, then its try and kickoff.
+          const next = g.plays[p.seq + 1]!.event;
+          expect(next.kind).toBe("conversion");
+          expect(next.kind === "conversion" && next.team).toBe(e.defense);
+        } else expect(e.nextYardline).toBeGreaterThan(0);
+      }
+      for (const p of simulateGame(h, a, i, { rules: 2 }).plays) if (p.event.kind === "field_goal") expect(p.event.returnedBy).toBeUndefined();
+    }
+    expect(returned).toBeGreaterThan(0);
+    expect(scored).toBeGreaterThan(0);
+  }, 300_000);
+});

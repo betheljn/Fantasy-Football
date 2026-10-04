@@ -150,6 +150,10 @@ export interface FieldGoalEvent extends SpecialEventBase {
   blocked: boolean;
   /** Who got a hand on a blocked kick. */
   blockedBy?: PlayerId | null;
+  /** A blocked kick: who picked it up, how far he took it, and whether he scored (the defense's touchdown). */
+  returnedBy?: PlayerId | null;
+  returnYards?: number;
+  touchdown?: boolean;
   /** Everyone on the field for the kick. */
   units?: SpecialUnits;
   /** On a miss: where the defense takes over (their perspective). */

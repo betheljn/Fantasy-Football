@@ -15,6 +15,7 @@ export function pointsForEvent(e: PlayEvent): Record<string, number> {
       if (e.safety) return { [e.defense]: 2 };
       return {};
     case "field_goal":
+      if (e.touchdown) return { [e.defense]: 6 };
       return e.made ? { [e.offense]: 3 } : {};
     case "punt":
       if (e.touchdown) return { [e.defense]: 6 };

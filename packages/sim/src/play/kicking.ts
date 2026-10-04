@@ -2,7 +2,7 @@ import type { Player } from "../model/player.ts";
 import { passRushing } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
-import { clamp, edge, exponential, weightedPick, type PlayContext } from "./common.ts";
+import { RULES_VERSION, clamp, edge, exponential, weightedPick, type PlayContext } from "./common.ts";
 import type { FieldGoalEvent, Fumble, PuntEvent } from "./events.ts";
 import { blockChance, pickBlocker, specialUnits } from "./special.ts";
 
@@ -31,6 +31,31 @@ export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
   const made = !blocked && rng.chance(fieldGoalProbability(kicker, distance));
   // A miss gives the defense the ball at the spot of the kick, or their 20 if that's better.
   const spotOfKick = ctx.situation.yardline - 7;
+  if (blocked && (ctx.rules ?? RULES_VERSION) >= 3) {
+    // Rules 3: the ball bounces back toward the kicking team's goal; a defender scoops it up and runs.
+    const pool = units.receiving.map((m) => ctx.defense.roster.find((p) => p.id === m.id)).filter((p): p is NonNullable<typeof p> => !!p);
+    const scooper = weightedPick(rng, pool, (p) => (p.id === blockedBy ? 3 : 1) * Math.max(10, p.ratings.speed - 40));
+    const loose = Math.max(1, spotOfKick - rng.int(1, 6)); // kicking team's frame
+    const td = rng.chance(clamp(BLOCKED_FG_TD * (1 + 0.6 * edge(scooper.ratings.speed)) * (loose < 40 ? 1.5 : 1), 0.03, 0.35));
+    const returnYards = td ? loose : Math.min(loose - 1, Math.max(0, Math.round(rng.normal(4, 6))));
+    return {
+      kind: "field_goal",
+      offense: ctx.offense.abbr,
+      defense: ctx.defense.abbr,
+      start: { ...ctx.situation },
+      kicker: kicker.id,
+      distance,
+      made: false,
+      blocked: true,
+      blockedBy,
+      returnedBy: scooper.id,
+      returnYards,
+      touchdown: td,
+      units,
+      duration: td ? 9 : 6,
+      nextYardline: td ? null : 100 - loose + returnYards,
+    };
+  }
   return {
     kind: "field_goal",
     offense: ctx.offense.abbr,
@@ -46,6 +71,9 @@ export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
     nextYardline: made ? null : Math.max(20, 100 - spotOfKick),
   };
 }
+
+/** Share of blocked field goals (rules 3) scooped and returned all the way, before the scooper's speed. */
+export const BLOCKED_FG_TD = 0.09;
 
 /** Best kick returner among the non-starting WRs, CBs and RBs. */
 export function returnerOf(team: Team): Player {

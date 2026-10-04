@@ -463,6 +463,10 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       if (event.made) {
         return finish("field_goal", { kind: "kickoff", kickingTeam: off });
       }
+      if (event.touchdown) {
+        yield* conversion(defense, offense);
+        return finish("defensive_touchdown", { kind: "kickoff", kickingTeam: def });
+      }
       return finish("missed_field_goal", { kind: "scrimmage", team: def, yardline: event.nextYardline! });
     }
 

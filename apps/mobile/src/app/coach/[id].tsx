@@ -3,11 +3,14 @@
 // played with it and you land on its recap.
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Text } from "react-native";
+import { AppState, Text } from "react-native";
 import { coachScheduledGame } from "@dynasty/sim";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { CoachView } from "../../screens/CoachView";
 import { useTheme } from "../../theme";
+
+/** Save this long after the last call. */
+const SAVE_AFTER_MS = 1500;
 
 export default function CoachRoute() {
   const t = useTheme();
@@ -20,17 +23,29 @@ export default function CoachRoute() {
   // One game for the whole visit, picked up from any calls already made.
   const [game] = useState(() => (playable && g ? coachScheduledGame(league, g, userTeam, d.coaching?.game === g.id ? d.coaching.calls : []) : null));
 
-  // Save the calls at the start of each drive, and when you leave.
-  const saved = useRef({ drive: game?.prompt?.drive ?? -1, calls: game?.calls.length ?? 0 });
+  // Save the calls a moment after each one (not on every tap of a quick run of calls),
+  // and right away when you leave the screen or the app goes to the background.
+  const saved = useRef(game?.calls.length ?? 0);
   const done = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const save = () => {
-    if (!game || done.current || game.calls.length === saved.current.calls) return;
-    saved.current = { drive: game.prompt?.drive ?? -1, calls: game.calls.length };
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (!game || done.current || game.calls.length === saved.current) return;
+    saved.current = game.calls.length;
     d.saveCoaching(id, [...game.calls]);
   };
   const latest = useRef(save);
   latest.current = save;
-  useEffect(() => () => latest.current(), []);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s !== "active") latest.current();
+    });
+    return () => {
+      sub.remove();
+      latest.current();
+    };
+  }, []);
 
   if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>This game can't be coached now.</Text>;
   return (
@@ -42,7 +57,8 @@ export default function CoachRoute() {
         away={league.teams[g.away]!}
         title={`Week ${g.week}`}
         onCall={() => {
-          if ((game.prompt?.drive ?? -1) !== saved.current.drive) save();
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => latest.current(), SAVE_AFTER_MS);
         }}
         finish={{
           label: `Record it and play the rest of week ${g.week}`,

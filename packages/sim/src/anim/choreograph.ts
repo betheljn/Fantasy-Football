@@ -391,7 +391,29 @@ function fieldGoal(rng: Rng, e: FieldGoalEvent): PlayAnimation {
     ball.push({ t: (1.3 + tArrive) / 2, x: (hold.x + posts.x) / 2, y: (hold.y + posts.y) / 2, z: 9 }, { t: tArrive, ...posts, z: e.made ? 5 : 3 });
   }
   const actors: Actor[] = [{ id: e.kicker, team: e.offense, role: "K", track: kicker.track }];
-  if (e.units) actors.push(...scrimmageKickUnits(rng, e.units, e.offense, e.defense, los, ballY, hold, e.blocked ? (e.blockedBy ?? null) : null, new Set([e.kicker])));
+  const skip = new Set([e.kicker]);
+  if (e.blocked && e.returnedBy && e.returnedBy !== e.blockedBy) {
+    // Scooped up and returned (rules 3): the ball bounces back, a defender picks it up and runs.
+    const loose = { x: e.touchdown ? Math.max(1, los - 9) : 100 - e.nextYardline! + (e.returnYards ?? 0), y: ballY + rng.normal(0, 3) };
+    const end = clampToField({ x: e.touchdown ? -3 : loose.x - (e.returnYards ?? 0), y: loose.y + rng.normal(0, 6) });
+    ball.splice(2, ball.length - 2, { t: 1.5, x: los - 1, y: ballY, z: 1.5 }, { t: 2.3, ...loose, z: 0 });
+    const tEnd = 2.5 + travelTime(loose, end, CARRIER_SPEED);
+    ball.push({ t: 2.5, ...loose, z: 1 }, { t: tEnd, ...end, z: 1 });
+    const scooper = new TrackBuilder({ x: los + 1, y: ballY + rng.normal(0, 4) }).toward(2.5, loose, 8).to(2.5, loose).to(tEnd, end);
+    actors.push({ id: e.returnedBy, team: e.defense, role: "DL", track: scooper.track });
+    skip.add(e.returnedBy);
+  } else if (e.blocked && e.returnedBy) {
+    // The blocker scooped it himself: his own track ends with the ball.
+    const loose = { x: 100 - e.nextYardline! + (e.returnYards ?? 0), y: ballY };
+    const end = clampToField({ x: e.touchdown ? -3 : loose.x - (e.returnYards ?? 0), y: ballY + rng.normal(0, 6) });
+    ball.splice(2, ball.length - 2, { t: 1.5, x: los - 1, y: ballY, z: 1.5 }, { t: 2.3, ...loose, z: 0 });
+    const tEnd = 2.5 + travelTime(loose, end, CARRIER_SPEED);
+    ball.push({ t: 2.5, ...loose, z: 1 }, { t: tEnd, ...end, z: 1 });
+    const blocker = new TrackBuilder({ x: los + 0.9, y: ballY }).hold(0.05).to(1.32, { x: hold.x + 1.2, y: ballY }).toward(2.5, loose, 8).to(2.5, loose).to(tEnd, end);
+    actors.push({ id: e.returnedBy, team: e.defense, role: "DL", track: blocker.track });
+    skip.add(e.returnedBy);
+  }
+  if (e.units) actors.push(...scrimmageKickUnits(rng, e.units, e.offense, e.defense, los, ballY, hold, e.blocked && !skip.has(e.blockedBy ?? "") ? (e.blockedBy ?? null) : null, skip));
   return build(e.offense, e.defense, e.start, actors, ball);
 }
 

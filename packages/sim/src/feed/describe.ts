@@ -40,6 +40,12 @@ export function describePlay(e: PlayEvent, who: PlayerLookup): string {
   const n = (id: PlayerId | null) => (id ? displayName(who(id)) : "?");
   switch (e.kind) {
     case "field_goal":
+      if (e.blocked && e.returnedBy) {
+        const by = e.blockedBy ? ` by ${n(e.blockedBy)}` : "";
+        return e.touchdown
+          ? `${n(e.kicker)} ${e.distance}-yard field goal is BLOCKED${by}, scooped up by ${n(e.returnedBy)} and returned ${e.returnYards} yards for a TOUCHDOWN.`
+          : `${n(e.kicker)} ${e.distance}-yard field goal is BLOCKED${by}, recovered by ${n(e.returnedBy)}${e.returnYards ? ` and returned ${e.returnYards} yards` : ""}.`;
+      }
       return `${n(e.kicker)} ${e.distance}-yard field goal ${e.made ? "is GOOD" : e.blocked ? `is BLOCKED${e.blockedBy ? ` by ${n(e.blockedBy)}` : ""}` : "is NO GOOD"}.`;
     case "punt": {
       if (e.blocked) {

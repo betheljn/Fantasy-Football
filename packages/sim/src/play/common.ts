@@ -8,9 +8,10 @@ import type { DefenseFormation, Formations } from "./formation.ts";
 /**
  * The rules games are played under. Games record theirs so past games replay
  * exactly after the sim is retuned: 1 = the original run game; 2 = a real
- * fullback in two-back sets and tougher goal-line runs.
+ * fullback in two-back sets and tougher goal-line runs; 3 = blocked field
+ * goals can be scooped and returned.
  */
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 3;
 
 export interface PlayContext {
   offense: Team;

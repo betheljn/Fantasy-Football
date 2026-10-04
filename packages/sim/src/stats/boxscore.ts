@@ -110,6 +110,8 @@ export function buildBoxScore(game: GameResult): BoxScore {
           k.fgMade++;
           long(k, "fgLong", e.distance);
         }
+        if (e.blocked && e.blockedBy) p(e.blockedBy, e.defense).kicksBlocked++;
+        if (e.touchdown && e.returnedBy) p(e.returnedBy, e.defense).defTd++;
         return;
       }
       case "conversion":
@@ -117,6 +119,7 @@ export function buildBoxScore(game: GameResult): BoxScore {
           const k = p(e.kicker!, e.team);
           k.xpAtt++;
           if (e.success) k.xpMade++;
+          if (e.blocked && e.blockedBy) p(e.blockedBy, e.defense).kicksBlocked++;
         } else if (e.defensiveReturn) {
           teams[e.defense]!.defTwoPt++;
         } else if (e.success && e.play) {
