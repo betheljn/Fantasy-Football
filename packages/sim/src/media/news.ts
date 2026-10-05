@@ -6,7 +6,7 @@
 // varies by seed, so the same week always reads the same.
 import { Rng } from "../rng.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
-import type { Team } from "../model/team.ts";
+import { teamPlace, type Team } from "../model/team.ts";
 import type { League } from "../league/league.ts";
 import type { GameResult } from "../game/game.ts";
 import type { GameSummary } from "../league/standings.ts";
@@ -89,7 +89,8 @@ function rankOf(entries: readonly RankingEntry[], abbr: string): number | null {
 
 /** A team's state, for story bodies ("Ohio"). */
 function st(league: League, abbr: string): string {
-  return league.teams[abbr]?.state ?? abbr;
+  const t = league.teams[abbr];
+  return t ? teamPlace(t) : abbr;
 }
 
 /** "No. 4 Ohio" or just "Ohio". */
@@ -234,10 +235,10 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
     const n = streak(input.results, abbr);
     const r = records.get(abbr);
     if (!r) continue;
-    if (r.losses === 0 && r.ties === 0 && r.wins >= 5) add({ key: `unbeaten-${abbr}`, kind: "streak", importance: 50 + r.wins, teams: [abbr], players: [], headline: `${nick(league, abbr)} still perfect at ${formatRecord(r)}`, body: `${league.teams[abbr]!.state} has won all ${r.wins} games this season.` });
-    else if (n >= 5) add({ key: `streak-${abbr}`, kind: "streak", importance: 26 + n * 3, teams: [abbr], players: [], headline: `${nick(league, abbr)} win ${n} straight`, body: `${league.teams[abbr]!.state} is ${formatRecord(r)} and rolling.` });
-    else if (r.wins === 0 && r.ties === 0 && r.losses >= 5) add({ key: `winless-${abbr}`, kind: "streak", importance: 22, teams: [abbr], players: [], headline: `${nick(league, abbr)} still looking for a win at ${formatRecord(r)}`, body: `${league.teams[abbr]!.state} has lost all ${r.losses} games.` });
-    else if (n <= -5) add({ key: `skid-${abbr}`, kind: "streak", importance: 18 + -n * 2, teams: [abbr], players: [], headline: `${nick(league, abbr)} drop ${-n} in a row`, body: `${league.teams[abbr]!.state} has slid to ${formatRecord(r)}.` });
+    if (r.losses === 0 && r.ties === 0 && r.wins >= 5) add({ key: `unbeaten-${abbr}`, kind: "streak", importance: 50 + r.wins, teams: [abbr], players: [], headline: `${nick(league, abbr)} still perfect at ${formatRecord(r)}`, body: `${teamPlace(league.teams[abbr]!)} has won all ${r.wins} games this season.` });
+    else if (n >= 5) add({ key: `streak-${abbr}`, kind: "streak", importance: 26 + n * 3, teams: [abbr], players: [], headline: `${nick(league, abbr)} win ${n} straight`, body: `${teamPlace(league.teams[abbr]!)} is ${formatRecord(r)} and rolling.` });
+    else if (r.wins === 0 && r.ties === 0 && r.losses >= 5) add({ key: `winless-${abbr}`, kind: "streak", importance: 22, teams: [abbr], players: [], headline: `${nick(league, abbr)} still looking for a win at ${formatRecord(r)}`, body: `${teamPlace(league.teams[abbr]!)} has lost all ${r.losses} games.` });
+    else if (n <= -5) add({ key: `skid-${abbr}`, kind: "streak", importance: 18 + -n * 2, teams: [abbr], players: [], headline: `${nick(league, abbr)} drop ${-n} in a row`, body: `${teamPlace(league.teams[abbr]!)} has slid to ${formatRecord(r)}.` });
   }
 
   // --- the locker room: captains step up when a skid starts, and get the credit for a run ---
@@ -252,7 +253,7 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
     const who = `${captain.position} ${fullName(captain)}`;
     const r = rng(`locker-${abbr}`);
     if (n < 0)
-      add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 20, teams: [abbr], players: [captain.id], headline: pickLine(r, [`Captain ${fullName(captain)} calls a players-only meeting in ${team.state}`, `${nick(league, abbr)} captain: "We're better than this"`]), body: `After three straight losses (${rec(abbr)}), ${who} gathered the ${team.nickname} without the coaches. "Nobody's pointing fingers. We fix it together."` });
+      add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 20, teams: [abbr], players: [captain.id], headline: pickLine(r, [`Captain ${fullName(captain)} calls a players-only meeting in ${teamPlace(team)}`, `${nick(league, abbr)} captain: "We're better than this"`]), body: `After three straight losses (${rec(abbr)}), ${who} gathered the ${team.nickname} without the coaches. "Nobody's pointing fingers. We fix it together."` });
     else
       add({ key: `locker-${abbr}`, kind: "lockerroom", importance: 18, teams: [abbr], players: [captain.id], headline: pickLine(r, [`${nick(league, abbr)} locker room buzzing after four straight`, `Captain ${fullName(captain)} has the ${team.nickname} believing`]), body: `Four wins in a row (${rec(abbr)}), and the ${team.nickname} point to their captain. "${captain.lastName} sets the tone every day," one teammate said.` });
   }
@@ -313,7 +314,7 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
     .filter((x) => x.from - x.e.rank >= 6)
     .sort((a, b) => b.from - b.e.rank - (a.from - a.e.rank));
   for (const { e, from } of climbs.slice(0, 1))
-    add({ key: `climb-${e.team}`, kind: "rankings", importance: 34, teams: [e.team], players: [], headline: `${nick(league, e.team)} jump to No. ${e.rank}`, body: `Up from ${from > 25 ? "outside the Top 25" : `No. ${from}`}, ${league.teams[e.team]!.state} is ${formatRecord(e.record)}.` });
+    add({ key: `climb-${e.team}`, kind: "rankings", importance: 34, teams: [e.team], players: [], headline: `${nick(league, e.team)} jump to No. ${e.rank}`, body: `Up from ${from > 25 ? "outside the Top 25" : `No. ${from}`}, ${teamPlace(league.teams[e.team]!)} is ${formatRecord(e.record)}.` });
 
   // --- injuries to stars (the three biggest) ---
   const hurt = [...(input.injuries ?? [])].filter((i) => i.overall >= 75 || (i.position === "QB" && i.starter)).sort((a, b) => b.weeks - a.weeks || b.overall - a.overall);
@@ -358,7 +359,7 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
         teams: [userTeam, opp],
         players: ours ? [ours.id] : [],
         headline: `${nick(league, userTeam)} ${result} ${nick(league, opp)}, ${Math.max(us, them)}-${Math.min(us, them)}${g.overtime ? " (OT)" : ""}`,
-        body: `${league.teams[userTeam]!.state} is ${rec(userTeam)}.${who && ours ? ` ${who.player.position} ${fullName(who.player)}: ${statLine(ours)}.` : ""}`,
+        body: `${teamPlace(league.teams[userTeam]!)} is ${rec(userTeam)}.${who && ours ? ` ${who.player.position} ${fullName(who.player)}: ${statLine(ours)}.` : ""}`,
       });
     }
     const next = input.schedule.games.find((x) => x.week > week && (x.home === userTeam || x.away === userTeam));

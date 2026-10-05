@@ -4,7 +4,7 @@
 // Team tab; the league in the League tab.
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { IR_MIN_WEEKS, STAGE_CHOICE_KEY } from "@dynasty/sim";
+import { teamName, IR_MIN_WEEKS, STAGE_CHOICE_KEY } from "@dynasty/sim";
 import { Card, Icon, NavGroup, NavRow, Swatch, type IconName } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
@@ -46,7 +46,7 @@ export function OnlineHub() {
         <Swatch abbr={userTeam} size={18} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>
-            {team.state} {team.nickname}
+            {teamName(team)}
           </Text>
           <Text style={{ color: t.muted, fontSize: 13 }}>
             {me.name} · online · {league.season}

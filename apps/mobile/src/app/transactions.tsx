@@ -7,6 +7,7 @@ import { injuryLabel, type TradeRecord } from "@dynasty/sim";
 import { Card, Segmented } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
+import { teamShort } from "../field/colors";
 
 const SECTIONS = [
   { key: "trades", label: "Trades" },
@@ -44,7 +45,7 @@ export default function TransactionsScreen() {
                 ? injuries.map((n) => row(`i${n.player}${n.week}`, `Wk ${n.week}`, `${n.team} ${n.starter ? "starting " : ""}${n.position} ${n.name}: ${injuryLabel(n)}`, n.team === userTeam))
                 : empty("No injuries have made news yet.")
               : moves.length
-                ? moves.map((m, i) => row(`m${i}`, `Wk ${m.week}`, `${m.team} ${m.kind === "signed" ? "signs" : "puts on injured reserve"} ${m.position} ${m.name} (${m.overall})`, m.team === userTeam))
+                ? moves.map((m, i) => row(`m${i}`, `Wk ${m.week}`, `${teamShort(m.team)} ${m.kind === "signed" ? "signs" : "puts on injured reserve"} ${m.position} ${m.name} (${m.overall})`, m.team === userTeam))
                 : empty("No signings or injured-reserve moves yet.")}
         </Card>
       </ScrollView>
@@ -61,7 +62,7 @@ function tradeLine(tr: TradeRecord): string {
     ];
     return `${gets} gets ${items.join(", ")}`;
   };
-  const released = (tr.released ?? []).map((r) => `${r.team} releases ${r.position} ${r.name}`);
+  const released = (tr.released ?? []).map((r) => `${teamShort(r.team)} releases ${r.position} ${r.name}`);
   return [`${side(tr.teams[0], tr.teams[1])}; ${side(tr.teams[1], tr.teams[0])}`, ...released].join("; ");
 }
 

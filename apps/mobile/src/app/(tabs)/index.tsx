@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import {
+  teamPlace,
   PLAYOFF_ROUNDS,
   ROUND_NAMES,
   STATES,
@@ -17,24 +18,19 @@ import {
   TRADE_DEADLINE_WEEK,
   IR_MIN_WEEKS,
   type TradeRecord,
-  allTeams,
-  formatMoney,
   formatRecord,
-  payroll,
-  salaryCap,
-  staffOverall,
   teamName,
   mood,
   teamAppeal,
-  teamRatings,
   winPct,
 } from "@dynasty/sim";
 import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
-import { teamColors } from "../../field/colors";
+import { teamColors, teamShort } from "../../field/colors";
 import { OnlineHub } from "../../online/OnlineHub";
 import { OffseasonStepper, type OffseasonStepKey } from "../../components/OffseasonStepper";
 import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
+import { TeamSetupScreen } from "../../screens/TeamSetupScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
 import { HireScreen, StaffScreen } from "../../screens/StaffScreen";
@@ -62,7 +58,7 @@ export default function Home() {
     case "offseason":
       return <Working icon="sync-outline" title="Running the offseason" body="Staff moves, retirements, player development, contracts, the draft and free agency." />;
     case "choose":
-      return data ? <ChooseTeam data={data} /> : null;
+      return data ? <TeamSetupScreen data={data} /> : null;
     case "fired":
       return data && d.save?.fired ? <Fired data={data} /> : null;
     case "staff":
@@ -127,56 +123,6 @@ function Stepped({ step, note, children }: { step: OffseasonStepKey; note?: stri
       <OffseasonStepper step={step} note={note} />
       <View style={{ flex: 1 }}>{children}</View>
     </View>
-  );
-}
-
-function ChooseTeam({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const teams = useMemo(
-    () => allTeams(data.league).map((team) => ({ team, ovr: teamRatings(team).overall })).sort((a, b) => b.ovr - a.ovr),
-    [data.league],
-  );
-  const cap = salaryCap(data.league.seed, data.league.season);
-  const [role, setRole] = useState<"owner" | "gm">("owner");
-  return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Choose your team</Text>
-      <Card>
-        <SectionTitle>Your role</SectionTitle>
-        {(
-          [
-            ["owner", "Owner and GM", "Run everything. Nobody can fire you; the board and the fans grade every season."],
-            ["gm", "GM for an AI owner", "The owner has a goal and a temper. Meet it and you keep the job; miss it too often and you're out."],
-          ] as const
-        ).map(([key, label, note]) => (
-          <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="radio" accessibilityState={{ selected: role === key }} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
-            <Icon name={role === key ? "radio-button-on" : "radio-button-off"} color={role === key ? t.accent : t.muted} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: t.text, fontWeight: "700" }}>{label}</Text>
-              <Text style={{ color: t.muted, fontSize: 13 }}>{note}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </Card>
-      <Text style={{ color: t.muted, marginBottom: 8 }}>Strongest rosters first. A weak team is a longer road — and a better story.</Text>
-      {teams.map(({ team, ovr }) => (
-        <Card key={team.abbr} style={{ paddingVertical: 4 }}>
-          <LinkRow label={`Choose ${teamName(team)}`} onPress={() => d.chooseTeam(team.abbr, role)}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Swatch abbr={team.abbr} size={36} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: t.text, fontWeight: "700" }}>{teamName(team)}</Text>
-                <Text style={{ color: t.muted, fontSize: 12 }}>
-                  Coach {team.staff?.hc.lastName} ({team.staff ? staffOverall(team.staff.hc) : "–"}) · payroll {formatMoney(payroll(team, data.league.season))} of {formatMoney(cap)}
-                </Text>
-              </View>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: t.text, fontVariant: ["tabular-nums"] }}>{ovr.toFixed(0)}</Text>
-            </View>
-          </LinkRow>
-        </Card>
-      ))}
-    </ScrollView>
   );
 }
 
@@ -268,7 +214,7 @@ function NextUp({ data }: { data: LeagueData }) {
           {league.teams[abbr]!.nickname}
         </Text>
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          {league.teams[abbr]!.state} · {r ? formatRecord(r) : "0-0"}
+          {teamPlace(league.teams[abbr]!)} · {r ? formatRecord(r) : "0-0"}
         </Text>
       </View>
     );
@@ -615,10 +561,10 @@ function Report({ report }: { report: OffseasonReport }) {
             {r.fired ? (
               <>
                 <Text style={{ color: t.text }}>
-                  Fired by {data?.league.teams[r.team ?? ""]?.state ?? "your old team"} after the season. {r.verdict}
+                  Fired by {(data?.league.teams[r.team ?? ""] ? teamPlace(data.league.teams[r.team ?? ""]!) : "your old team")} after the season. {r.verdict}
                 </Text>
                 <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
-                  A fresh start in {data?.league.teams[data.userTeam]?.state}: your new owner's trust starts at {d.save?.office?.trust}.
+                  A fresh start in {data?.league.teams[data.userTeam] ? teamPlace(data.league.teams[data.userTeam]!) : ""}: your new owner's trust starts at {d.save?.office?.trust}.
                 </Text>
               </>
             ) : (
@@ -644,7 +590,7 @@ function Report({ report }: { report: OffseasonReport }) {
                   <Text style={{ fontWeight: "800" }}>
                     {m.position} {m.name}
                   </Text>{" "}
-                  ({Math.round(m.pct * 100)}%) · #{m.jersey ?? "?"} retired by {m.team}
+                  ({Math.round(m.pct * 100)}%) · #{m.jersey ?? "?"} retired by {teamShort(m.team)}
                 </Text>
               ))}
             </Card>

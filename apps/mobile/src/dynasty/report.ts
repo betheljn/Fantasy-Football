@@ -1,6 +1,7 @@
 // Your team's offseason, pulled from the sim's full offseason log: who left,
 // who arrived, the draft, staff changes - plus the league's headline news.
 import { playerOverall, type Award, type Dynasty, type OffseasonLog, type Player, teamPlayers } from "@dynasty/sim";
+import { teamShort } from "../field/colors";
 
 export interface ReportPlayer {
   id: string;
@@ -105,7 +106,7 @@ export function buildReport(
     const m = signedWith.get(id);
     const p = m?.player ?? log.contractMoves.find((x) => x.player.id === id)?.player;
     if (!p) continue;
-    const note = !m ? "nobody signed him" : m.team === team ? `signed with you (${m.bidders ?? 1} offer${(m.bidders ?? 1) === 1 ? "" : "s"})` : `chose ${m.team} (${m.bidders ?? 1} offers)`;
+    const note = !m ? "nobody signed him" : m.team === team ? `signed with you (${m.bidders ?? 1} offer${(m.bidders ?? 1) === 1 ? "" : "s"})` : `chose ${teamShort(m.team)} (${m.bidders ?? 1} offers)`;
     offers.push(person(p, note));
   }
 

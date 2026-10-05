@@ -3,6 +3,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
+  teamPlace,
   POSITIONS,
   STAFF_ROLE_NAMES,
   formatMoney,
@@ -14,6 +15,7 @@ import {
   playerOverall,
   salaryCap,
   staffOverall,
+  teamTag,
   teamName,
   teamMorale,
   type StaffMember,
@@ -49,7 +51,7 @@ export default function TeamScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: team.abbr }} />
+      <Stack.Screen options={{ title: teamTag(team) }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <TeamBanner abbr={team.abbr} title={teamName(team)} subtitle={divRank ? `${divRank.division} division${team.abbr === userTeam ? " · your team" : ""}` : undefined}>
           <StatRow>
@@ -108,9 +110,15 @@ export default function TeamScreen() {
           {staff.map((m) => (
             <View key={m.role} style={{ flexDirection: "row", paddingVertical: 3 }}>
               <Text style={{ width: 150, color: t.muted }}>{STAFF_ROLE_NAMES[m.role]}</Text>
-              <Text style={{ flex: 1, color: t.text }}>
-                {m.firstName} {m.lastName}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: t.text }}>
+                  {m.firstName} {m.lastName}
+                </Text>
+                {m.role === "HC" && m.calls ? <Text style={{ color: t.muted, fontSize: 12 }}>Calls the {m.calls.side}: {m.calls.scheme}</Text> : null}
+                {(m.role === "OC" || m.role === "DC") && team.staff?.hc.calls?.side !== (m.role === "OC" ? "offense" : "defense") ? (
+                  <Text style={{ color: t.muted, fontSize: 12 }}>Calls the {m.role === "OC" ? "offense" : "defense"}: {m.scheme}</Text>
+                ) : null}
+              </View>
               <Text style={{ color: t.muted, fontVariant: ["tabular-nums"] }}>{staffOverall(m)}</Text>
             </View>
           ))}
@@ -131,7 +139,7 @@ export default function TeamScreen() {
                 <Text style={{ width: 22, color: t.muted }}>{home ? "vs" : "@"}</Text>
                 <Swatch abbr={opp} size={22} />
                 <Text style={{ flex: 1, color: t.text }} numberOfLines={1}>
-                  {league.teams[opp]!.state}
+                  {teamPlace(league.teams[opp]!)}
                 </Text>
                 <Text style={{ color: wl === "W" ? t.accent : wl === "L" ? t.score : t.muted, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
                   {r ? `${wl} ${us}-${them}` : ""}

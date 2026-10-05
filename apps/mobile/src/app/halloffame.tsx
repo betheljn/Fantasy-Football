@@ -3,7 +3,7 @@
 import { Stack } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { HOF_RULES, hofBallot, type HofCandidate } from "@dynasty/sim";
+import { teamPlace, HOF_RULES, hofBallot, type HofCandidate } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch, Segmented } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -18,7 +18,7 @@ export default function HallOfFameScreen() {
   const mine = d.save?.hofVote ?? [];
   const members = [...(dynasty.hallOfFame ?? [])].reverse();
   const last = dynasty.hofVotes?.at(-1);
-  const st = (abbr: string) => league.teams[abbr]?.state ?? abbr;
+  const st = (abbr: string) => (league.teams[abbr] ? teamPlace(league.teams[abbr]!) : abbr);
 
   return (
     <>

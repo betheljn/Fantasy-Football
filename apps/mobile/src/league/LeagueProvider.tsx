@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type CoachCall,
+  setUpTeam,
   addGameToSeason,
   allTeams,
   buildDynasty,
@@ -132,8 +133,9 @@ import { api, type OnlineMove } from "../online/api";
 import { saveFromServer, type OnlineOffseason } from "../online/save";
 import { activeOnline, myLeagues, setActiveOnline, type MyLeague } from "../online/store";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
-import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
+import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo, type TeamSetup } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
+import { setTeamLooks } from "../field/colors";
 
 export const PLAYOFF_ROUND_COUNT = 4;
 /** Scouting points you get each week (as every team does). */
@@ -180,7 +182,11 @@ export interface DynastyControls {
   /** Back to the save list (this dynasty stays saved). */
   closeDynasty: () => void;
   newDynasty: () => void;
-  chooseTeam: (abbr: string, role?: "owner" | "gm") => void;
+  /** A new dynasty's setup in progress (saved so a fantasy draft survives closing the app). */
+  setup: TeamSetup | null;
+  saveSetup: (setup: TeamSetup | null) => void;
+  /** Take over your team as set up (with the league the fantasy draft made, if there was one) and open the first season. */
+  beginDynasty: (setup: TeamSetup, drafted?: League) => void;
   /** Play the spring season now (from the offseason report). */
   playSpring: () => void;
   /** Pick the spring champion before it's played (one pick a year). */
@@ -512,6 +518,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
 
   const dynasty = state?.dynasty ?? null;
   const league = dynasty?.league ?? null;
+  // Team colors, logos and short names come from the league; set them before its screens draw.
+  useMemo(() => setTeamLooks(league ? Object.values(league.teams) : []), [league?.teams]);
   const schedule = useMemo(() => (dynasty ? seasonSchedule(dynasty) : null), [dynasty]);
   const results = state?.results;
   const standings = useMemo(() => (league && results ? divisionStandings(league, results) : []), [league, results]);
@@ -952,8 +960,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       };
       setTimeout(step, 50);
     },
-    chooseTeam: (abbr, role = "owner") => {
-      if (state) persist(openSeason({ ...state, userTeam: abbr, office: startFrontOffice(role) }), true);
+    setup: state?.setup ?? null,
+    saveSetup: (setup) => {
+      if (!state) return;
+      const { setup: _old, ...rest } = state;
+      persist(setup ? { ...rest, setup } : rest);
+    },
+    beginDynasty: (setup, drafted) => {
+      if (!state) return;
+      const { setup: _done, ...rest } = state;
+      const base = setUpTeam(state.dynasty, setup.team, setup);
+      const dynasty = drafted ? { ...base, league: drafted } : base;
+      persist(openSeason({ ...rest, dynasty, userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
     },
     press: pressNow(state),
     takeJob: (abbr) => {

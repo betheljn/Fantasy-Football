@@ -35,6 +35,7 @@ import { Card, LinkRow, SectionTitle, Swatch, Chips } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { api } from "../online/api";
 import { useTheme, type Theme } from "../theme";
+import { teamShort } from "../field/colors";
 
 export default function TradeScreen() {
   const t = useTheme();
@@ -202,7 +203,7 @@ function Deal({ partner, window: w, onBack }: { partner: string; window: TradeWi
           <Row label="After the trade" value={formatMoney(room.after)} theme={t} bad={room.after < 0} />
           {releases.map((r) => (
             <Text key={r.id} style={{ color: r.team === userTeam ? t.score : t.muted, marginTop: 6, fontSize: 13 }}>
-              {r.team === userTeam ? "You'd release" : `${r.team} would release`} {r.position} {r.name} ({r.overall}) to fit 72
+              {r.team === userTeam ? "You'd release" : `${teamShort(r.team)} would release`} {r.position} {r.name} ({r.overall}) to fit 72
               {r.team === userTeam && r.deadThisSeason + r.deadNextSeason > 0
                 ? ` · dead money ${formatMoney(r.deadThisSeason)}${r.deadNextSeason ? ` now, ${formatMoney(r.deadNextSeason)} next season` : ""}`
                 : ""}

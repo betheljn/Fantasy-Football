@@ -8,6 +8,7 @@ import { coachScheduledGame } from "@dynasty/sim";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { CoachView } from "../../screens/CoachView";
 import { useTheme } from "../../theme";
+import { teamShort } from "../../field/colors";
 
 /** Save this long after the last call. */
 const SAVE_AFTER_MS = 1500;
@@ -54,7 +55,7 @@ export default function CoachRoute() {
   if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>{friendly ? "Games between friends are left to the coaches for now." : "This game can't be coached now."}</Text>;
   return (
     <>
-      <Stack.Screen options={{ title: `${g.away} at ${g.home} · Week ${g.week}` }} />
+      <Stack.Screen options={{ title: `${teamShort(g.away)} at ${teamShort(g.home)} · Week ${g.week}` }} />
       <CoachView
         game={game}
         home={league.teams[g.home]!}

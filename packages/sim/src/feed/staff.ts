@@ -7,7 +7,7 @@ const deal = (m: StaffMember) => (m.contract ? `  ${formatMoney(m.contract.salar
 function details(m: StaffMember): string {
   switch (m.role) {
     case "HC":
-      return `game mgmt ${m.gameManagement}, discipline ${m.discipline}, development ${m.development}, aggressiveness ${m.aggressiveness}`;
+      return `game mgmt ${m.gameManagement}, discipline ${m.discipline}, development ${m.development}, aggressiveness ${m.aggressiveness}` + (m.calls ? `; calls the ${m.calls.side}: ${m.calls.scheme}, play calling ${m.calls.playCalling}` : "");
     case "OC":
       return `${m.scheme} (${SCHEME_DESCRIPTIONS[m.scheme]}); play calling ${m.playCalling}, passing ${m.passingGame}, running ${m.runningGame}, tempo ${m.tempo}`;
     case "DC":

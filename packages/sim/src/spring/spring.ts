@@ -8,7 +8,7 @@ import type { Story } from "../media/news.ts";
 import { Rng } from "../rng.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { POSITIONS, type Position } from "../model/positions.ts";
-import { buildDepthChart, type Team } from "../model/team.ts";
+import { buildDepthChart, teamName, teamPlace, type Team } from "../model/team.ts";
 import { LEAGUE_STRUCTURE, type League } from "../league/league.ts";
 import type { GameSummary } from "../league/standings.ts";
 import { simulateGame } from "../game/game.ts";
@@ -219,7 +219,7 @@ export function playSpring(league: League, season: number): { spring: SpringSeas
 
   const nameOf = (abbr: string) => {
     const t = byAbbr.get(abbr)!;
-    return `${t.state} ${t.nickname}`;
+    return teamName(t);
   };
   const spring: SpringSeason = {
     season,
@@ -275,14 +275,14 @@ export function springOdds(league: League, season: number): Array<{ abbr: string
   const total = w.reduce((a, b) => a + b, 0);
   return teams.map((t, i) => {
     const p = w[i]! / total;
-    return { abbr: t.abbr, name: `${t.state} ${t.nickname}`, payout: Math.round(Math.max(2, Math.min(30, 0.8 / p)) * 10) / 10 };
+    return { abbr: t.abbr, name: teamName(t), payout: Math.round(Math.max(2, Math.min(30, 0.8 / p)) * 10) / 10 };
   });
 }
 
 /** The spring in the news (as the first stories of the new season). */
 export function springNews(spring: SpringSeason, league: League): Story[] {
   const name = (abbr: string) => spring.teams.find((t) => t.abbr === abbr)?.name ?? abbr;
-  const st = (abbr: string) => league.teams[abbr]?.state ?? abbr;
+  const st = (abbr: string) => (league.teams[abbr] ? teamPlace(league.teams[abbr]!) : abbr);
   const fin = spring.games.at(-1)!;
   const out: Story[] = [
     {

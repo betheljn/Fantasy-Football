@@ -7,6 +7,7 @@
 // awards, Coach of the Year, rivalry trophies and moments.
 import { Rng } from "../rng.ts";
 import type { League } from "../league/league.ts";
+import { teamPlace } from "../model/team.ts";
 import type { GameSummary } from "../league/standings.ts";
 import type { Dynasty } from "../dynasty/dynasty.ts";
 import type { Story } from "../media/news.ts";
@@ -110,7 +111,7 @@ export function rivalryNews(league: League, list: readonly Rivalry[], before: re
     const winner = g.winner;
     const loser = winner === g.home ? g.away : g.home;
     const score = `${Math.max(g.homeScore, g.awayScore)}-${Math.min(g.homeScore, g.awayScore)}`;
-    const st = (abbr: string) => league.teams[abbr]?.state ?? abbr;
+    const st = (abbr: string) => (league.teams[abbr] ? teamPlace(league.teams[abbr]!) : abbr);
     let headline: string;
     let importance = 34;
     if (!winner) headline = `${nick(g.home)} and ${nick(g.away)} tie; ${r.trophy} stays ${prior.holder ? `with the ${nick(prior.holder)}` : "on the shelf"}`;

@@ -3,7 +3,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { retiredNumbers, rivalries, rivalryGames, seriesLine, teamName, trophyRoom } from "@dynasty/sim";
+import { teamPlace, retiredNumbers, rivalries, rivalryGames, seriesLine, teamName, trophyRoom } from "@dynasty/sim";
 import { Card, Icon, SectionTitle, Stat, StatRow, Swatch, TeamBanner } from "../components/ui";
 import { teamColors } from "../field/colors";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
@@ -26,7 +26,7 @@ export default function TrophyRoomScreen() {
     const withSeason = { ...dynasty, moments: [...(dynasty.moments ?? []), ...(d.save?.collection?.moments ?? [])] };
     return trophyRoom(withSeason, abbr, games);
   }, [dynasty, abbr, league.seed, results, schedule.season, d.save?.collection]);
-  const st = (x: string) => league.teams[x]?.state ?? x;
+  const st = (x: string) => (league.teams[x] ? teamPlace(league.teams[x]!) : x);
   const retired = retiredNumbers(dynasty, abbr);
   const seasons = dynasty.history.length;
   const onBanner = teamColors(abbr).onPrimary;

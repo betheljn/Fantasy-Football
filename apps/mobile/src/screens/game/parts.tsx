@@ -6,9 +6,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
-import { teamColors } from "../../field/colors";
+import { teamColors, teamShort } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
 import { useTheme } from "../../theme";
 
@@ -28,7 +28,7 @@ export function Scoreboard({ game, score, possession, status, sub }: { game: Gam
         <Swatch abbr={abbr} size={34} />
         <View style={{ alignItems: right ? "flex-end" : "flex-start" }}>
           <View style={{ flexDirection: right ? "row-reverse" : "row", alignItems: "center", gap: 4 }}>
-            <Text style={{ color: c.onPrimary, fontWeight: "800", fontSize: 13 }}>{abbr}</Text>
+            <Text style={{ color: c.onPrimary, fontWeight: "800", fontSize: 13 }}>{teamShort(abbr)}</Text>
             {possession === abbr ? <Ionicons name="american-football" size={12} color={c.onPrimary} /> : null}
           </View>
           <Text style={{ color: c.onPrimary, fontSize: 30, fontWeight: "900", fontVariant: ["tabular-nums"], lineHeight: 34 }}>{score[abbr] ?? 0}</Text>
@@ -94,7 +94,7 @@ export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: 
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
         <Text style={{ color: t.muted, fontSize: 10 }}>Kickoff</Text>
         <Text style={{ color: t.muted, fontSize: 10 }}>
-          ▲ {game.home} · ▼ {game.away}
+          ▲ {teamShort(game.home)} · ▼ {teamShort(game.away)}
         </Text>
         <Text style={{ color: t.muted, fontSize: 10 }}>Final</Text>
       </View>
@@ -137,7 +137,7 @@ export function Pregame({ home, away, context, chance }: { home: Team; away: Tea
           </View>
         ))}
         <Text style={{ color: t.muted, fontSize: 12, marginTop: 4, textAlign: "center" }}>
-          {Math.abs(chance - 0.5) < 0.04 ? "A coin flip on paper." : `${fav.state} ${fav.nickname} favored (${Math.round(Math.max(chance, 1 - chance) * 100)}%).`}
+          {Math.abs(chance - 0.5) < 0.04 ? "A coin flip on paper." : `${teamName(fav)} favored (${Math.round(Math.max(chance, 1 - chance) * 100)}%).`}
         </Text>
       </Card>
       <Card style={{ gap: 6 }}>
@@ -283,7 +283,7 @@ export function Recap({
       <Card style={{ gap: 8 }}>
         <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Final{game.overtime ? " (OT)" : ""}</Text>
         <Text style={{ color: t.text, fontSize: 18, fontWeight: "800" }}>
-          {winner ? `${winner} beat ${loser}, ${game.score[winner]}-${game.score[loser]}` : `${game.away} and ${game.home} tie, ${game.score[game.home]}-${game.score[game.away]}`}
+          {winner ? `${teamShort(winner)} beat ${teamShort(loser)}, ${game.score[winner]}-${game.score[loser]}` : `${teamShort(game.away)} and ${teamShort(game.home)} tie, ${game.score[game.home]}-${game.score[game.away]}`}
         </Text>
         {star ? (
           <Pressable onPress={() => onPlayer(star.p.id)} accessibilityRole="link">
@@ -302,7 +302,7 @@ export function Recap({
             row.kind === "play" ? (
               <Pressable key={i} onPress={() => onPlay(i)} accessibilityRole="button" style={{ paddingVertical: 4 }}>
                 <Text style={{ color: t.muted, fontSize: 12 }}>
-                  {game.plays[i]!.quarter <= 4 ? `Q${periodLabel(game.plays[i]!.quarter)}` : periodLabel(game.plays[i]!.quarter)} {row.clock} · {row.team} · win chance swung {Math.round(d * 100)} points
+                  {game.plays[i]!.quarter <= 4 ? `Q${periodLabel(game.plays[i]!.quarter)}` : periodLabel(game.plays[i]!.quarter)} {row.clock} · {teamShort(row.team)} · win chance swung {Math.round(d * 100)} points
                 </Text>
                 <Text style={{ color: t.text }}>{row.text}</Text>
               </Pressable>

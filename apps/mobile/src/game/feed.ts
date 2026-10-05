@@ -10,6 +10,7 @@ import {
   type GameResult,
   type PlayerLookup,
 } from "@dynasty/sim";
+import { teamShort } from "../field/colors";
 
 /** Every row carries the index (into game.plays) of the play it belongs to or starts. */
 export type FeedRow =
@@ -44,7 +45,7 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
       situation: SCRIMMAGE.has(e.kind) ? formatDownDistance(e.start, e.offense, e.defense) : "",
       text: describeGamePlay(p, who),
       scoring: Object.keys(pointsForEvent(e)).length > 0,
-      score: `${game.away} ${p.score[game.away]} – ${game.home} ${p.score[game.home]}`,
+      score: `${teamShort(game.away)} ${p.score[game.away]} – ${teamShort(game.home)} ${p.score[game.home]}`,
       big: isBigPlay(p.event),
     });
     // The drive's summary only after its last play, so it never gives away how a drive ends.

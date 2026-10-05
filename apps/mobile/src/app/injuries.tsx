@@ -7,6 +7,7 @@ import { IR_MIN_WEEKS, ROSTER_MAX, allTeams, backLabel, formatMoney, injuryLabel
 import { Button, Card, EmptyState, LinkRow, Pill, SectionTitle, Segmented, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
+import { teamShort } from "../field/colors";
 
 type View_ = "mine" | "news" | "all";
 
@@ -90,7 +91,7 @@ export default function InjuriesScreen() {
                 <Text style={{ width: 40, color: t.muted, fontSize: 12 }}>Wk {m.week}</Text>
                 <Swatch abbr={m.team} size={20} />
                 <Text style={{ flex: 1, color: m.team === userTeam ? t.text : t.muted, fontSize: 13, fontWeight: m.team === userTeam ? "700" : "400" }}>
-                  {m.team} {m.kind === "signed" ? `signs ${m.position} ${m.name} (${m.overall}) for ${formatMoney(m.salary ?? 0)}` : `puts ${m.position} ${m.name} (${m.overall}) on injured reserve`}
+                  {teamShort(m.team)} {m.kind === "signed" ? `signs ${m.position} ${m.name} (${m.overall}) for ${formatMoney(m.salary ?? 0)}` : `puts ${m.position} ${m.name} (${m.overall}) on injured reserve`}
                 </Text>
               </View>
             ))}

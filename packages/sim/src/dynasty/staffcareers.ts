@@ -160,7 +160,7 @@ function ageStaff(rng: Rng, m: StaffMember, employed: boolean, newHire: boolean)
   const aged = { ...m, age: m.age + 1, experience: m.experience + (employed ? 1 : 0), tenure: employed && !newHire ? m.tenure + 1 : m.tenure };
   switch (aged.role) {
     case "HC":
-      return { ...aged, gameManagement: r(aged.gameManagement), discipline: r(aged.discipline), development: r(aged.development) };
+      return { ...aged, gameManagement: r(aged.gameManagement), discipline: r(aged.discipline), development: r(aged.development), ...(aged.calls ? { calls: { ...aged.calls, playCalling: r(aged.calls.playCalling) } } : {}) };
     case "OC":
       return { ...aged, playCalling: r(aged.playCalling), passingGame: r(aged.passingGame), runningGame: r(aged.runningGame) };
     case "DC":

@@ -11,7 +11,7 @@ import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
 import { TvFieldView } from "../field/TvFieldView";
-import { teamColors, uniform } from "../field/colors";
+import { teamColors, uniform, teamShort } from "../field/colors";
 import { usePlayback } from "../field/usePlayback";
 import { buildFeed, type FeedRow } from "../game/feed";
 import { boxScoreAfter, lineScoreAfter, scoreAfter } from "../game/live";
@@ -83,7 +83,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
         <View style={[s.play, item.big && s.big, item.scoring && s.scoring, current && s.current]}>
           <View style={s.playHead}>
             <Text style={s.clock}>{item.clock}</Text>
-            <Text style={s.team}>{item.team}</Text>
+            <Text style={s.team}>{teamShort(item.team)}</Text>
             {item.situation ? <Text style={s.situation}>{item.situation}</Text> : null}
           </View>
           <Text style={s.playText}>{item.text}</Text>

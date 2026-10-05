@@ -8,6 +8,7 @@ import { SLATE_PAYOUT, SLATE_RULES, bookmaker, radioCast, houseGreeting, houseOn
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
+import { teamShort } from "../field/colors";
 
 export default function PicksScreen() {
   const t = useTheme();
@@ -147,10 +148,10 @@ function GameBoard({ lines, own, chosen, onPick, theme: t }: { lines: GameLines;
       ) : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <Swatch abbr={game.away} size={22} />
-        <Text style={{ color: t.text, fontWeight: "800" }}>{game.away}</Text>
+        <Text style={{ color: t.text, fontWeight: "800" }}>{teamShort(game.away)}</Text>
         <Text style={{ color: t.muted }}>at</Text>
         <Swatch abbr={game.home} size={22} />
-        <Text style={{ color: t.text, fontWeight: "800" }}>{game.home}</Text>
+        <Text style={{ color: t.text, fontWeight: "800" }}>{teamShort(game.home)}</Text>
       </View>
       {lines.props.map((p) => {
         const side = chosen.find((c) => c.prop.id === p.id)?.side;

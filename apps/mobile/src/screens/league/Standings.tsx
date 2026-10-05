@@ -1,7 +1,7 @@
 // Standings: every division, by conference.
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { formatRecord, teamName } from "@dynasty/sim";
+import { teamPlace, formatRecord, teamName } from "@dynasty/sim";
 import { Card, LinkRow, SectionTitle, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
 import { useTheme } from "../../theme";
@@ -37,7 +37,7 @@ export function StandingsSection() {
                         <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
                           <Swatch abbr={rt.team} size={22} />
                           <Text style={{ color: rt.team === userTeam ? t.accent : t.text, fontWeight: i === 0 || rt.team === userTeam ? "700" : "400" }} numberOfLines={1}>
-                            {league.teams[rt.team]!.state}
+                            {teamPlace(league.teams[rt.team]!)}
                           </Text>
                         </View>
                         <Text style={{ width: 56, textAlign: "right", color: t.text, fontVariant: ["tabular-nums"] }}>{formatRecord(rt.record)}</Text>

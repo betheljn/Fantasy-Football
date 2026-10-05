@@ -7,6 +7,7 @@ import { DRAFT_ROUNDS, type DraftTurn } from "@dynasty/sim";
 import { ProspectBoard } from "../components/ProspectBoard";
 import { Card, SectionTitle } from "../components/ui";
 import { useTheme } from "../theme";
+import { teamShort } from "../field/colors";
 
 export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTurn; userTeam: string; onPick: (id: string) => void; onAuto: () => void }) {
   const t = useTheme();
@@ -36,7 +37,7 @@ export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTur
               <SectionTitle>Just picked</SectionTitle>
               {recent.map((p) => (
                 <Text key={p.overall} style={{ color: p.team === userTeam ? t.text : t.muted, fontWeight: p.team === userTeam ? "700" : "400", paddingVertical: 1 }}>
-                  {p.overall}. {p.team} — {p.player.position} {p.player.firstName} {p.player.lastName}
+                  {p.overall}. {teamShort(p.team)} — {p.player.position} {p.player.firstName} {p.player.lastName}
                 </Text>
               ))}
             </Card>

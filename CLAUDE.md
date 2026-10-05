@@ -8,6 +8,8 @@ Games are simulated and shown as a 2D top-down field plus a play-by-play feed.
 
 This is NOT a real-world fantasy football or NFL projection tool.
 Never use real leagues, teams, players, or logos (no "NFL", no real team names).
+Generic nicknames (Tigers, Lions, Bears) are fine on their own; never a name
+that points at one real team (49ers, 76ers) or a real team's city + name.
 All players and teams are generated.
 
 ## Tech stack (do not change without asking)
@@ -295,6 +297,32 @@ Texture on the systems already there.
 1. Re-signing talks: holdouts and counteroffers
 2. Captains and morale swings during the season
 3. Career milestones in the news and on the radio show
+
+### Milestone 19: your start (done)
+Onboarding for a new dynasty: make the team yours, build your head coach,
+then a fantasy draft. The AI still runs the other 49 teams.
+Decided: the whole league redrafts; logos are drawn in Skia; you build your
+own head coach (not pick from candidates).
+1. Sim: team identity: pick your state, then a city name, nickname, 2-4
+   letter short name, colors and a logo from a library of 70 (each a
+   nickname and an emblem; a new league hands out 50, the other 20 are
+   classic generic names like Tigers and Lions); no two teams share a
+   name or logo (taking one trades yours to its holder)
+2. App: the 70 logos drawn in Skia, shown everywhere a team is; the team
+   setup screen (state, name, logo list, colors, city and short name, role)
+3. Build your head coach: offensive-, defensive-minded or balanced, schemes,
+   tendencies and a rating budget; it drives play calling and development
+   through the existing staff rules
+4. Sim: fantasy draft: every rostered player into one pool, a snake draft for
+   all 50 teams, step by step like the rookie draft; you pick your first 10,
+   25 or all rounds, the AI the rest; then depth charts and contracts
+   re-fitted to the hard cap
+5. App: the draft screen and the whole flow wired together
+   (team, coach, draft length and your draft slot, draft, first season);
+   the draft is saved pick by pick and resumes; "players needed" grades
+   the roster A+ to F (overall, each position, team traits like pass rush
+   and coverage), each the average player score on a curve against the
+   league (average is a C), with the positions most needed first
 
 After each step: run it, show sample output, and stop for review.
 

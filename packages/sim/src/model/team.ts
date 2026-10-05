@@ -13,7 +13,16 @@ export interface Team {
   /** Fictional team, one per US state, e.g. "Ohio Ironclads". */
   readonly state: string;
   readonly nickname: string;
+  /** State postal code: the team's key everywhere, never changes. */
   readonly abbr: string;
+  /** Shown in place of the state name ("Twin Cities"); absent = the state. */
+  readonly city?: string;
+  /** Shown in place of the abbr ("TWC"); absent = the abbr. */
+  readonly tag?: string;
+  /** Logo library id; absent = the logo that goes with the nickname. */
+  readonly logo?: string;
+  /** Chosen colors (#RRGGBB); absent = the team's designed pair. */
+  readonly colors?: TeamColorChoice;
   readonly roster: Player[];
   depthChart: DepthChart;
   /** Coaches and front office. Optional: without staff, the team plays with neutral, average-staff behavior. */
@@ -39,8 +48,23 @@ export interface TeamCap {
   readonly pendingDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number }>;
 }
 
+export interface TeamColorChoice {
+  readonly primary: string;
+  readonly trim: string;
+}
+
 export function teamName(team: Team): string {
-  return `${team.state} ${team.nickname}`;
+  return `${teamPlace(team)} ${team.nickname}`;
+}
+
+/** Where the team is from, as shown: its city name if it has one, else its state. */
+export function teamPlace(team: Team): string {
+  return team.city ?? team.state;
+}
+
+/** The short label shown for the team (its tag, else its abbr). */
+export function teamTag(team: Team): string {
+  return team.tag ?? team.abbr;
 }
 
 /** Depth chart by position overall, best first. Ties broken by id so it is deterministic. */

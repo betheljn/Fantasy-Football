@@ -1,6 +1,7 @@
 // Schedule by week: results (tap to watch) and upcoming games.
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
+import { teamPlace } from "@dynasty/sim";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { Card, Chips, Swatch } from "../../components/ui";
 import { useLeague } from "../../league/LeagueProvider";
@@ -37,7 +38,7 @@ export function ScoresSection() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <Swatch abbr={abbr} size={24} />
                 <Text style={{ flex: 1, color: lost ? t.muted : t.text, fontWeight: abbr === userTeam ? "800" : r?.winner === abbr ? "700" : "500" }} numberOfLines={1}>
-                  {team.state} <Text style={{ fontWeight: "400" }}>{team.nickname}</Text>
+                  {teamPlace(team)} <Text style={{ fontWeight: "400" }}>{team.nickname}</Text>
                 </Text>
                 <Text style={{ color: lost ? t.muted : t.text, fontSize: 18, fontWeight: r?.winner === abbr ? "900" : "500", fontVariant: ["tabular-nums"] }}>{pts ?? ""}</Text>
               </View>

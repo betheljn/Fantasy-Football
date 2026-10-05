@@ -12,6 +12,7 @@ import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "r
 import { FIELD_WIDTH, HASHES } from "@dynasty/sim";
 import type { PreparedActor, PreparedPlay } from "../game/playback";
 import { sampleAt } from "./sample";
+import { teamShort } from "./colors";
 
 export interface TeamColors {
   fill: string;
@@ -276,7 +277,7 @@ export function Banner({ time, end, text, abbr, colors }: { time: SharedValue<nu
   const big = text === "TOUCHDOWN" || text === "PICK SIX" || text === "SCOOP AND SCORE";
   return (
     <Animated.View style={[styles.banner, { backgroundColor: colors.primary, borderLeftColor: colors.trim }, style]}>
-      <Text style={[styles.bannerTeam, { color: colors.onPrimary }]}>{abbr}</Text>
+      <Text style={[styles.bannerTeam, { color: colors.onPrimary }]}>{teamShort(abbr)}</Text>
       <Text style={[styles.bannerText, { color: colors.onPrimary, fontSize: big ? 20 : 15 }]}>{text}</Text>
     </Animated.View>
   );
