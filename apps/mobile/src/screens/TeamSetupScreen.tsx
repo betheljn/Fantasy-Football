@@ -9,6 +9,7 @@ import {
   LOGOS,
   allTeams,
   formatMoney,
+  friendIdentityClash,
   identityProblem,
   payroll,
   salaryCap,
@@ -16,6 +17,7 @@ import {
   teamLogo,
   setUpTeam,
   teamRatings,
+  type League,
   type Team,
   type CoachBuild,
   type TeamIdentityChoice,
@@ -58,7 +60,7 @@ export function TeamSetupScreen({ data }: { data: LeagueData }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, display: look ? "none" : "flex" }}>
-        <MakeItYours data={data} team={team} onBack={() => setTeam(null)} onDone={(_abbr, role, identity) => setLook({ role, identity })} />
+        <MakeItYours league={data.league} team={team} onBack={() => setTeam(null)} onDone={(_abbr, role, identity) => setLook({ role, identity })} />
       </View>
       {look ? (
         <View style={{ flex: 1, display: coach ? "none" : "flex" }}>
@@ -136,28 +138,38 @@ function PickState({ data, onPick }: { data: LeagueData; onPick: (team: Team) =>
   );
 }
 
-function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void }) {
+/** Teams other friends run (online): their look as chosen, and who runs them. */
+export type FriendTeams = Record<string, { identity: TeamIdentityChoice; owner: string }>;
+
+/**
+ * Make the team yours: name, logo, colors (and your role, solo). Online,
+ * `friends` are the other friends' teams: their names and logos are off
+ * limits, and there's no role to pick.
+ */
+export function MakeItYours({ league, team, onBack, onDone, initial, friends, backLabel = "All states", nextLabel = "Next: your head coach" }: { league: League; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void; initial?: TeamIdentityChoice; friends?: FriendTeams; backLabel?: string; nextLabel?: string }) {
   const t = useTheme();
   const designed = designedColors(team.abbr);
-  const [city, setCity] = useState("");
-  const [nickname, setNickname] = useState(team.nickname);
-  const [tag, setTag] = useState("");
-  const [logo, setLogo] = useState(teamLogo(team).id);
-  const [colorMode, setColorMode] = useState<"designed" | "custom">("designed");
-  const [primary, setPrimary] = useState(designed.primary);
-  const [trim, setTrim] = useState(designed.trim);
+  const [city, setCity] = useState(initial?.city ?? "");
+  const [nickname, setNickname] = useState(initial?.nickname ?? team.nickname);
+  const [tag, setTag] = useState(initial?.tag ?? "");
+  const [logo, setLogo] = useState(initial?.logo ?? teamLogo(team).id);
+  const [colorMode, setColorMode] = useState<"designed" | "custom">(initial?.colors ? "custom" : "designed");
+  const [primary, setPrimary] = useState(initial?.colors?.primary ?? designed.primary);
+  const [trim, setTrim] = useState(initial?.colors?.trim ?? designed.trim);
   const [role, setRole] = useState<Role>("owner");
 
   const colors = colorMode === "custom" ? palette(primary, trim) : designed;
   const choice: TeamIdentityChoice = { city, nickname, tag, logo, ...(colorMode === "custom" ? { colors: { primary, trim } } : {}) };
-  const problem = identityProblem(data.league, team.abbr, choice);
+  const friendChoices = useMemo(() => (friends ? Object.fromEntries(Object.entries(friends).map(([abbr, f]) => [abbr, f.identity])) : null), [friends]);
+  const problem = identityProblem(league, team.abbr, choice) ?? (friendChoices ? friendIdentityClash(league, team.abbr, choice, friendChoices) : null);
+  const friendLogo = useMemo(() => new Map(Object.values(friends ?? {}).map((f) => [f.identity.logo, f.owner])), [friends]);
   // Who holds each logo and nickname now (taking one trades yours to them).
   const holders = useMemo(() => {
     const m = new Map<string, Team>();
-    for (const other of allTeams(data.league)) if (other.abbr !== team.abbr) m.set(teamLogo(other).id, other);
+    for (const other of allTeams(league)) if (other.abbr !== team.abbr) m.set(teamLogo(other).id, other);
     return m;
-  }, [data.league, team.abbr]);
-  const nickHolder = allTeams(data.league).find((o) => o.abbr !== team.abbr && o.nickname.toLowerCase() === nickname.trim().toLowerCase());
+  }, [league, team.abbr]);
+  const nickHolder = allTeams(league).find((o) => o.abbr !== team.abbr && o.nickname.toLowerCase() === nickname.trim().toLowerCase());
   const logoHolder = holders.get(logo);
 
   const pickLogo = (id: string) => {
@@ -176,7 +188,7 @@ function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: T
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
         <Pressable onPress={onBack} accessibilityRole="button" hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <Icon name="chevron-back" size={18} color={t.accent} />
-          <Text style={{ color: t.accent, fontWeight: "700" }}>All states</Text>
+          <Text style={{ color: t.accent, fontWeight: "700" }}>{backLabel}</Text>
         </Pressable>
 
         <View style={{ backgroundColor: colors.primary, borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", gap: 14, borderBottomWidth: 4, borderBottomColor: colors.trim }}>
@@ -187,7 +199,7 @@ function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: T
               {place} {nickname.trim() || "…"}
             </Text>
             <Text style={{ color: colors.onPrimary, fontSize: 12, opacity: 0.85 }}>
-              {team.state} · {data.league.conferences.find((c) => c.divisions.some((d) => d.teams.includes(team.abbr)))?.divisions.find((d) => d.teams.includes(team.abbr))?.name} division
+              {team.state} · {league.conferences.find((c) => c.divisions.some((d) => d.teams.includes(team.abbr)))?.divisions.find((d) => d.teams.includes(team.abbr))?.name} division
             </Text>
           </View>
         </View>
@@ -227,8 +239,8 @@ function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: T
                   <Text style={{ color: t.text, fontSize: 11, fontWeight: on ? "800" : "600", marginTop: 3 }} numberOfLines={1}>
                     {l.nickname}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 9 }} numberOfLines={1}>
-                    {holder ? holder.abbr : "open"}
+                  <Text style={{ color: friendLogo.has(l.id) ? t.warn : t.muted, fontSize: 9 }} numberOfLines={1}>
+                    {friendLogo.get(l.id) ?? (holder ? holder.abbr : "open")}
                   </Text>
                 </Pressable>
               );
@@ -254,6 +266,7 @@ function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: T
           ) : null}
         </Card>
 
+        {friends ? null : (
         <Card>
           <SectionTitle>Your role</SectionTitle>
           {(
@@ -271,9 +284,10 @@ function MakeItYours({ data, team, onBack, onDone }: { data: LeagueData; team: T
             </Pressable>
           ))}
         </Card>
+        )}
       </ScrollView>
       <StickyFooter note={problem ?? (trades.length ? `${trades.join("; ")}.` : undefined)}>
-        <Button label="Next: your head coach" onPress={() => onDone(team.abbr, role, choice)} primary disabled={!!problem} />
+        <Button label={nextLabel} onPress={() => onDone(team.abbr, role, choice)} primary disabled={!!problem} />
       </StickyFooter>
     </View>
   );

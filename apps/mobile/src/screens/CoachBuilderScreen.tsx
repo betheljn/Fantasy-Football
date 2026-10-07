@@ -39,9 +39,9 @@ const TEMPO = [
   { key: 70, label: "Up-tempo" },
 ] as const;
 
-export function CoachBuilderScreen({ league, abbr, teamLabel, onBack, onDone }: { league: League; abbr: string; teamLabel: string; onBack: () => void; onDone: (build: CoachBuild) => void }) {
+export function CoachBuilderScreen({ league, abbr, teamLabel, onBack, onDone, initial, doneLabel }: { league: League; abbr: string; teamLabel: string; onBack: () => void; onDone: (build: CoachBuild) => void; initial?: CoachBuild; doneLabel?: (lastName: string) => string }) {
   const t = useTheme();
-  const [build, setBuild] = useState<CoachBuild>(() => defaultCoachBuild("balanced"));
+  const [build, setBuild] = useState<CoachBuild>(() => initial ?? defaultCoachBuild("balanced"));
   const set = (patch: Partial<CoachBuild>) => setBuild((b) => ({ ...b, ...patch }));
   const setStyle = (style: CoachStyle) => {
     // A new style spends a different budget: start its ratings over, keep the rest.
@@ -173,7 +173,7 @@ export function CoachBuilderScreen({ league, abbr, teamLabel, onBack, onDone }: 
         </Card>
       </ScrollView>
       <StickyFooter note={problem ?? undefined}>
-        <Button label={`Hire coach ${build.lastName.trim() || "…"}: next, the draft`} onPress={() => onDone(build)} primary disabled={!!problem} />
+        <Button label={doneLabel ? doneLabel(build.lastName.trim() || "…") : `Hire coach ${build.lastName.trim() || "…"}: next, the draft`} onPress={() => onDone(build)} primary disabled={!!problem} />
       </StickyFooter>
     </View>
   );

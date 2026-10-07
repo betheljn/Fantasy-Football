@@ -84,3 +84,25 @@ export function customizeTeam(league: League, abbr: string, choice: TeamIdentity
   };
   return { ...league, teams };
 }
+
+/**
+ * Online: why this identity clashes with a team another friend runs, or null.
+ * `friends` are the other claimed teams with the identity each has chosen
+ * (null = it keeps its own). Taking an AI team's name or logo is fine (they
+ * trade); a friend's never is.
+ */
+export function friendIdentityClash(league: League, abbr: string, choice: TeamIdentityChoice, friends: Readonly<Record<string, TeamIdentityChoice | null>>): string | null {
+  const nickname = choice.nickname.trim().toLowerCase();
+  const tag = choice.tag?.trim().toUpperCase() || abbr;
+  for (const [other, theirs] of Object.entries(friends)) {
+    const team = league.teams[other];
+    if (other === abbr || !team) continue;
+    const theirNick = (theirs?.nickname ?? team.nickname).trim().toLowerCase();
+    const theirLogo = theirs?.logo ?? teamLogo(team).id;
+    const theirTag = theirs?.tag?.trim().toUpperCase() || (theirs ? other : teamTag(team));
+    if (theirNick === nickname) return `A friend's team (${team.state}) is the ${theirs?.nickname ?? team.nickname}`;
+    if (theirLogo === choice.logo) return `A friend's team (${team.state}) has that logo`;
+    if (theirTag === tag) return `${tag} is a friend's short name (${team.state})`;
+  }
+  return null;
+}

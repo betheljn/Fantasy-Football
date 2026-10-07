@@ -64,3 +64,18 @@ describe("customizeTeam", () => {
     expect(() => customizeTeam(LEAGUE, "OH", { ...ok, tag: "MI" })).toThrow();
   });
 });
+
+describe("online: friends' teams", () => {
+  it("can't take a friend's nickname, logo or short name, but can take an AI team's", async () => {
+    const { friendIdentityClash } = await import("../src/index.ts");
+    const ai = allTeams(LEAGUE).find((t) => !["OH", "TX", "MI"].includes(t.abbr))!;
+    const tx = LEAGUE.teams.TX!;
+    const friends = { TX: null, MI: { nickname: "Tigers", logo: "tigers", tag: "DET" } };
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: ai.nickname, logo: teamLogo(ai).id }, friends)).toBeNull();
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: tx.nickname, logo: "wolves" }, friends)).toMatch(/Texas/);
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: "Wolves", logo: teamLogo(tx).id }, friends)).toMatch(/logo/);
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: "tigers", logo: "wolves" }, friends)).toMatch(/Michigan/);
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: "Wolves", logo: "wolves", tag: "det" }, friends)).toMatch(/DET/);
+    expect(friendIdentityClash(LEAGUE, "OH", { nickname: "Wolves", logo: "wolves", tag: "TX" }, friends)).toMatch(/TX/);
+  });
+});

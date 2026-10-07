@@ -324,6 +324,10 @@ own head coach (not pick from candidates).
    and coverage), each the average player score on a curve against the
    league (average is a C), with the positions most needed first
 
+Follow-ups also done: online, each friend makes their claimed team theirs
+from the lobby (look and coach, checked on the server, made when the league
+starts; a friend's name, logo or short name is off limits).
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style

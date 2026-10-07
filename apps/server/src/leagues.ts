@@ -13,7 +13,8 @@ import { MAX_CALLS, applyMove, type Move } from "./moves.ts";
 import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
-import { decodeState, encodeState, newLeagueState, teamList, type LeagueState } from "./state.ts";
+import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
+import { coachBuildProblem, friendIdentityClash, identityProblem, setUpTeam, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -21,6 +22,42 @@ const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 const gzipped = promisify(gzip);
 const isUniqueClash = (e: unknown) => (e as { code?: string })?.code === "P2002";
 const clean = (s: string) => s.trim().replace(/\s+/g, " ");
+
+/** Setups still in force: by team, for friends who still claim the team they set up. */
+function liveSetups(state: LeagueState, members: ReadonlyArray<{ id: string; team: string | null }>): Map<string, TeamSetupChoice> {
+  const out = new Map<string, TeamSetupChoice>();
+  for (const m of members) {
+    const s = state.setups?.[m.id];
+    if (s && m.team === s.team) out.set(s.team, s);
+  }
+  return out;
+}
+
+/** How a friend's set-up team will look once the league starts (shown in the lobby). */
+function lookOf(setup: TeamSetupChoice | undefined, abbr: string, state: LeagueState) {
+  if (!setup) return {};
+  const { identity: id, coach } = setup;
+  const place = id.city?.trim() || state.dynasty.league.teams[abbr]!.state;
+  return {
+    name: `${place} ${id.nickname.trim()}`,
+    nickname: id.nickname.trim(),
+    tag: id.tag?.trim().toUpperCase() || abbr,
+    logo: id.logo,
+    ...(id.colors ? { colors: id.colors } : {}),
+    coach: `${coach.firstName.trim()} ${coach.lastName.trim()}`,
+  };
+}
+
+/** Why a friend's setup can't be used: the sim's rules, and never a name, logo or short name another friend has. */
+function setupProblem(state: LeagueState, members: ReadonlyArray<{ id: string; team: string | null }>, memberId: string, setup: TeamSetupChoice): string | null {
+  const league = state.dynasty.league;
+  const problem = identityProblem(league, setup.team, setup.identity) ?? coachBuildProblem(setup.coach);
+  if (problem) return problem;
+  const live = liveSetups(state, members);
+  const friends: Record<string, TeamIdentityChoice | null> = {};
+  for (const m of members) if (m.team && m.id !== memberId) friends[m.team] = live.get(m.team)?.identity ?? null;
+  return friendIdentityClash(league, setup.team, setup.identity, friends);
+}
 
 export function leagueRoutes(app: FastifyInstance, db: Db) {
   /** Teams, parsed once per league per save version (the dynasty is big). */
@@ -40,6 +77,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     const league = await db.league.findUniqueOrThrow({ where: { id: leagueId }, include: { members: { orderBy: { joinedAt: "asc" } } } });
     const { state, teams, version } = await loadState(leagueId);
     const claimedBy = new Map(league.members.filter((m) => m.team).map((m) => [m.team!, m.id]));
+    const setups = liveSetups(state, league.members);
     return {
       id: league.id,
       name: league.name,
@@ -55,8 +93,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       /** In the offseason: friends who've made their call for the open stage. */
       madeCall: madeCall(state),
       champion: state.progress.playoffs?.champion ?? null,
-      members: league.members.map((m) => ({ id: m.id, displayName: m.displayName, team: m.team, isCommissioner: m.isCommissioner, ready: m.ready })),
-      teams: teams.map((t) => ({ ...t, claimedBy: claimedBy.get(t.abbr) ?? null })),
+      members: league.members.map((m) => ({ id: m.id, displayName: m.displayName, team: m.team, isCommissioner: m.isCommissioner, ready: m.ready, setUp: setups.has(m.team ?? "") })),
+      teams: teams.map((t) => ({ ...t, ...lookOf(setups.get(t.abbr), t.abbr, state), claimedBy: claimedBy.get(t.abbr) ?? null })),
     };
   }
 
@@ -149,6 +187,85 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     },
   );
 
+  const str = (max: number) => ({ type: "string", maxLength: max }) as const;
+  const rating = { type: "integer", minimum: 0, maximum: 99 } as const;
+  const hex = { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" } as const;
+  const setupSchema = {
+    type: "object",
+    required: ["setup"],
+    properties: {
+      setup: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "object",
+            required: ["identity", "coach"],
+            additionalProperties: false,
+            properties: {
+              identity: {
+                type: "object",
+                required: ["nickname", "logo"],
+                additionalProperties: false,
+                properties: { city: str(40), nickname: str(40), tag: str(8), logo: str(40), colors: { type: "object", required: ["primary", "trim"], additionalProperties: false, properties: { primary: hex, trim: hex } } },
+              },
+              coach: {
+                type: "object",
+                required: ["firstName", "lastName", "age", "style", "offenseScheme", "defenseScheme", "aggressiveness", "tempo", "ratings"],
+                additionalProperties: false,
+                properties: {
+                  firstName: str(40),
+                  lastName: str(40),
+                  age: { type: "integer", minimum: 0, maximum: 99 },
+                  style: { enum: ["offense", "defense", "balanced"] },
+                  offenseScheme: str(24),
+                  defenseScheme: str(24),
+                  aggressiveness: rating,
+                  tempo: rating,
+                  ratings: {
+                    type: "object",
+                    required: ["gameManagement", "discipline", "development", "playCalling"],
+                    additionalProperties: false,
+                    properties: { gameManagement: rating, discipline: rating, development: rating, playCalling: rating },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  } as const;
+
+  /** Your team's look and head coach (null clears it: the team stays as generated). Lobby only; made when the league starts. */
+  app.post<{ Params: { id: string }; Body: { setup: Omit<TeamSetupChoice, "team"> | null } }>("/leagues/:id/setup", { schema: { body: setupSchema } }, async (req, reply) => {
+    const member = await memberOf(req, reply, req.params.id);
+    if (!member) return reply;
+    if (!member.team) return fail(reply, 409, "Claim a team first");
+    const team = member.team;
+    const locked = "Teams are set once the league starts";
+    if ((await db.league.findUniqueOrThrow({ where: { id: member.leagueId } })).phase !== "lobby") return fail(reply, 409, locked);
+    const r = await changeLeague(db, member.leagueId, (state, league) => {
+      if (league.phase !== "lobby") return { state: null, result: locked };
+      const { [member.id]: _old, ...others } = state.setups ?? {};
+      if (!req.body.setup) return { state: { ...state, setups: others }, result: null };
+      const setup = { team, ...req.body.setup } as TeamSetupChoice;
+      const problem = setupProblem(state, league.members, member.id, setup);
+      if (problem) return { state: null, result: problem };
+      return { state: { ...state, setups: { ...others, [member.id]: setup } }, result: null };
+    });
+    if (!r) return fail(reply, 409, "The league is busy, try again");
+    if (r.result) return fail(reply, 400, r.result);
+    return view(member.leagueId);
+  });
+
+  /** Your own setup (to edit it), if you still hold the team it's for. */
+  app.get<{ Params: { id: string } }>("/leagues/:id/setup", async (req, reply) => {
+    const member = await memberOf(req, reply, req.params.id);
+    if (!member) return reply;
+    const setup = (await loadState(member.leagueId)).state.setups?.[member.id];
+    return { setup: setup && setup.team === member.team ? { identity: setup.identity, coach: setup.coach } : null };
+  });
+
   app.post<{ Params: { id: string } }>("/leagues/:id/start", async (req, reply) => {
     const member = await memberOf(req, reply, req.params.id);
     if (!member) return reply;
@@ -160,7 +277,19 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
 
     const { state } = await loadState(league.id);
     const humans = Object.fromEntries(league.members.map((m) => [m.team!, m.id]));
-    const data = encodeState(openSeason({ ...state, humans }));
+    // Each friend's look and coach, in the order they joined (checked again: a claim may have moved since).
+    let dynasty = state.dynasty;
+    const live = liveSetups(state, league.members);
+    const members = [...league.members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+    for (const m of members) {
+      const setup = live.get(m.team!);
+      if (!setup) continue;
+      const problem = setupProblem({ ...state, dynasty }, league.members, m.id, setup);
+      if (problem) return fail(reply, 409, `${m.displayName}'s team setup no longer works (${problem}); they need to change it`);
+      dynasty = setUpTeam(dynasty, setup.team, setup);
+    }
+    const { setups: _made, ...rest } = state;
+    const data = encodeState(openSeason({ ...rest, dynasty, humans }));
     // Only start from the save we read (another start or change in between wins).
     const started = await db.$transaction(async (tx) => {
       const saved = await tx.leagueSave.updateMany({ where: { leagueId: league.id, version: league.save!.version }, data: { data, version: { increment: 1 } } });

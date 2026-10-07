@@ -3,10 +3,11 @@
 // deadline plays it), the commissioner can push it through, and the scores.
 // Everything is decided on the server; this asks and shows. Used by the
 // league's own screen and, once the league is open in the app, by the hub.
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Button, Card, SectionTitle, Swatch } from "../components/ui";
+import { Button, Card, LogoBadge, SectionTitle, Swatch } from "../components/ui";
+import { designedColors } from "../field/colors";
 import { useDynasty, useLeagueMaybe } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
@@ -50,6 +51,12 @@ export function OnlineLeagueView({ me, inApp = false, onLeague }: { me: MyLeague
     const timer = setInterval(refresh, POLL_MS);
     return () => clearInterval(timer);
   }, [refresh]);
+  // Back from setting up your team: show it straight away.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   // The latest week's scores, whenever a new week has been played.
   const weeksPlayed = league?.weeksPlayed ?? 0;
@@ -122,10 +129,18 @@ interface Props {
 
 const memberName = (l: OnlineLeague, memberId: string | null) => l.members.find((m) => m.id === memberId)?.displayName;
 const teamName = (l: OnlineLeague, abbr: string) => l.teams.find((x) => x.abbr === abbr)?.name ?? abbr;
+/** A team's badge as the lobby knows it (its friend's look, if set up). */
+function TeamLook({ x, size }: { x: OnlineTeam; size: number }) {
+  const c = x.colors ?? designedColors(x.abbr);
+  return <LogoBadge logo={x.logo} primary={c.primary} trim={c.trim} size={size} label={x.name} />;
+}
+
 const record = (x: OnlineTeam) => `${x.wins}-${x.losses}${x.ties ? `-${x.ties}` : ""}`;
 
 function Lobby({ league, me, self, busy, act, theme: t }: Props) {
+  const router = useRouter();
   const waiting = league.members.filter((m) => !m.team);
+  const mine = self?.team ? league.teams.find((x) => x.abbr === self.team) : undefined;
   const conferences = useMemo(() => [...new Set(league.teams.map((x) => x.conference))], [league.teams]);
   return (
     <>
@@ -141,12 +156,15 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         <SectionTitle>Who's in</SectionTitle>
         {league.members.map((m) => (
           <View key={m.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 3 }}>
-            {m.team ? <Swatch abbr={m.team} size={24} /> : <View style={{ width: 24 }} />}
+            {m.team ? <TeamLook x={league.teams.find((x) => x.abbr === m.team)!} size={24} /> : <View style={{ width: 24 }} />}
             <Text style={{ color: t.text, flex: 1, fontWeight: m.id === me.memberId ? "800" : "400" }}>
               {m.displayName}
               {m.isCommissioner ? <Text style={{ color: t.muted }}> · commissioner</Text> : null}
             </Text>
-            <Text style={{ color: m.team ? t.text : t.muted }}>{m.team ? teamName(league, m.team) : "choosing…"}</Text>
+            <Text style={{ color: m.team ? t.text : t.muted }}>
+              {m.team ? teamName(league, m.team) : "choosing…"}
+              {m.team && m.setUp ? <Text style={{ color: t.muted, fontSize: 12 }}> · set up</Text> : null}
+            </Text>
           </View>
         ))}
         {self?.isCommissioner ? (
@@ -158,6 +176,27 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
           <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>The commissioner starts the season once everyone has a state.</Text>
         )}
       </Card>
+
+      {mine ? (
+        <Card style={{ gap: 10 }}>
+          <SectionTitle>Make it yours</SectionTitle>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <TeamLook x={mine} size={52} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{mine.name}</Text>
+              <Text style={{ color: t.muted, fontSize: 12 }}>
+                {self?.setUp ? `${mine.tag} · head coach ${mine.coach}` : "Name the team, pick its logo and colors, and build your head coach. Or keep it as it is."}
+              </Text>
+            </View>
+          </View>
+          <Button label={self?.setUp ? "Change my team" : "Make it yours"} primary={!self?.setUp} disabled={busy} onPress={() => router.push(`/online/setup/${me.id}`)} />
+          {self?.setUp ? (
+            <Text onPress={() => act(() => api.setup(me.id, me.token, null))} accessibilityRole="button" style={{ color: t.muted, fontSize: 12, textAlign: "center" }}>
+              Undo: keep the team as generated
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>{self?.team ? `You're ${teamName(league, self.team)}` : "Claim your state"}</SectionTitle>
@@ -179,7 +218,7 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
                     accessibilityLabel={mine ? `Give up ${x.name}` : `Claim ${x.name}`}
                     style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 5, opacity: taken ? 0.5 : pressed ? 0.6 : 1 })}
                   >
-                    <Swatch abbr={x.abbr} size={24} />
+                    <TeamLook x={x} size={24} />
                     <Text style={{ flex: 1, color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "400" }}>
                       {x.name} <Text style={{ color: t.muted }}>({x.overall.toFixed(1)})</Text>
                     </Text>

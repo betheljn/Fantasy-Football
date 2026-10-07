@@ -149,3 +149,82 @@ describe("leagues", () => {
     expect((await post(`/leagues/${league.id}/moves`, { move: { kind: "cut", player: "x" } }, token)).statusCode).toBe(400);
   });
 });
+
+describe("team setups in the lobby", () => {
+  const coach = (lastName: string) => ({
+    firstName: "Dana",
+    lastName,
+    age: 44,
+    style: "offense",
+    offenseScheme: "Air Raid",
+    defenseScheme: "Multiple",
+    aggressiveness: 70,
+    tempo: 70,
+    ratings: { gameManagement: 62, discipline: 62, development: 62, playCalling: 62 },
+  });
+
+  it("each friend makes their team theirs; the server checks it and makes it at the start", { timeout: 60_000 }, async () => {
+    const created = (await post("/leagues", { name: "Setups", displayName: "Jai" })).json();
+    made.push(created.league.id);
+    const id = created.league.id;
+    const jai = created.token;
+    const sam = (await post("/join", { inviteCode: created.league.inviteCode, displayName: "Sam" })).json().token;
+
+    // A team first.
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "Wolves", logo: "wolves" }, coach: coach("Reyes") } }, jai)).statusCode).toBe(409);
+    await post(`/leagues/${id}/claim`, { team: "OH" }, jai);
+    await post(`/leagues/${id}/claim`, { team: "TX" }, sam);
+
+    // The sim's rules: a bad coach build or name comes back with the reason.
+    const over = { ...coach("Reyes"), ratings: { gameManagement: 90, discipline: 90, development: 90, playCalling: 90 } };
+    const bad = await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "Wolves", logo: "wolves" }, coach: over } }, jai);
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toMatch(/over budget/);
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "Wolves", logo: "nope" }, coach: coach("Reyes") } }, jai)).statusCode).toBe(400);
+
+    const ok = await post(`/leagues/${id}/setup`, { setup: { identity: { city: "Buckeye", nickname: "Wolves", tag: "BKY", logo: "wolves", colors: { primary: "#0B3D91", trim: "#F2C14E" } }, coach: coach("Reyes") } }, jai);
+    expect(ok.statusCode).toBe(200);
+    const oh = ok.json().teams.find((t: { abbr: string }) => t.abbr === "OH");
+    expect(oh).toMatchObject({ name: "Buckeye Wolves", tag: "BKY", logo: "wolves", coach: "Dana Reyes" });
+    expect(ok.json().members.find((m: { displayName: string }) => m.displayName === "Jai").setUp).toBe(true);
+
+    // You can read your own setup back (to edit it); a friend without one gets null.
+    expect((await get(`/leagues/${id}/setup`, jai)).json().setup).toMatchObject({ identity: { nickname: "Wolves" }, coach: { lastName: "Reyes" } });
+    expect((await get(`/leagues/${id}/setup`, sam)).json().setup).toBeNull();
+
+    // A friend's name, logo or short name is off limits; an AI team's is fair game.
+    const clash = await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "wolves", logo: "tigers" }, coach: coach("Okafor") } }, sam);
+    expect(clash.statusCode).toBe(400);
+    expect(clash.json().error).toMatch(/friend/);
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "Tigers", logo: "wolves" }, coach: coach("Okafor") } }, sam)).statusCode).toBe(400);
+    const lobby = (await get(`/leagues/${id}`, sam)).json();
+    const ai = lobby.teams.find((t: { abbr: string; claimedBy: string | null }) => !t.claimedBy);
+    const aiNick = ai.name.split(" ").at(-1);
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: aiNick, logo: "tigers" }, coach: coach("Okafor") } }, sam)).statusCode).toBe(200);
+
+    // A setup only counts while you hold that team: give it up and it's gone; claim it back and it returns.
+    const txCoach = async () => (await get(`/leagues/${id}`, sam)).json().teams.find((t: { abbr: string }) => t.abbr === "TX").coach;
+    await post(`/leagues/${id}/claim`, { team: "CA" }, sam);
+    expect(await txCoach()).toBeUndefined();
+    await post(`/leagues/${id}/claim`, { team: "TX" }, sam);
+    expect(await txCoach()).toBe("Dana Okafor");
+
+    // The start makes them: names, logos and coaches in the save; the AI team traded names.
+    const started = await post(`/leagues/${id}/start`, {}, jai);
+    expect(started.statusCode).toBe(200);
+    expect(started.json().teams.find((t: { abbr: string }) => t.abbr === "OH").name).toBe("Buckeye Wolves");
+    const state = decodeState((await get(`/leagues/${id}/save`, jai)).body);
+    const league = state.dynasty.league;
+    expect(league.teams.OH).toMatchObject({ city: "Buckeye", nickname: "Wolves", tag: "BKY", logo: "wolves", colors: { primary: "#0B3D91", trim: "#F2C14E" } });
+    expect(league.teams.OH!.staff!.hc.lastName).toBe("Reyes");
+    expect(league.teams.OH!.staff!.hc.calls?.scheme).toBe("Air Raid");
+    expect(league.teams.TX).toMatchObject({ nickname: aiNick, logo: "tigers" });
+    expect(league.teams.TX!.staff!.hc.lastName).toBe("Okafor");
+    expect(league.teams[ai.abbr]!.nickname).not.toBe(aiNick);
+    expect(state.setups).toBeUndefined();
+    expect(state.dynasty.staffPool.length).toBe(2);
+
+    // And not after the start.
+    expect((await post(`/leagues/${id}/setup`, { setup: null }, jai)).statusCode).toBe(409);
+  });
+});

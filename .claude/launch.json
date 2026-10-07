@@ -28,9 +28,23 @@
       "port": 8787
     },
     {
-      "name": "mobile-web-alt",
-      "runtimeExecutable": "pnpm",
+      "name": "server-alt",
+      "runtimeExecutable": "env",
       "runtimeArgs": [
+        "PORT=8788",
+        "pnpm",
+        "--dir",
+        "apps/server",
+        "dev"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "mobile-web-alt",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "EXPO_PUBLIC_SERVER_URL=http://localhost:8788",
+        "pnpm",
         "--dir",
         "apps/mobile",
         "exec",
