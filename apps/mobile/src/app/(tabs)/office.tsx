@@ -27,7 +27,8 @@ export default function OfficeTab() {
             detail={office.role === "owner" ? `You own the team · fan mood ${office.fanMood}` : `Owner's trust ${office.trust} · fan mood ${office.fanMood}`}
             onPress={() => router.push("/owner")}
           />
-          <NavRow icon="cash-outline" title="Business" detail="Tickets, stadium, naming rights and the books" onPress={() => router.push("/business")} last />
+          <NavRow icon="cash-outline" title="Business" detail="Tickets, stadium, naming rights and the books" onPress={() => router.push("/business")} />
+          <NavRow icon="color-palette-outline" title="Team look" detail="Name, logo and colors" onPress={() => router.push("/look")} last />
         </NavGroup>
       ) : null}
 

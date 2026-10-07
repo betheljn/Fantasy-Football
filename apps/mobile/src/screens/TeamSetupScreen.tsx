@@ -146,7 +146,7 @@ export type FriendTeams = Record<string, { identity: TeamIdentityChoice; owner: 
  * `friends` are the other friends' teams: their names and logos are off
  * limits, and there's no role to pick.
  */
-export function MakeItYours({ league, team, onBack, onDone, initial, friends, backLabel = "All states", nextLabel = "Next: your head coach" }: { league: League; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void; initial?: TeamIdentityChoice; friends?: FriendTeams; backLabel?: string; nextLabel?: string }) {
+export function MakeItYours({ league, team, onBack, onDone, initial, friends, backLabel = "All states", nextLabel = "Next: your head coach", pickRole = !friends }: { league: League; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void; initial?: TeamIdentityChoice; friends?: FriendTeams; backLabel?: string; nextLabel?: string; pickRole?: boolean }) {
   const t = useTheme();
   const designed = designedColors(team.abbr);
   const [city, setCity] = useState(initial?.city ?? "");
@@ -266,7 +266,7 @@ export function MakeItYours({ league, team, onBack, onDone, initial, friends, ba
           ) : null}
         </Card>
 
-        {friends ? null : (
+        {!pickRole ? null : (
         <Card>
           <SectionTitle>Your role</SectionTitle>
           {(

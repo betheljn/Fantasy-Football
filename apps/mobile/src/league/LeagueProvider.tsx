@@ -6,6 +6,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   type CoachCall,
   setUpTeam,
+  customizeTeam,
+  type TeamIdentityChoice,
   addGameToSeason,
   allTeams,
   buildDynasty,
@@ -187,6 +189,8 @@ export interface DynastyControls {
   saveSetup: (setup: TeamSetup | null) => void;
   /** Take over your team as set up (with the league the fantasy draft made, if there was one) and open the first season. */
   beginDynasty: (setup: TeamSetup, drafted?: League) => void;
+  /** Solo: give your team a new look (name, logo, colors) at any time. */
+  restyleTeam: (identity: TeamIdentityChoice) => void;
   /** Play the spring season now (from the offseason report). */
   playSpring: () => void;
   /** Pick the spring champion before it's played (one pick a year). */
@@ -965,6 +969,11 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (!state) return;
       const { setup: _old, ...rest } = state;
       persist(setup ? { ...rest, setup } : rest);
+    },
+    restyleTeam: (identity) => {
+      if (!state?.userTeam || online) return;
+      const league = customizeTeam(state.dynasty.league, state.userTeam, identity);
+      persist({ ...state, dynasty: { ...state.dynasty, league } }, true);
     },
     beginDynasty: (setup, drafted) => {
       if (!state) return;

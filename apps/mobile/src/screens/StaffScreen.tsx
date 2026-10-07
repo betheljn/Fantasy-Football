@@ -3,9 +3,25 @@
 // for any open seats from the coaches and executives available.
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { STAFF_ROLE_NAMES, formatMoney, type StaffOpening, type StaffSeat, type StaffSlot } from "@dynasty/sim";
+import { STAFF_ROLE_NAMES, formatMoney, type StaffMember, type StaffOpening, type StaffSeat, type StaffSlot } from "@dynasty/sim";
 import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
+
+/** What a staff member runs: the side a head coach calls, a coordinator's scheme, a GM's philosophy. */
+export function staffStyle(m: StaffMember): string | null {
+  switch (m.role) {
+    case "HC":
+      return m.calls ? `Calls the ${m.calls.side}: ${m.calls.scheme} (play calling ${m.calls.playCalling})` : "Leaves the play calling to the coordinators";
+    case "OC":
+      return `${m.scheme} offense · play calling ${m.playCalling}`;
+    case "DC":
+      return `${m.scheme} defense · play calling ${m.playCalling}`;
+    case "GM":
+      return `${m.philosophy}`;
+    case "SCOUT":
+      return null;
+  }
+}
 
 const REASON: Record<string, string> = { fired: "fired", retired: "retired", "contract expired": "deal ended", "hired away": "hired away" };
 
@@ -58,6 +74,7 @@ export function StaffScreen(props: {
                 </Text>
                 <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{x.overall}</Text>
               </View>
+              {staffStyle(m) ? <Text style={{ color: t.text, fontSize: 12, marginTop: 2 }}>{staffStyle(m)}</Text> : null}
               <Text style={{ color: t.muted, fontSize: 12, marginTop: 2 }}>
                 age {m.age} · {m.experience} yrs experience
                 {m.contract ? ` · ${formatMoney(m.contract.salary)}/yr through ${m.contract.through}` : ""}
@@ -168,6 +185,7 @@ function Opening({ opening: o, picked, room, onPick, theme: t }: { opening: Staf
               <Text style={{ color: t.text, fontWeight: "600" }}>
                 {c.member.firstName} {c.member.lastName}
               </Text>
+              {staffStyle(c.member) ? <Text style={{ color: t.text, fontSize: 12 }}>{staffStyle(c.member)}</Text> : null}
               <Text style={{ color: t.muted, fontSize: 12 }}>
                 age {c.member.age} · {from}
                 {c.reputation >= 1 ? ` · strong record (+${c.reputation.toFixed(0)})` : c.reputation <= -1 ? " · losing record" : ""}
