@@ -18,6 +18,7 @@
     "coachbuild": "node scripts/coachbuild.ts",
     "fantasy": "node scripts/fantasydraft.ts",
     "regions": "node scripts/regions.ts",
+    "program": "node scripts/program.ts",
     "demo:step6": "node scripts/play-game.ts",
     "anim": "node scripts/anim-preview.ts",
     "league": "node scripts/league-overview.ts",

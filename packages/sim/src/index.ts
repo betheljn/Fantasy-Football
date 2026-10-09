@@ -37,6 +37,7 @@ export * from "./league/identity.ts";
 export * from "./dynasty/coachbuild.ts";
 export * from "./dynasty/fantasydraft.ts";
 export * from "./dynasty/rostergrade.ts";
+export * from "./dynasty/program.ts";
 export * from "./league/schedule.ts";
 export * from "./league/standings.ts";
 export * from "./league/season.ts";

@@ -15,8 +15,10 @@ export interface Team {
   readonly nickname: string;
   /** State postal code: the team's key everywhere, never changes. */
   readonly abbr: string;
-  /** Shown in place of the state name ("Twin Cities"); absent = the state. */
+  /** Shown in place of the state name ("Twin Cities"); absent = the region (a program), else the state. */
   readonly city?: string;
+  /** A regional program (yours): it represents its region, not a state. */
+  readonly region?: string;
   /** Shown in place of the abbr ("TWC"); absent = the abbr. */
   readonly tag?: string;
   /** Logo library id; absent = the logo that goes with the nickname. */
@@ -57,9 +59,9 @@ export function teamName(team: Team): string {
   return `${teamPlace(team)} ${team.nickname}`;
 }
 
-/** Where the team is from, as shown: its city name if it has one, else its state. */
+/** Where the team is from, as shown: its city name if it has one, else its region (a program) or state. */
 export function teamPlace(team: Team): string {
-  return team.city ?? team.state;
+  return team.city ?? team.region ?? team.state;
 }
 
 /** The short label shown for the team (its tag, else its abbr). */
