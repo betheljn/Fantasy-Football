@@ -35,6 +35,8 @@ export interface Player {
   readonly injury?: PlayerInjury;
   /** Holding out for a new deal: games left to miss (absent = playing). */
   readonly holdout?: { weeks: number };
+  /** Home state, where he grew up (absent for players from before regional talent: then it comes from his id). */
+  readonly home?: string;
 }
 
 export interface PlayerInit {
@@ -50,6 +52,8 @@ export interface PlayerInit {
   archetype?: string;
   devTrait?: DevTrait;
   devTraitRevealed?: boolean;
+  /** Home state (absent for players from before regional talent). */
+  home?: string;
 }
 
 /** Build a player; any rating not supplied defaults to 50. */
@@ -67,6 +71,7 @@ export function createPlayer(init: PlayerInit): Player {
     archetype: init.archetype ?? "",
     devTrait: init.devTrait ?? "normal",
     devTraitRevealed: init.devTraitRevealed ?? true,
+    ...(init.home ? { home: init.home } : {}),
   };
 }
 

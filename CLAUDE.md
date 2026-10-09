@@ -328,6 +328,79 @@ Follow-ups also done: online, each friend makes their claimed team theirs
 from the lobby (look and coach, checked on the server, made when the league
 starts; a friend's name, logo or short name is off limits).
 
+### Milestone 20: regions and your program
+The league stops being "pick a state". Each division is a region with a
+talent core, and you build a new program there.
+Decided: regions are the 10 divisions; your program replaces one of the
+region's five (league stays at 50) with a fresh roster; no state is named,
+only the region's states; you create the name, logo, colors and more.
+1. Sim: regional talent: each region has a core of skill groups (e.g.
+   Southeast speed and elusiveness, Great Lakes/North/Plains big men up
+   front); players get a home region and generated players, draft classes
+   and free agents lean to their region's core (stars can still come from
+   anywhere); existing saves keep their players as they are
+2. Sim: skill groups and your program: rank your top 3 skill groups, the
+   best-fit region is yours; a fresh roster built mostly from local talent
+   plus players from other regions; your program's market is its region
+3. App: onboarding reworked: skill groups, your region and why, then your
+   program's name, logo, colors and other options, your head coach, the
+   fantasy draft (optional), first season
+4. Online: friends pick skill groups in the lobby instead of claiming states
+
+### Milestone 21: the new season shape
+Decided: 15 games (4 division, 6 conference, 5 non-conference) over 16
+weeks with one bye; division title games (each division's top two) give the
+10 automatic bids; the 6 highest-ranked others fill the 16-team playoff;
+the Top 25 is re-ranked after the title games and after each playoff round.
+Leagues started before this keep their old format (versioned, so old saves
+and replays don't change).
+1. Sim: league format versions; the 15-game schedule
+2. Sim: championship week (division title games), bids and seeding
+3. Rankings after title games and each playoff round; news, radio, picks
+4. App and server: the new calendar, championship week, playoff picture
+
+### Milestone 22: the play duel (the core of the game)
+Playing, not watching: before each snap you and the opponent each pick a
+call; the matchup of the calls, the players' ratings and a little engine
+randomness decide the play.
+Decided: you call the plays by default (hand any of them, or the game, to
+your coach); both sides see formations, never the call; your head coach's
+scheme is your playbook and their play design sets how well each play is
+drawn up, so a coach who doesn't fit your philosophy costs you.
+1. Sim: playbook concepts (offense: inside/outside run, draw, screen,
+   quick, intermediate, deep shot, play action; defense: base, run blitz,
+   pass blitz, man press, Cover 2/3/4) and the counter table feeding the run
+   and pass engines; deterministic; old replays unchanged (rules versions)
+2. Sim: the AI opponent: calls by situation, scheme and coach quality, and
+   learns your tendencies during a game
+3. Sim: the reveal and the duel recap (calls won and lost, why)
+4. App: the call sheet (concept cards before each snap, the reveal after)
+5. Online: games between friends become real duels
+
+### Milestone 23: owner and coach progression
+Decided: you are the owner, and the owner is who levels up; coaches level
+too; both have upgrades that improve player growth and games.
+1. Owner XP and levels (wins, calls won, development, titles)
+2. Owner upgrades: facilities (growth), recruiting points, analytics (film
+   study: see opponent tendencies), coaching clinic; coach levels and
+   abilities; coach-philosophy fit
+3. App: owner profile, upgrade tree, coach abilities
+
+### Milestone 24: recruiting
+Local and outside talent: recruiting points from your coach and upgrades;
+local prospects cost less; you can recruit anywhere. (To decide: how
+recruiting and the draft fit together.)
+
+### Milestone 25: practice and game day
+Weekly practice plan (focus, intensity, injury risk, installing plays for
+the next opponent), training camp position battles, weather by region and
+week, crowd noise; shown on the field and in the feed.
+
+### Milestone 26: arenas
+Design and grow your stadium (capacity, roof, surface, video board, name),
+drawn in Skia, paid for through the business engine, feeding home-field
+noise and atmosphere.
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style

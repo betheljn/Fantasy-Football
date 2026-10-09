@@ -32,6 +32,7 @@ export { choreograph } from "./anim/choreograph.ts";
 export * from "./league/league.ts";
 export * from "./gen/names.ts";
 export * from "./gen/logos.ts";
+export * from "./gen/regions.ts";
 export * from "./league/identity.ts";
 export * from "./dynasty/coachbuild.ts";
 export * from "./dynasty/fantasydraft.ts";
