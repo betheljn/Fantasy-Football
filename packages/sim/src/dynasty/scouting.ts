@@ -14,6 +14,12 @@ import { OVERALL_WEIGHTS, RATING_KEYS, type RatingKey } from "../model/ratings.t
 import { hashString } from "../rng.ts";
 import type { League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
+import { leagueFormat } from "../league/format.ts";
+
+/** How many weeks this scouting runs: the regular season it was started in. */
+export function seasonWeeks(state: Pick<ScoutingState, "weeks">): number {
+  return state.weeks ?? REGULAR_SEASON_WEEKS;
+}
 import { draftValue, type DraftClass, type Prospect } from "./draftclass.ts";
 import { scoutingQuality } from "./frontoffice.ts";
 
@@ -41,6 +47,8 @@ export interface ScoutingState {
   classSeason: number;
   /** Weeks of scouting done (0 to the regular season length). */
   week: number;
+  /** The regular season's length in weeks (absent: 22, from before league formats). */
+  weeks?: number;
   combineDone: boolean;
   /** team -> prospect -> points spent. */
   focus: Record<string, Record<PlayerId, number>>;
@@ -73,6 +81,7 @@ export function createScouting(league: League, draftClass: DraftClass): Scouting
     seed: league.seed,
     classSeason: draftClass.season,
     week: 0,
+    weeks: leagueFormat(league).weeks,
     combineDone: false,
     focus: Object.fromEntries(teams.map((t) => [t, {}])),
     // The scouting director sets how much each point teaches the department.
@@ -82,7 +91,7 @@ export function createScouting(league: League, draftClass: DraftClass): Scouting
 
 /** A team's knowledge of a prospect, 0 to 1. */
 export function knowledge(state: ScoutingState, team: string, prospect: PlayerId): number {
-  const auto = SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / REGULAR_SEASON_WEEKS);
+  const auto = SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / seasonWeeks(state));
   const points = (state.focus[team]?.[prospect] ?? 0) * (state.quality[team] ?? 1);
   const fromFocus = 1 - Math.exp(-points / SCOUTING.pointsScale);
   return 1 - (1 - auto) * (1 - fromFocus);
@@ -256,7 +265,7 @@ export function advanceScoutingWeek(
   draftClass: DraftClass,
   choices: Record<string, Array<{ prospect: PlayerId; points: number }>> = {},
 ): ScoutingState {
-  if (state.week >= REGULAR_SEASON_WEEKS) return state;
+  if (state.week >= seasonWeeks(state)) return state;
   const focus: ScoutingState["focus"] = {};
   for (const team of Object.keys(state.focus)) {
     const spend = choices[team] ?? aiScoutingChoices(state, league, draftClass, team);
@@ -285,6 +294,6 @@ export function scoutSeason(
   weeklyChoices: (week: number) => Record<string, Array<{ prospect: PlayerId; points: number }>> = () => ({}),
 ): ScoutingState {
   let state = createScouting(league, draftClass);
-  while (state.week < REGULAR_SEASON_WEEKS) state = advanceScoutingWeek(state, league, draftClass, weeklyChoices(state.week + 1));
+  while (state.week < seasonWeeks(state)) state = advanceScoutingWeek(state, league, draftClass, weeklyChoices(state.week + 1));
   return runCombine(state);
 }

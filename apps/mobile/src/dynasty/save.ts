@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type CoachBuild, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -35,6 +35,8 @@ export interface SaveState {
   trades: TradeRecord[];
   /** The playoffs, decided when the regular season ends (null before). */
   playoffs?: PlayoffResult | null;
+  /** Championship week's box scores (kept to settle its picks when it's shown). */
+  titleBoxes?: Record<string, BoxScore>;
   /** Rosters through the season, so past games replay exactly. */
   lineups?: LineupLog;
   /** Injuries that made news this season (starters and good players out a week or more). */

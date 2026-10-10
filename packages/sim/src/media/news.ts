@@ -13,7 +13,7 @@ import type { GameSummary } from "../league/standings.ts";
 import { computeRecords, formatRecord } from "../league/standings.ts";
 import type { RankingEntry } from "../league/rankings.ts";
 import type { Schedule } from "../league/schedule.ts";
-import { ROUND_NAMES, type PlayoffResult, type PlayoffRound } from "../league/playoffs.ts";
+import { ROUND_NAMES, type PlayoffResult, type PostseasonStage } from "../league/playoffs.ts";
 import type { SeasonStats } from "../league/seasonstats.ts";
 import { buildBoxScore, type PlayerStats } from "../stats/boxscore.ts";
 import { computeAwards } from "../dynasty/awards.ts";
@@ -377,9 +377,6 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
 }
 
 /** The national feed: the week's biggest stories (your team's recap and preview stay local). */
-/** Which part of the postseason a set of stories is about. */
-export type PostseasonStage = "titles" | PlayoffRound;
-
 /**
  * The postseason in the news: championship week (each title, the upsets, the
  * field and who just missed it), then each playoff round (upsets by seed, the

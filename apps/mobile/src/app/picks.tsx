@@ -20,8 +20,9 @@ export default function PicksScreen() {
   const chosen = d.draft;
   const [stake, setStake] = useState("50");
   const [message, setMessage] = useState<{ text: string; good: boolean } | null>(null);
-  const week = weeksPlayed + 1;
-  const open = week <= schedule.weeks;
+  // The coming week, or championship week once the regular season's over (format 2).
+  const week = d.boardWeek ?? weeksPlayed + 1;
+  const open = d.boardWeek !== null;
 
   // Work out the board when the screen opens (it takes a few seconds on a phone).
   useEffect(() => {
@@ -91,7 +92,7 @@ export default function PicksScreen() {
 
         {mine.length > 0 ? (
           <Card>
-            <SectionTitle>Riding on week {week}</SectionTitle>
+            <SectionTitle>{week > schedule.weeks ? "Riding on championship week" : `Riding on week ${week}`}</SectionTitle>
             {mine.map((s) => (
               <View key={s.id} style={{ paddingVertical: 3 }}>
                 <Text style={{ color: t.text }}>
@@ -108,7 +109,7 @@ export default function PicksScreen() {
         {!open ? <Text style={{ color: t.muted }}>The board is closed for the season. Picks are back next season.</Text> : null}
         {open && !d.board ? (
           <Card>
-            <SectionTitle>Week {week} board</SectionTitle>
+            <SectionTitle>{week > schedule.weeks ? "Championship week board" : `Week ${week} board`}</SectionTitle>
             <Text style={{ color: t.muted }}>Setting the lines: simulating this week's featured games…</Text>
             <View style={{ height: 6, borderRadius: 3, backgroundColor: t.border, marginTop: 8, overflow: "hidden" }}>
               <View style={{ width: `${Math.round((d.boardProgress ?? 0) * 100)}%`, height: 6, backgroundColor: t.accent }} />
@@ -185,7 +186,7 @@ function HouseCard({ theme: t }: { theme: Theme }) {
   const all = houseRecord(d.picks.history);
   const last = d.picks.history.at(-1);
   const fresh = last && last.season === season && last.week === weeksPlayed;
-  const line = fresh ? houseOnResult(bm, last) : d.board ? houseGreeting(bm, league.seed, season, weeksPlayed + 1, d.board) : bm.bio;
+  const line = fresh ? houseOnResult(bm, last) : d.board ? houseGreeting(bm, league.seed, season, d.boardWeek ?? weeksPlayed + 1, d.board) : bm.bio;
   const initials = bm.name.split(" ").map((w) => w[0]).join("");
   return (
     <Card>

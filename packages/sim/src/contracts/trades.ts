@@ -23,6 +23,7 @@ import { ROSTER_MIN, ROSTER_POSITION_MAX, TRAIT_GROWTH_GUESS, keepValue } from "
 import { evaluationError, keepStyle } from "../dynasty/frontoffice.ts";
 import { DRAFT_ROUNDS } from "../dynasty/draft.ts";
 import { marketValue, marketValueAt, salaryCap } from "./cap.ts";
+import { leagueFormat } from "../league/format.ts";
 
 /** Last week trades can be made before (the deadline is the end of this week's games). */
 export const TRADE_DEADLINE_WEEK = 11;
@@ -71,9 +72,14 @@ export const TRADE_RULES = {
   maxPerWeek: 2,
 };
 
-/** Can trades still be made, with this many regular-season weeks played? */
-export function tradesOpen(weeksPlayed: number): boolean {
-  return weeksPlayed < TRADE_DEADLINE_WEEK;
+/** Can trades still be made, with this many regular-season weeks played (and this league's deadline)? */
+export function tradesOpen(weeksPlayed: number, deadline = TRADE_DEADLINE_WEEK): boolean {
+  return weeksPlayed < deadline;
+}
+
+/** The week after which trading closes in this league. */
+export function tradeDeadline(league: League): number {
+  return leagueFormat(league).tradeDeadlineWeek;
 }
 
 /**
@@ -588,7 +594,7 @@ function weakestPositions(team: Team): Position[] {
  * left out. `traded` are players already moved this season (not moved again).
  */
 export function aiTradeWeek(league: League, w: TradeWindow, humans: ReadonlySet<string> = new Set(), traded: ReadonlySet<PlayerId> = new Set()): { league: League; trades: TradeRecord[] } {
-  if (w.week > TRADE_DEADLINE_WEEK) return { league, trades: [] };
+  if (w.week > tradeDeadline(league)) return { league, trades: [] };
   const rng = new Rng(`trades:${league.seed}:${league.season}:${w.week}`);
   const teams = allTeams(league).filter((t) => !humans.has(t.abbr)).map((t) => t.abbr);
   const trades: TradeRecord[] = [];

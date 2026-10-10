@@ -1,9 +1,10 @@
 # Football Dynasty Game — Project Guide
 
 ## What this is
-A phone-first football management and dynasty game. Players run one team in a
-league of 50 fictional teams (one per US state), draft and develop players, hire
-coaches, GMs, and scouts, and chase championships across many seasons.
+A phone-first football management and dynasty game. Players run one program in a
+league of 50 fictional teams in ten regions (each region turns out its own kind
+of talent), draft and develop players, hire coaches, GMs, and scouts, and chase
+championships across many seasons.
 Games are simulated and shown as a 2D top-down field plus a play-by-play feed.
 
 This is NOT a real-world fantasy football or NFL projection tool.
@@ -34,14 +35,22 @@ All players and teams are generated.
 - Standard football rules: 4 downs, 10 yards, 4 quarters, touchdowns,
   field goals, punts, turnovers
 - 50 teams in 2 conferences of 5 divisions (5 teams each)
-- 20-game regular season over 22 weeks: two byes per team, one in weeks 5-11
-  and one in weeks 12-18
+- Each division is a region with a talent core (three skill groups); players
+  have home states, and the best at a group mostly come from its regions
+- Leagues record their season format (old saves keep theirs). New leagues
+  (format 2): 15 games (4 division, 6 conference, 5 non-conference) over 16
+  weeks with one bye (weeks 5-12), trade deadline after week 8. Format 1 (from
+  before): 20 games over 22 weeks, two byes, deadline after week 11
 - Weekly rankings 1-25 from a computed formula: 100 x win pct + 2 x strength
   rating (capped scoring margin + strength of schedule); preseason prior from
   roster strength fades over the first 5 games
-- 16-team playoff: the 10 division winners (automatic bids) + the 6 highest-ranked
-  other teams, all seeded 1-16 by final ranking. Fixed bracket (1v16, 8v9, ...),
-  higher seed hosts, neutral-site championship, no ties
+- Format 2 championship week: each division's top two meet (first place
+  hosts); the winners are division champions with the automatic bids
+- 16-team playoff: the 10 division champions (automatic bids) + the 6
+  highest-ranked other teams, all seeded 1-16 by ranking (format 2: the ranking
+  after championship week). Fixed bracket (1v16, 8v9, ...), higher seed hosts,
+  neutral-site championship, no ties. Format 2 re-ranks after each round; the
+  final poll has the champion No. 1 and the runner-up No. 2
 - ~50 Madden-style attributes per player, position archetypes, hidden potential
   and development traits (Normal / Impact / Star / Elite)
 - Offseason: retirements, development, 450-prospect draft class scouted by each
@@ -349,7 +358,7 @@ only the region's states; you create the name, logo, colors and more.
    friends who fit one region share it in the order they joined (its five
    spots, most typical market first), then go to their next-best region
 
-### Milestone 21: the new season shape
+### Milestone 21: the new season shape (done)
 Decided: 15 games (4 division, 6 conference, 5 non-conference) over 16
 weeks with one bye; division title games (each division's top two) give the
 10 automatic bids; the 6 highest-ranked others fill the 16-team playoff;

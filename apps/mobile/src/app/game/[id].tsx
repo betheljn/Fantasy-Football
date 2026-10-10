@@ -44,6 +44,13 @@ export default function GameRoute() {
       const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls } : {};
       return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1 }) };
     }
+    // Championship week (format 2): a division title game.
+    const tg = playoffs?.titleGames?.find((x) => x.summary.id === id);
+    if (tg) {
+      const teams = teamsFor(log, league, tg.summary);
+      const game = simulateGame(teams.home, teams.away, tg.summary.seed, { playoff: true, rules: tg.summary.rules ?? 1 });
+      return { ...teams, title: `${tg.division} title game`, week: 98, game };
+    }
     const p = playoffs?.games.find((x) => x.summary.id === id);
     if (p) {
       const teams = teamsFor(log, league, p.summary);

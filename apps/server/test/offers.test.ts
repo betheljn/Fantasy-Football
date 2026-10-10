@@ -1,5 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { TRADE_DEADLINE_WEEK } from "@dynasty/sim";
+import { CURRENT_FORMAT, FORMATS } from "@dynasty/sim";
+
+/** New leagues play the current season shape: its trade deadline. */
+const TRADE_DEADLINE_WEEK = FORMATS[CURRENT_FORMAT].tradeDeadlineWeek;
 import { buildApp } from "../src/app.ts";
 import { createDb } from "../src/db.ts";
 import { decodeState } from "../src/state.ts";
@@ -88,7 +91,7 @@ describe("trades between friends", () => {
     const { id, jai, sam } = await league();
     expect((await post(`/leagues/${id}/offseason`, { choice: { stage: "resign", keep: [] } }, jai)).json()).toMatchObject({ done: false, problems: ["The offseason hasn't opened."] });
     expect((await post(`/leagues/${id}/offseason`, { choice: { stage: "resign" } }, jai)).statusCode).toBe(400);
-    // 22 weeks, the playoffs, then draft week ends.
+    // The regular season, the postseason, then draft week ends.
     let view = (await get(`/leagues/${id}`, jai)).json();
     while (!(view.next.kind === "offseason" && view.next.stage === "staff")) view = (await post(`/leagues/${id}/advance`, {}, jai)).json().league;
     expect((await post(`/leagues/${id}/offseason`, { choice: { stage: "staff", fire: ["oc"], renew: [] } }, jai)).json().done).toBe(true);

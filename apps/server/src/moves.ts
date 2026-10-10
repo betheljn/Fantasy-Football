@@ -19,6 +19,7 @@ import {
   signingProblems,
   startLog,
   tradesOpen,
+  tradeDeadline,
   type League,
   type Position,
   type TradeProposal,
@@ -48,7 +49,7 @@ const refuse = (...problems: string[]): MoveResult => ({ state: null, problems }
 export function tradeWindowOf(s: LeagueState): TradeWindow | null {
   const league = s.dynasty.league;
   if (s.offseason) return null;
-  if (s.weeksPlayed < scheduleOf(s).weeks) return tradesOpen(s.weeksPlayed) ? seasonWindow(league, s.weeksPlayed) : null;
+  if (s.weeksPlayed < scheduleOf(s).weeks) return tradesOpen(s.weeksPlayed, tradeDeadline(league)) ? seasonWindow(league, s.weeksPlayed) : null;
   return s.progress.playoffs ? draftWeekWindow(league, draftOrder(s.progress.playoffs)) : null;
 }
 

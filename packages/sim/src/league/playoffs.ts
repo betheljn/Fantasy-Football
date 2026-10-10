@@ -18,6 +18,22 @@ export const PLAYOFF_TEAMS = 16;
 export type PlayoffRound = "round_of_16" | "quarterfinal" | "semifinal" | "championship";
 export const PLAYOFF_ROUNDS: PlayoffRound[] = ["round_of_16", "quarterfinal", "semifinal", "championship"];
 
+/** A step of the postseason: championship week (format 2), then each playoff round. */
+export type PostseasonStage = "titles" | PlayoffRound;
+
+/** The postseason's steps in this league, in order. */
+export function postseasonStages(league: League): PostseasonStage[] {
+  return leagueFormat(league).divisionTitleGames ? ["titles", ...PLAYOFF_ROUNDS] : [...PLAYOFF_ROUNDS];
+}
+
+export const STAGE_NAMES: Record<PostseasonStage, string> = {
+  titles: "Championship Week",
+  round_of_16: "Round of 16",
+  quarterfinal: "Quarterfinals",
+  semifinal: "Semifinals",
+  championship: "League Championship",
+};
+
 export const ROUND_NAMES: Record<PlayoffRound, string> = {
   round_of_16: "Round of 16",
   quarterfinal: "Quarterfinals",

@@ -13,7 +13,7 @@ import {
   computeRankings,
   createSeasonStats,
   divisionStandings,
-  REGULAR_SEASON_WEEKS,
+  seasonWeeks,
   SCOUTING,
   advanceScoutingWeek,
   beginOffseason,
@@ -49,6 +49,14 @@ import {
   playGame,
   seasonSchedule,
   simulatePlayoffs,
+  postseasonStages,
+  postseasonNews,
+  titleMatchups,
+  leagueFormat,
+  CURRENT_FORMAT,
+  type ScheduledGame,
+  type BoxScore,
+  type GameResult,
   type DivisionStandings,
   type GameSummary,
   type League,
@@ -127,6 +135,7 @@ import {
   judgeTrade,
   seasonWindow,
   tradesOpen,
+  tradeDeadline,
   type TradeWindow,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
@@ -248,6 +257,8 @@ export interface DynastyControls {
   /** Picks: your points and slates; the board for the coming week (worked out on request, with progress). */
   picks: PicksState;
   board: GameLines[] | null;
+  /** The week the board is for (a regular-season week, or championship week), or null when picks are closed. */
+  boardWeek: number | null;
   /** The board is missing your own game (it's worked out again). */
   boardNeedsOwn: boolean;
   boardProgress: number | null;
@@ -315,17 +326,36 @@ const newRadio = (): RadioState => ({ shows: [], records: emptyRecords(), last: 
 const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, board: null, open: [], history: [] });
 
 /** Your game this week is missing from the board (worked out again after a depth-chart change). */
+/**
+ * The week the picks board is for: the coming regular-season week, or
+ * championship week once the regular season is over (format 2, before it's
+ * played); null when there's nothing left to pick.
+ */
+function boardWeek(s: SaveState | null, schedule: Schedule | null): number | null {
+  if (!s || !schedule) return null;
+  if (s.weeksPlayed < schedule.weeks) return s.weeksPlayed + 1;
+  return leagueFormat(s.dynasty.league).divisionTitleGames && s.playoffRoundsShown === 0 ? schedule.weeks + 1 : null;
+}
+
+/** That week's games: the schedule's, or championship week's title games. */
+function weekGames(s: SaveState, schedule: Schedule, week: number): ScheduledGame[] {
+  if (week <= schedule.weeks) return schedule.games.filter((g) => g.week === week);
+  const league = s.dynasty.league;
+  return titleMatchups(league, { season: schedule.season, schedule, results: s.results, standings: divisionStandings(league, s.results) });
+}
+
 function needsOwnLines(s: SaveState | null, schedule: Schedule | null): boolean {
   const lines = boardFor(s, schedule);
-  if (!s || !schedule || !lines) return false;
-  const plays = schedule.games.some((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam));
+  const week = boardWeek(s, schedule);
+  if (!s || !schedule || !lines || week === null) return false;
+  const plays = weekGames(s, schedule, week).some((g) => isOwnGame(g, s.userTeam));
   return plays && !lines.some((l) => isOwnGame(l.game, s.userTeam));
 }
 
 /** The board for the coming week, if it's been worked out. */
 function boardFor(s: SaveState | null, schedule: Schedule | null): GameLines[] | null {
   const b = s?.picks?.board;
-  return b && schedule && b.season === schedule.season && b.week === s!.weeksPlayed + 1 ? b.lines : null;
+  return b && schedule && b.season === schedule.season && b.week === boardWeek(s, schedule) ? b.lines : null;
 }
 
 export function LeagueProvider({ children }: { children: ReactNode }) {
@@ -629,8 +659,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const tradeWindow = useMemo((): TradeWindow | null => {
     // (Online, trading closes when the league's offseason opens.)
     if (!state?.userTeam || !league || offseason || staffStep || state.report || busy || online?.offseason) return null;
-    if (!seasonOver) return tradesOpen(state.weeksPlayed) ? seasonWindow(league, state.weeksPlayed) : null;
-    if (playoffs && state.playoffRoundsShown >= PLAYOFF_ROUND_COUNT) return draftWeekWindow(league, draftOrder(playoffs));
+    if (!seasonOver) return tradesOpen(state.weeksPlayed, tradeDeadline(league)) ? seasonWindow(league, state.weeksPlayed) : null;
+    if (playoffs && state.playoffRoundsShown >= postseasonStages(league).length) return draftWeekWindow(league, draftOrder(playoffs));
     return null;
   }, [online?.offseason, state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
 
@@ -652,7 +682,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : offseason ? "resign"
     : !state.userTeam ? "choose"
     : !seasonOver ? "season"
-    : state.playoffRoundsShown < PLAYOFF_ROUND_COUNT ? "playoffs"
+    : state.playoffRoundsShown < postseasonStages(state.dynasty.league).length ? "playoffs"
     : "complete";
 
   /** Play one week of the regular season onto a state (mutates its stats), and a week of scouting. */
@@ -719,7 +749,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = scouting ?? createScouting(league, draftClass);
       // Your points if you assigned any; otherwise your scouts pick (as they do for every other team).
       const choices = s.scoutPlan.length > 0 ? { [s.userTeam]: s.scoutPlan } : {};
-      scouting = current.week < REGULAR_SEASON_WEEKS ? advanceScoutingWeek(current, league, draftClass, choices) : current;
+      scouting = current.week < seasonWeeks(current) ? advanceScoutingWeek(current, league, draftClass, choices) : current;
     }
     const dynasty = { ...s.dynasty, league };
     const allResults = [...s.results, ...played];
@@ -735,10 +765,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // Rivalry results always make the paper, whatever else happened.
     const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];
     // Regular season over: the playoffs are decided now, on these rosters.
-    const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
+    // Championship week's box scores are kept for settling its picks when it's shown.
+    const titleBoxes: Record<string, BoxScore> = {};
+    const onTitleGame = (g: GameResult) => void (titleBoxes[`${sched.season}-title-${g.away}@${g.home}`] = buildBoxScore(g));
+    const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }, { onTitleGame }) : undefined;
     // A coached game is done once its week is played.
     const { coaching: _played, ...rest } = s;
-    return { ...rest, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
+    return { ...rest, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final, titleBoxes } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -795,7 +828,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, titleBoxes: undefined, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -959,7 +992,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           setTimeout(step, 0);
           return;
         }
-        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [], trades: [] }, true);
+        // New dynasties play the current season shape.
+        const built = { ...r.value, league: { ...r.value.league, format: CURRENT_FORMAT } };
+        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: built, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [], trades: [] }, true);
         setBusy(null);
       };
       setTimeout(step, 50);
@@ -1035,7 +1070,32 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       })();
     },
     playPlayoffRound: () => {
-      if (state && seasonOver) persist({ ...state, playoffRoundsShown: Math.min(PLAYOFF_ROUND_COUNT, state.playoffRoundsShown + 1) });
+      if (!state || !seasonOver || !playoffs || !schedule) return;
+      const league = state.dynasty.league;
+      const stages = postseasonStages(league);
+      const stage = stages[state.playoffRoundsShown];
+      if (!stage) return;
+      // The stage in the news: the national feed and your own.
+      const stories = postseasonNews(league, schedule.season, playoffs, stage, state.userTeam);
+      const kept = [...new Set([...nationalFeed(stories), ...localFeed(stories, state.userTeam)])];
+      let next: SaveState = { ...state, playoffRoundsShown: state.playoffRoundsShown + 1, news: [...(state.news ?? []), ...kept] };
+      // Championship week: its slates and the hosts' picks are settled.
+      if (stage === "titles" && playoffs.titleGames) {
+        const week = schedule.weeks + 1;
+        const boxes = new Map(playoffs.titleGames.filter((g) => state.titleBoxes?.[g.summary.id]).map((g) => [g.summary.id, { summary: g.summary, box: state.titleBoxes![g.summary.id]! }]));
+        const before = state.picks ?? newPicks();
+        const due = before.open.filter((x) => x.week === week && x.season === schedule.season);
+        const settled = due.map((x) => settleSlate(x, boxes));
+        const onAir = (state.radio?.shows ?? []).find((x) => x.season === schedule.season && x.week === week);
+        const graded = onAir ? gradeHostPicks(onAir.picks, boxes) : [];
+        const radioBefore = state.radio ?? newRadio();
+        next = {
+          ...next,
+          picks: { ...before, balance: before.balance + settled.reduce((n, x) => n + x.payout, 0), board: null, open: before.open.filter((x) => !due.includes(x)), history: [...before.history, ...settled] },
+          radio: { ...radioBefore, records: addToRecords(radioBefore.records, graded), last: graded },
+        };
+      }
+      persist(next);
     },
     startOffseason: () => {
       if (!state || !schedule || !playoffs) return;
@@ -1156,16 +1216,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     picks: state?.picks ?? newPicks(),
     board: boardFor(state, schedule),
     boardNeedsOwn: needsOwnLines(state, schedule),
+    boardWeek: boardWeek(state, schedule),
     boardProgress,
     loadBoard: () => {
       const s = stateRef.current;
-      if (!s || !schedule || seasonOver || !s.userTeam || boardJob.current) return;
+      const week = boardWeek(s, schedule);
+      if (!s || !schedule || week === null || !s.userTeam || boardJob.current) return;
       const existing = boardFor(s, schedule);
       const own = needsOwnLines(s, schedule);
       if (existing && !own) return;
-      const week = s.weeksPlayed + 1;
-      // The whole board, or just your game again (after a depth-chart change).
-      const games = existing ? boardGames(s.dynasty.league, schedule, week, s.userTeam).filter((g) => isOwnGame(g, s.userTeam)) : boardGames(s.dynasty.league, schedule, week, s.userTeam);
+      // The whole board (championship week: all ten title games), or just your game again (after a depth-chart change).
+      const all = week <= schedule.weeks ? boardGames(s.dynasty.league, schedule, week, s.userTeam) : weekGames(s, schedule, week);
+      const games = existing ? all.filter((g) => isOwnGame(g, s.userTeam)) : all;
       const steps = linesSteps(s.dynasty.league, games, undefined, s.userTeam);
       const token = {};
       boardJob.current = token;
@@ -1182,7 +1244,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         setBoardProgress(null);
         const now = stateRef.current;
         // Only if nothing moved on meanwhile (the week wasn't played).
-        if (!now || now.weeksPlayed + 1 !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
+        if (!now || boardWeek(now, schedule) !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
         const p = now.picks ?? newPicks();
         const lines = existing && p.board ? [...r.value, ...p.board.lines] : r.value;
         // The radio show for the week is written off the board (once).
@@ -1206,12 +1268,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     },
     placeSlate: (picks, stake) => {
       const s = stateRef.current;
-      if (!s || !schedule || !boardFor(s, schedule)) return ["The board isn't open."];
+      const week = boardWeek(s, schedule);
+      if (!s || !schedule || week === null || !boardFor(s, schedule)) return ["The board isn't open."];
       const p = s.picks ?? newPicks();
-      const ownGames = new Set(schedule.games.filter((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam)).map((g) => g.id));
+      const ownGames = new Set(weekGames(s, schedule, week).filter((g) => isOwnGame(g, s.userTeam)).map((g) => g.id));
       const problems = slateProblems(picks, stake, p.balance, s.userTeam, ownGames);
       if (problems.length > 0) return problems;
-      const slate: Slate = { id: `${schedule.season}-${s.weeksPlayed + 1}-${p.history.length + p.open.length + 1}`, season: schedule.season, week: s.weeksPlayed + 1, picks, stake };
+      const slate: Slate = { id: `${schedule.season}-${week}-${p.history.length + p.open.length + 1}`, season: schedule.season, week, picks, stake };
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
       return [];
     },

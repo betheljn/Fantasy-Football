@@ -14,7 +14,6 @@ import { capHit, deadMoney } from "../model/contract.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { ROSTER_MAX, starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
-import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
 import { playWeek, type SeasonResult } from "../league/season.ts";
 import { healAll } from "../game/injuries.ts";
@@ -48,7 +47,7 @@ import {
   type OpenYearResult,
   type ResignChoices,
 } from "../contracts/offseason.ts";
-import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
+import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, seasonWeeks, type ScoutingState } from "./scouting.ts";
 import {
   staffHiring,
   staffReleases,
@@ -182,7 +181,8 @@ export function* buildDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS
  */
 export function quietOffseason(league: League): League {
   const draftClass = generateDraftClass(league);
-  const scouting = runCombine({ ...createScouting(league, draftClass), week: REGULAR_SEASON_WEEKS });
+  const fresh = createScouting(league, draftClass);
+  const scouting = runCombine({ ...fresh, week: seasonWeeks(fresh) });
   const order = allTeams(league)
     .map((t) => ({ t: t.abbr, r: teamRatings(t).overall }))
     .sort((a, b) => a.r - b.r)
@@ -199,7 +199,7 @@ export function quietOffseason(league: League): League {
 /** Bring in-season scouting to draft day: any weeks not scouted get the AI's choices, then the combine. */
 export function finishScouting(scouting: ScoutingState, league: League, draftClass: DraftClass): ScoutingState {
   let state = scouting;
-  while (state.week < REGULAR_SEASON_WEEKS) state = advanceScoutingWeek(state, league, draftClass);
+  while (state.week < seasonWeeks(state)) state = advanceScoutingWeek(state, league, draftClass);
   return state.combineDone ? state : runCombine(state);
 }
 

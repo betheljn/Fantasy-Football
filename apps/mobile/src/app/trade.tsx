@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   POSITIONS,
-  TRADE_DEADLINE_WEEK,
+  tradeDeadline,
   allTeams,
   capHit,
   checkTrade,
@@ -50,7 +50,7 @@ export default function TradeScreen() {
         <Stack.Screen options={{ title: "Trades" }} />
         <View style={{ padding: 16 }}>
           <Text style={{ color: t.muted }}>
-            Trading is closed. It's open from the preseason through week {TRADE_DEADLINE_WEEK}, and again in draft week after the championship.
+            Trading is closed. It's open from the preseason through week {tradeDeadline(league)}, and again in draft week after the championship.
           </Text>
         </View>
       </>
@@ -70,7 +70,7 @@ export default function TradeScreen() {
         <Text style={{ color: t.muted, marginBottom: 4 }}>
           {w.week === 0
             ? `Draft week: trade players and picks before the offseason. Deals count against the ${w.season} cap, and players whose contracts are up can't be traded.`
-            : `Trade players and draft picks. A team over 72 releases players to make room; one that's short plays short until the offseason. Deadline: after week ${TRADE_DEADLINE_WEEK}.`}
+            : `Trade players and draft picks. A team over 72 releases players to make room; one that's short plays short until the offseason. Deadline: after week ${tradeDeadline(league)}.`}
         </Text>
         <MyPicks league={league} window={w} abbr={userTeam} theme={t} />
         {teams.map((team) => {

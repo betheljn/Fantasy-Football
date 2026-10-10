@@ -7,6 +7,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import {
   teamPlace,
   PLAYOFF_ROUNDS,
+  STAGE_NAMES,
+  postseasonStages,
   ROUND_NAMES,
   STATES,
   OWNER_GOALS,
@@ -15,7 +17,7 @@ import {
   backLabel,
   injuryLabel,
   injuryReport,
-  TRADE_DEADLINE_WEEK,
+  tradeDeadline,
   IR_MIN_WEEKS,
   type TradeRecord,
   formatRecord,
@@ -176,12 +178,13 @@ function NextUp({ data }: { data: LeagueData }) {
     );
   }
   if (d.phase === "playoffs") {
-    const round = PLAYOFF_ROUNDS[playoffRoundsShown]!;
+    const stage = postseasonStages(league)[playoffRoundsShown]!;
     return (
       <Card style={{ gap: 10, borderColor: t.accent, borderWidth: 1.5 }}>
-        <SectionTitle>Playoffs</SectionTitle>
-        <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{ROUND_NAMES[round]}</Text>
-        <Button label={`Play the ${ROUND_NAMES[round]}`} onPress={d.playPlayoffRound} theme={t} primary />
+        <SectionTitle>{stage === "titles" ? "Postseason" : "Playoffs"}</SectionTitle>
+        <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{STAGE_NAMES[stage]}</Text>
+        {stage === "titles" ? <Text style={{ color: t.muted }}>Each division&apos;s top two play for the title and its automatic bid; then the field of 16 is set.</Text> : null}
+        <Button label={stage === "titles" ? "Play championship week" : `Play the ${STAGE_NAMES[stage]}`} onPress={d.playPlayoffRound} theme={t} primary />
         <PlayoffDetails data={data} />
       </Card>
     );
@@ -280,8 +283,8 @@ function NeedsYou({ data }: { data: LeagueData }) {
   if (d.phase === "season" && d.scouting && d.scoutPlan.length === 0) {
     items.push({ key: "scout", icon: "search-outline", title: "Scouting points to assign", detail: `${SCOUT_POINTS} this week; your scouts choose if you don't`, go: "/scouting" });
   }
-  if (d.canTrade && d.tradeWindow?.week !== 0 && TRADE_DEADLINE_WEEK - weeksPlayed === 1) {
-    items.push({ key: "deadline", icon: "swap-horizontal-outline", title: "Last week to trade", detail: `Trading closes after week ${TRADE_DEADLINE_WEEK}`, go: "/trade" });
+  if (d.canTrade && d.tradeWindow?.week !== 0 && tradeDeadline(data.league) - weeksPlayed === 1) {
+    items.push({ key: "deadline", icon: "swap-horizontal-outline", title: "Last week to trade", detail: `Trading closes after week ${tradeDeadline(data.league)}`, go: "/trade" });
   }
   if (d.canTrade && d.tradeWindow?.week === 0) {
     items.push({ key: "draftweek", icon: "swap-horizontal-outline", title: "Draft week: trades are open", detail: "Deal players and picks before the offseason", go: "/trade" });
@@ -318,7 +321,7 @@ function LastWeek({ data }: { data: LeagueData }) {
     .slice(0, 3);
   if (!last && top.length === 0) return null;
   return (
-    <NavGroup title={week ? `Week ${week}` : "Last week"}>
+    <NavGroup title={week > data.schedule.weeks ? (STAGE_NAMES[postseasonStages(data.league)[week - data.schedule.weeks - 1] ?? "championship"]) : week ? `Week ${week}` : "Last week"}>
       {last ? <NavRow icon="play-circle-outline" title={resultLine(last, userTeam)} detail="Watch the replay" onPress={() => router.push(`/game/${last.id}`)} last={top.length === 0} /> : null}
       {top.map((s, i) => (
         <NavRow key={s.id} icon="newspaper-outline" title={s.headline} onPress={() => router.push("/news")} last={i === top.length - 1} />
@@ -403,8 +406,14 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   const { playoffs, playoffRoundsShown, userTeam } = data;
   if (!playoffs) return null;
   const made = playoffs.seeds.find((s) => s.team === userTeam);
-  const nextRound = PLAYOFF_ROUNDS[playoffRoundsShown];
-  const played = PLAYOFF_ROUNDS.slice(0, playoffRoundsShown);
+  // Championship week first (format 2), then the rounds.
+  const stages = postseasonStages(data.league);
+  const titlesFirst = stages[0] === "titles";
+  const titlesShown = titlesFirst && playoffRoundsShown > 0;
+  const nextStage = stages[playoffRoundsShown];
+  const nextRound = nextStage && nextStage !== "titles" ? nextStage : undefined;
+  const played = stages.slice(0, playoffRoundsShown).filter((x): x is (typeof PLAYOFF_ROUNDS)[number] => x !== "titles");
+  const myTitle = playoffs.titleGames?.find((g) => g.first === userTeam || g.second === userTeam);
   // Your next playoff game, if you're still alive and it's been set.
   const upcoming = nextRound ? playoffs.games.find((g) => g.round === nextRound && (g.summary.home === userTeam || g.summary.away === userTeam)) : undefined;
   // Your playoff games so far, and the one that ended your run (if one has).
@@ -416,7 +425,8 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   });
   const champion = made && !lost && mine.some((g) => g.round === PLAYOFF_ROUNDS[PLAYOFF_ROUNDS.length - 1]);
   let status = "You missed the playoffs this year.";
-  if (champion) status = "Champions! You won it all.";
+  if (titlesFirst && !titlesShown) status = myTitle ? `You play for the ${myTitle.division} title, ${myTitle.first === userTeam ? `at home against ${teamShort(myTitle.second)}` : `at ${teamShort(myTitle.first)}`}.` : "Championship week first: each division's top two play for the title.";
+  else if (champion) status = "Champions! You won it all.";
   else if (lost) {
     const opp = lost.summary.home === userTeam ? lost.summary.away : lost.summary.home;
     status = `Out in the ${ROUND_NAMES[lost.round]}: lost ${scoreOf(lost, opp)}-${scoreOf(lost, userTeam)} to ${opp}.`;
@@ -432,6 +442,27 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   return (
     <View>
       {!(folded && champion) ? <Text style={{ color: t.muted, marginBottom: 8 }}>{status}</Text> : null}
+      {titlesShown && playoffs.titleGames && (view === "all" || (view === "latest" && played.length === 0)) ? (
+        <View style={{ marginBottom: 8 }}>
+          <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>Championship Week</Text>
+          {playoffs.titleGames.map((g) => {
+            const isMine = g.first === userTeam || g.second === userTeam;
+            return (
+              <LinkRow key={g.summary.id} label={`${g.division} title, watch`} onPress={() => router.push(`/game/${g.summary.id}`)}>
+                <Text style={{ color: t.text, fontWeight: isMine ? "800" : "400", fontVariant: ["tabular-nums"] }}>
+                  {g.division}: {teamShort(g.summary.away)} {g.summary.awayScore} – {teamShort(g.summary.home)} {g.summary.homeScore}
+                  {g.summary.overtime ? " OT" : ""}
+                </Text>
+              </LinkRow>
+            );
+          })}
+        </View>
+      ) : null}
+      {titlesFirst && !titlesShown && myTitle ? (
+        <View style={{ marginBottom: 8 }}>
+          <Button label={`Watch your ${myTitle.division} title game`} onPress={() => router.push(`/game/${myTitle.summary.id}`)} theme={t} />
+        </View>
+      ) : null}
       {shown.map((round) => (
         <View key={round} style={{ marginBottom: 8 }}>
           <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>{ROUND_NAMES[round]}</Text>

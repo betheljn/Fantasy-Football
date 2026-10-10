@@ -1,7 +1,7 @@
 // An online league's save, as the server sends it, turned into the app's own
 // save state so every league screen (standings, teams, box scores, replays)
 // works on it unchanged. Read-only: nothing here is ever saved on the phone.
-import { fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord } from "@dynasty/sim";
+import { fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord, postseasonStages } from "@dynasty/sim";
 import { SAVE_VERSION, type SaveState } from "../dynasty/save";
 
 /** The server's league state (apps/server/src/state.ts and season.ts). */
@@ -41,7 +41,7 @@ export function saveFromServer(text: string, userTeam: string): { save: SaveStat
     results: p.results,
     stats: p.stats,
     // The server shows the whole bracket at once.
-    playoffRoundsShown: p.playoffs ? 4 : 0,
+    playoffRoundsShown: p.playoffs ? postseasonStages(s.dynasty.league).length : 0,
     report: null,
     scouting: null,
     scoutPlan: [],

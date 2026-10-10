@@ -1,7 +1,7 @@
 // Your team: everything about running it, each with a line on what's there now.
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { TRADE_DEADLINE_WEEK, formatRecord, teamName } from "@dynasty/sim";
+import { formatRecord, teamName, tradeDeadline } from "@dynasty/sim";
 import { NavGroup, NavRow, Swatch } from "../../components/ui";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { useOffers } from "../../online/offers";
@@ -43,7 +43,7 @@ export default function TeamTab() {
         <NavRow
           icon="swap-horizontal-outline"
           title="Trades"
-          detail={d.canTrade ? (d.tradeWindow?.week === 0 ? "Draft week: trades open" : `Open through week ${TRADE_DEADLINE_WEEK}`) : "Trading is closed right now"}
+          detail={d.canTrade ? (d.tradeWindow?.week === 0 ? "Draft week: trades open" : `Open through week ${tradeDeadline(league)}`) : "Trading is closed right now"}
           onPress={() => router.push("/trade")}
           last={solo}
         />

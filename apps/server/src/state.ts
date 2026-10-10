@@ -1,6 +1,6 @@
 // The league as the server holds it: the dynasty (in the sim's compact save
 // format) and who runs which team. Built and changed only by the sim.
-import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
+import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 
 export const STATE_VERSION = 1;
@@ -32,7 +32,9 @@ export interface TeamSetupChoice {
 }
 
 export function newLeagueState(seed: string): LeagueState {
-  return { version: STATE_VERSION, seed, dynasty: startDynasty(seed), humans: {}, weeksPlayed: 0, progress: emptyProgress() };
+  // New leagues play the current season shape (older leagues keep theirs).
+  const dynasty = startDynasty(seed);
+  return { version: STATE_VERSION, seed, dynasty: { ...dynasty, league: { ...dynasty.league, format: CURRENT_FORMAT } }, humans: {}, weeksPlayed: 0, progress: emptyProgress() };
 }
 
 export const encodeState = (s: LeagueState): string => toSaveJson(s);

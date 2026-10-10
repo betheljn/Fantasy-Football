@@ -16,10 +16,11 @@ export default function RadioScreen() {
   const d = useDynasty();
   const { league, weeksPlayed, schedule, userTeam } = useLeague();
   const cast = radioCast(league.seed);
-  const week = weeksPlayed + 1;
+  // The coming week, or championship week once the regular season's over (format 2).
+  const week = d.boardWeek ?? weeksPlayed + 1;
   const radio = d.save?.radio;
   const show = radio?.shows.find((x) => x.season === schedule.season && x.week === week) ?? null;
-  const live = week <= schedule.weeks;
+  const live = d.boardWeek !== null;
 
   useEffect(() => {
     if (live && !show && !d.board) d.loadBoard();

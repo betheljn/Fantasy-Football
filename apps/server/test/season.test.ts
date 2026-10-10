@@ -1,3 +1,4 @@
+import { leagueFormat } from "@dynasty/sim";
 import { describe, expect, it } from "vitest";
 import { replayTeams, simulateGame } from "@dynasty/sim";
 import { stagedOffseason } from "@dynasty/sim";
@@ -32,7 +33,7 @@ describe("online season", () => {
       steps.push(r.summary.kind);
     }
     expect(s.weeksPlayed).toBe(weeks);
-    expect(s.progress.results.filter((g) => g.home === "OH" || g.away === "OH")).toHaveLength(20);
+    expect(s.progress.results.filter((g) => g.home === "OH" || g.away === "OH")).toHaveLength(leagueFormat(s.dynasty.league).gamesPerTeam);
     expect(nextStep(s)).toEqual({ kind: "playoffs" });
     const po = advance(s, new Set());
     expect(po.summary.kind).toBe("playoffs");
