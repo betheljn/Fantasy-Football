@@ -24,6 +24,8 @@ export interface Conference {
 }
 
 export interface League {
+  /** The season shape it was started under (absent: format 1, from before formats). */
+  format?: number;
   seed: string;
   /** Season year shown to players; the first season of a new league. */
   season: number;

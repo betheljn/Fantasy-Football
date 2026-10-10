@@ -30,6 +30,7 @@ export * from "./anim/field.ts";
 export * from "./anim/align.ts";
 export { choreograph } from "./anim/choreograph.ts";
 export * from "./league/league.ts";
+export * from "./league/format.ts";
 export * from "./gen/names.ts";
 export * from "./gen/logos.ts";
 export * from "./gen/regions.ts";
