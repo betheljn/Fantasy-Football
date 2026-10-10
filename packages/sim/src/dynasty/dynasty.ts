@@ -564,7 +564,8 @@ export function completeOffseason(
       team: e.team,
       record: `${e.record.wins}-${e.record.losses}${e.record.ties ? `-${e.record.ties}` : ""}`,
     })),
-    divisionWinners: standings.map((d) => d.teams[0]!.team),
+    // Format 2: the title games crown the champions; otherwise first place does.
+    divisionWinners: playoffs.titleGames ? playoffs.titleGames.map((g) => g.summary.winner!) : standings.map((d) => d.teams[0]!.team),
     awards,
     topPicks: draft.picks.slice(0, 10).map((p) => ({ pick: p.overall, team: p.team, player: fullName(p.player), position: p.player.position })),
     notableRetirements: [...retired.retirees]

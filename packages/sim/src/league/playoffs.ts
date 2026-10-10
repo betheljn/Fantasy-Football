@@ -1,9 +1,12 @@
 // Playoffs: 16 teams. The 10 division winners get automatic bids; the 6
 // highest-ranked other teams get at-large bids. All 16 are seeded by the final
-// regular-season ranking. Fixed bracket (1v16, 8v9, ...), higher seed hosts,
-// championship at a neutral site.
+// ranking. Fixed bracket (1v16, 8v9, ...), higher seed hosts, championship at
+// a neutral site. In format 2 leagues championship week comes first: each
+// division's top two meet for the title (the winner is its champion and gets
+// the automatic bid), and the ranking is redone with those games in it.
 import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
 import { simulateGame, type GameResult } from "../game/game.ts";
+import { leagueFormat } from "./format.ts";
 import type { League } from "./league.ts";
 import { computeRankings, type RankingEntry } from "./rankings.ts";
 import type { SeasonResult } from "./season.ts";
@@ -48,18 +51,33 @@ export interface PlayoffGame {
   summary: GameSummary;
 }
 
+/** A division title game (format 2): first place hosts second; the winner is the division's champion. */
+export interface TitleGame {
+  division: string;
+  /** The division's first and second place after the regular season. */
+  first: string;
+  second: string;
+  summary: GameSummary;
+}
+
 export interface PlayoffResult {
-  /** The final regular-season ranking the field was drawn from. */
+  /** The final ranking the field was drawn from (after championship week, if there was one). */
   ranking: RankingEntry[];
+  /** Championship week (format 2): the division title games, and the ranking before them. */
+  titleGames?: TitleGame[];
+  regularRanking?: RankingEntry[];
   seeds: PlayoffSeed[];
   games: PlayoffGame[];
   champion: string;
   runnerUp: string;
 }
 
-/** Division winners plus the best-ranked at-large teams, seeded 1-16 by ranking. */
-export function selectPlayoffField(league: League, results: readonly GameSummary[], ranking = computeRankings(league, results)): PlayoffSeed[] {
-  const winners = new Set(divisionStandings(league, results).map((d) => d.teams[0]!.team));
+/**
+ * Division winners (or title game winners, given) plus the best-ranked
+ * at-large teams, seeded 1-16 by ranking.
+ */
+export function selectPlayoffField(league: League, results: readonly GameSummary[], ranking = computeRankings(league, results), champions?: ReadonlySet<string>): PlayoffSeed[] {
+  const winners = champions ?? new Set(divisionStandings(league, results).map((d) => d.teams[0]!.team));
   const atLarge = ranking.filter((e) => !winners.has(e.team)).slice(0, PLAYOFF_TEAMS - winners.size);
   const field = new Set([...winners, ...atLarge.map((e) => e.team)]);
   return ranking
@@ -73,21 +91,77 @@ export function selectPlayoffField(league: League, results: readonly GameSummary
     }));
 }
 
-function playoffWeek(season: SeasonResult, round: PlayoffRound): number {
-  return season.schedule.weeks + PLAYOFF_ROUNDS.indexOf(round) + 1;
+/** Championship week comes right after the regular season (format 2). */
+function titleWeek(season: SeasonResult): number {
+  return season.schedule.weeks + 1;
+}
+
+function playoffWeek(league: League, season: SeasonResult, round: PlayoffRound): number {
+  return season.schedule.weeks + (leagueFormat(league).divisionTitleGames ? 1 : 0) + PLAYOFF_ROUNDS.indexOf(round) + 1;
 }
 
 export interface PlayoffOptions {
   onGame?: (game: GameResult, round: PlayoffRound) => void;
 }
 
-export function simulatePlayoffs(league: League, season: SeasonResult, opts: PlayoffOptions = {}): PlayoffResult {
-  const ranking = computeRankings(league, season.results);
-  const seeds = selectPlayoffField(league, season.results, ranking);
+export interface ChampionshipWeek {
+  titleGames: TitleGame[];
+  /** The league with the title games' injuries healed a week (ready for the playoffs). */
+  league: League;
+  injuries: Injury[];
+}
+
+/**
+ * Championship week: in each division, first place hosts second for the
+ * title. Ties can't stand (overtime until someone wins).
+ */
+export function playChampionshipWeek(league: League, season: SeasonResult, opts: { onGame?: (game: GameResult) => void } = {}): ChampionshipWeek {
+  const titleGames: TitleGame[] = [];
+  const injuries: Injury[] = [];
+  for (const d of divisionStandings(league, season.results)) {
+    const [first, second] = [d.teams[0]!.team, d.teams[1]!.team];
+    const id = `${season.season}-title-${second}@${first}`;
+    const seed = `${league.seed}:${id}`;
+    const h = gameDayTeam(league.teams[first]!);
+    const v = gameDayTeam(league.teams[second]!);
+    const result = simulateGame(h.team, v.team, seed, { playoff: true });
+    if (!result.winner) throw new Error(`Title game ${id} ended in a tie`);
+    injuries.push(...result.injuries);
+    opts.onGame?.(result);
+    titleGames.push({
+      division: d.division,
+      first,
+      second,
+      summary: {
+        id,
+        week: titleWeek(season),
+        home: first,
+        away: second,
+        kind: "division",
+        homeScore: result.score[first]!,
+        awayScore: result.score[second]!,
+        overtime: result.overtime,
+        winner: result.winner,
+        seed,
+        rules: result.rules ?? 1,
+        ...(h.out.length + v.out.length > 0 ? { out: { [first]: h.out, [second]: v.out } } : {}),
+      },
+    });
+  }
+  return { titleGames, league: advanceInjuries(league, injuries), injuries };
+}
+
+export function simulatePlayoffs(league: League, season: SeasonResult, opts: PlayoffOptions & { onTitleGame?: (game: GameResult) => void } = {}): PlayoffResult {
+  // Format 2: championship week first; its winners are the champions, and its games count in the ranking.
+  const titles = leagueFormat(league).divisionTitleGames ? playChampionshipWeek(league, season, opts.onTitleGame ? { onGame: opts.onTitleGame } : {}) : null;
+  const regularRanking = computeRankings(league, season.results);
+  const ranking = titles ? computeRankings(league, [...season.results, ...titles.titleGames.map((g) => g.summary)], regularRanking) : regularRanking;
+  const champions = titles ? new Set(titles.titleGames.map((g) => g.summary.winner!)) : undefined;
+  const seeds = selectPlayoffField(league, season.results, ranking, champions);
   const bySeed = new Map(seeds.map((s) => [s.seed, s]));
   const games: PlayoffGame[] = [];
-  // Injuries carry from round to round.
-  let current = league;
+  // Injuries carry from round to round (and from championship week).
+  let current = titles?.league ?? league;
   let hurt: Injury[] = [];
 
   const play = (round: PlayoffRound, a: PlayoffSeed, b: PlayoffSeed): PlayoffSeed => {
@@ -108,7 +182,7 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
       neutralSite,
       summary: {
         id,
-        week: playoffWeek(season, round),
+        week: playoffWeek(league, season, round),
         home: home.team,
         away: away.team,
         kind: "interconference",
@@ -135,5 +209,12 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
   }
   const final = games[games.length - 1]!.summary;
   const champion = alive[0]!.team;
-  return { ranking, seeds, games, champion, runnerUp: final.home === champion ? final.away : final.home };
+  return {
+    ranking,
+    ...(titles ? { titleGames: titles.titleGames, regularRanking } : {}),
+    seeds,
+    games,
+    champion,
+    runnerUp: final.home === champion ? final.away : final.home,
+  };
 }
