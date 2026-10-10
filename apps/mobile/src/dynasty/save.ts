@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type CoachBuild, type TeamIdentityChoice } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type CoachBuild, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -62,6 +62,8 @@ export interface SaveState {
 }
 
 export interface TeamSetup {
+  /** Your top three skill groups: your program, in the region they fit (absent: a state team, from before programs). */
+  groups?: SkillGroup[];
   team: string;
   role: "owner" | "gm";
   identity: TeamIdentityChoice;
@@ -156,6 +158,10 @@ export function deserializeProgress(text: string | null): OffseasonProgress | nu
 export interface SlotInfo {
   slot: number;
   team: string;
+  /** The team as it's shown (its name and look; a program never shows its state). */
+  name?: string;
+  logo?: string;
+  colors?: { primary: string; trim: string };
   season: number;
   /** Where the dynasty is, e.g. "Week 6", "Playoffs", "Offseason". */
   stage: string;

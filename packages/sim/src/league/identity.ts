@@ -6,7 +6,7 @@ import { teamTag, type Team, type TeamColorChoice } from "../model/team.ts";
 import type { League } from "./league.ts";
 
 export interface TeamIdentityChoice {
-  /** Shown in place of the state; blank or the state name = the state. */
+  /** Shown in place of the state; blank (or the default) = the region for a program, else the state. */
   city?: string;
   nickname: string;
   /** 2-4 letters; blank or the abbr = the abbr. */
@@ -20,6 +20,21 @@ export interface TeamIdentityChoice {
 export const IDENTITY_LIMITS = { city: 20, nickname: 16 } as const;
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
+
+/**
+ * A short name from a place's letters ("Pacific" -> "PAC"), unique among the
+ * league's short names and abbrs (other than `abbr`'s own): what a program
+ * goes by when you leave its short name blank.
+ */
+export function suggestedTag(league: League, abbr: string, place: string): string {
+  const letters = place.toUpperCase().replace(/[^A-Z]/g, "") || "PRG";
+  const taken = new Set(Object.values(league.teams).filter((t) => t.abbr !== abbr).flatMap((t) => [t.abbr, teamTag(t)]));
+  const words = place.toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+  const tries = [letters.slice(0, 3), words.length > 1 ? words.map((w) => w[0]).join("").slice(0, 4) : "", letters.slice(0, 4), `${letters[0]}${letters.slice(-2)}`];
+  for (const t of tries) if (t.length >= 2 && !taken.has(t)) return t;
+  for (const c of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!taken.has(`${letters.slice(0, 2)}${c}`)) return `${letters.slice(0, 2)}${c}`;
+  return letters.slice(0, 4);
+}
 
 /** The logo a team shows: its chosen one, else the one that goes with its nickname. */
 export function teamLogo(team: Team): TeamLogo {
@@ -58,7 +73,8 @@ export function customizeTeam(league: League, abbr: string, choice: TeamIdentity
   const team = league.teams[abbr]!;
   const nickname = choice.nickname.trim();
   const city = choice.city?.trim();
-  const tag = choice.tag?.trim().toUpperCase();
+  // A program never goes by its hidden state's code: a blank short name comes from its name.
+  const tag = choice.tag?.trim().toUpperCase() || (team.region ? suggestedTag(league, abbr, city || team.region) : undefined);
   const teams = { ...league.teams };
   const sameNick = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
@@ -78,7 +94,7 @@ export function customizeTeam(league: League, abbr: string, choice: TeamIdentity
     ...rest,
     nickname,
     logo: choice.logo,
-    ...(city && city !== team.state ? { city } : {}),
+    ...(city && city !== (team.region ?? team.state) ? { city } : {}),
     ...(tag && tag !== abbr ? { tag } : {}),
     ...(choice.colors ? { colors: { primary: choice.colors.primary.toUpperCase(), trim: choice.colors.trim.toUpperCase() } } : {}),
   };

@@ -5,7 +5,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type CoachCall,
-  setUpTeam,
   customizeTeam,
   type TeamIdentityChoice,
   addGameToSeason,
@@ -138,6 +137,7 @@ import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
 import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo, type TeamSetup } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
 import { setTeamLooks } from "../field/colors";
+import { startingDynasty } from "../dynasty/setup";
 
 export const PLAYOFF_ROUND_COUNT = 4;
 /** Scouting points you get each week (as every team does). */
@@ -978,7 +978,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     beginDynasty: (setup, drafted) => {
       if (!state) return;
       const { setup: _done, ...rest } = state;
-      const base = setUpTeam(state.dynasty, setup.team, setup);
+      const base = startingDynasty(state.dynasty, setup);
       const dynasty = drafted ? { ...base, league: drafted } : base;
       persist(openSeason({ ...rest, dynasty, userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
     },

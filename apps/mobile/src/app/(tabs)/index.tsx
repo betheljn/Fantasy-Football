@@ -24,8 +24,8 @@ import {
   teamAppeal,
   winPct,
 } from "@dynasty/sim";
-import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
-import { teamColors, teamShort } from "../../field/colors";
+import { Card, Icon, LinkRow, LogoBadge, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
+import { designedColors, teamColors, teamShort } from "../../field/colors";
 import { OnlineHub } from "../../online/OnlineHub";
 import { OffseasonStepper, type OffseasonStepKey } from "../../components/OffseasonStepper";
 import { CutsScreen } from "../../screens/CutsScreen";
@@ -478,16 +478,22 @@ function Saves() {
       </View>
       <Text style={{ fontSize: 30, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
       <Text style={{ color: t.muted, textAlign: "center", marginVertical: 12, maxWidth: 320 }}>
-        Fifty teams, one per state. Pick one, play the seasons, build a dynasty.
+        Ten regions, each with its own kind of talent. Build a program in yours, play the seasons, build a dynasty.
       </Text>
       <View style={{ width: "100%", maxWidth: 360, gap: 8, marginBottom: 16 }}>
         {d.slots.map((s) => (
           <Card key={s.slot} style={{ paddingVertical: 4 }}>
             <LinkRow label={`Continue save ${s.slot}`} onPress={() => d.openSlot(s.slot)}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {s.team ? <Swatch abbr={s.team} size={38} /> : <Icon name="add-circle-outline" size={38} color={t.muted} />}
+                {s.team && s.logo ? (
+                  <LogoBadge logo={s.logo} primary={(s.colors ?? designedColors(s.team)).primary} trim={(s.colors ?? designedColors(s.team)).trim} size={38} />
+                ) : s.team ? (
+                  <Swatch abbr={s.team} size={38} />
+                ) : (
+                  <Icon name="add-circle-outline" size={38} color={t.muted} />
+                )}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? stateName(s.team) : "New league"}</Text>
+                  <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? (s.name ?? stateName(s.team)) : "New league"}</Text>
                   <Text style={{ color: t.muted, fontSize: 12 }}>
                     Save {s.slot} · {s.season} season · {s.stage}
                   </Text>

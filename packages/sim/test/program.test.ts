@@ -89,3 +89,20 @@ describe("your program", () => {
     expect(createProgram(DYNASTY, ["bigMen", "runStop", "kicking"], "Pacific").region).toBe("Pacific");
   });
 });
+
+describe("a program's short name", () => {
+  it("comes from its name when left blank, never its state's code, and stays unique", async () => {
+    const { suggestedTag, teamTag } = await import("../src/index.ts");
+    const made = createProgram(DYNASTY, ["passers", "catchers", "passRush"]);
+    const named = customizeTeam(made.dynasty.league, made.team, { nickname: "Tigers", logo: "tigers" });
+    expect(teamTag(named.teams[made.team]!)).toBe("PAC");
+    const city = customizeTeam(made.dynasty.league, made.team, { city: "Bay City", nickname: "Tigers", logo: "tigers" });
+    expect(teamTag(city.teams[made.team]!)).toBe("BAY");
+    // Taken already (another team goes by PAC): another try, still unique.
+    const other = Object.keys(made.dynasty.league.teams).find((t) => t !== made.team)!;
+    const clash = customizeTeam(made.dynasty.league, other, { nickname: "Wolves", logo: "wolves", tag: "PAC" });
+    const tag = suggestedTag(clash, made.team, "Pacific");
+    expect(tag).not.toBe("PAC");
+    expect(tag).toMatch(/^[A-Z]{2,4}$/);
+  });
+});

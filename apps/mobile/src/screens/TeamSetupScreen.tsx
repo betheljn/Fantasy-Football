@@ -1,31 +1,32 @@
-// Starting a dynasty: pick your state, make the team yours (city name,
-// nickname, short name, logo, colors, your role), build your head coach, then
-// the fantasy draft (or keep the roster). The sim checks and makes each
-// choice; the draft is saved as you go.
+// Starting a dynasty: rank your skill groups, see your region, and a new
+// program starts there; make it yours (name, short name, logo, colors, your
+// role), build your head coach, then the fantasy draft (or keep the roster).
+// The sim checks and makes each choice; the draft is saved as you go.
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   IDENTITY_LIMITS,
   LOGOS,
   allTeams,
-  formatMoney,
   friendIdentityClash,
   identityProblem,
-  payroll,
-  salaryCap,
-  staffOverall,
   teamLogo,
-  setUpTeam,
-  teamRatings,
+  createProgram,
+  suggestedTag,
+  teamPlace,
+  type Dynasty,
   type League,
+  type SkillGroup,
   type Team,
   type CoachBuild,
   type TeamIdentityChoice,
 } from "@dynasty/sim";
 import { CoachBuilderScreen } from "./CoachBuilderScreen";
+import { RegionScreen, SkillGroupsScreen } from "./ProgramSetupScreen";
+import { startingDynasty } from "../dynasty/setup";
 import { DraftSetupScreen } from "./DraftSetupScreen";
 import { FantasyDraftScreen } from "./FantasyDraftScreen";
-import { Card, Field, Icon, LinkRow, LogoBadge, SectionTitle, Segmented, StickyFooter, Swatch, Button } from "../components/ui";
+import { Card, Field, Icon, LogoBadge, SectionTitle, Segmented, StickyFooter, Button } from "../components/ui";
 import { designedColors, palette, readableOn } from "../field/colors";
 import { useDynasty, type LeagueData } from "../league/LeagueProvider";
 import type { TeamSetup } from "../dynasty/save";
@@ -40,34 +41,63 @@ const COLORS = [
   "#5B2C83", "#4F2683", "#6B4226", "#2D2D2D", "#111111", "#5C5C5C", "#A2AAAD", "#C9D3D9", "#F2E3C6", "#FFFFFF",
 ];
 
-export function TeamSetupScreen({ data }: { data: LeagueData }) {
+export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
   const d = useDynasty();
-  const [team, setTeam] = useState<Team | null>(null);
+  const [groups, setGroups] = useState<SkillGroup[] | null>(null);
+  const [program, setProgram] = useState<{ groups: SkillGroup[]; dynasty: Dynasty; team: string } | null>(null);
+  const [building, setBuilding] = useState(false);
   const [look, setLook] = useState<{ role: Role; identity: TeamIdentityChoice } | null>(null);
   const [coach, setCoach] = useState<CoachBuild | null>(null);
   const dynasty = d.save?.dynasty;
-  // The league as your choices make it (look and coach), which the draft starts from.
-  const setupLeague = useMemo(
-    () => (dynasty && team && look && coach ? setUpTeam(dynasty, team.abbr, { identity: look.identity, coach }).league : null),
-    [dynasty, team, look, coach],
-  );
+  // The league as your choices make it (program, look and coach), which the draft starts from.
+  const setup: TeamSetup | null = program && look && coach ? { groups: program.groups, team: program.team, role: look.role, identity: look.identity, coach } : null;
+  const setupLeague = useMemo(() => (dynasty && setup ? startingDynasty(dynasty, setup).league : null), [dynasty, setup?.team, look, coach]);
 
   // A draft under way (saved): carry on with it.
   if (d.setup?.draft) return <DraftInProgress setup={d.setup as TeamSetup & { draft: NonNullable<TeamSetup["draft"]> }} />;
-  if (!team) return <PickState data={data} onPick={setTeam} />;
-  const setup = look && coach ? { team: team.abbr, role: look.role, identity: look.identity, coach } : null;
+  if (!dynasty) return null;
+
+  const build = () => {
+    if (!groups) return;
+    setBuilding(true);
+    // Let the button show it's working, then build (a moment on a phone).
+    setTimeout(() => {
+      const made = createProgram(dynasty, groups);
+      setProgram({ groups, dynasty: made.dynasty, team: made.team });
+      setBuilding(false);
+    }, 30);
+  };
+  const team = program ? program.dynasty.league.teams[program.team]! : null;
+
   // Earlier steps stay mounted under later ones, so going back keeps your choices.
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1, display: look ? "none" : "flex" }}>
-        <MakeItYours league={data.league} team={team} onBack={() => setTeam(null)} onDone={(_abbr, role, identity) => setLook({ role, identity })} />
+      <View style={{ flex: 1, display: groups ? "none" : "flex" }}>
+        <SkillGroupsScreen initial={program?.groups} onDone={setGroups} />
       </View>
-      {look ? (
+      {groups ? (
+        <View style={{ flex: 1, display: program ? "none" : "flex" }}>
+          <RegionScreen groups={groups} busy={building} onBack={() => setGroups(null)} onDone={build} />
+        </View>
+      ) : null}
+      {program && team ? (
+        <View style={{ flex: 1, display: look ? "none" : "flex" }}>
+          <MakeItYours
+            league={program.dynasty.league}
+            team={team}
+            initial={{ city: "", nickname: "", tag: "", logo: teamLogo(team).id }}
+            backLabel="Your region"
+            onBack={() => (setProgram(null), setLook(null), setCoach(null))}
+            onDone={(_abbr, role, identity) => setLook({ role, identity })}
+          />
+        </View>
+      ) : null}
+      {program && team && look ? (
         <View style={{ flex: 1, display: coach ? "none" : "flex" }}>
           <CoachBuilderScreen
-            league={data.league}
+            league={program.dynasty.league}
             abbr={team.abbr}
-            teamLabel={`${look.identity.city?.trim() || team.state} ${look.identity.nickname.trim()}`}
+            teamLabel={`${look.identity.city?.trim() || teamPlace(team)} ${look.identity.nickname.trim()}`}
             onBack={() => setLook(null)}
             onDone={setCoach}
           />
@@ -76,7 +106,7 @@ export function TeamSetupScreen({ data }: { data: LeagueData }) {
       {setup && setupLeague ? (
         <DraftSetupScreen
           league={setupLeague}
-          abbr={team.abbr}
+          abbr={setup.team}
           onBack={() => setCoach(null)}
           onDraft={(rounds, slot) => d.saveSetup({ ...setup, draft: { rounds, slot, picks: [] } })}
           onKeep={() => d.beginDynasty(setup)}
@@ -86,11 +116,11 @@ export function TeamSetupScreen({ data }: { data: LeagueData }) {
   );
 }
 
-/** The fantasy draft, from the saved setup (your picks so far replay first). */
+/** The fantasy draft, from the saved setup (your program and picks so far are rebuilt first). */
 function DraftInProgress({ setup }: { setup: TeamSetup & { draft: NonNullable<TeamSetup["draft"]> } }) {
   const d = useDynasty();
   const dynasty = d.save!.dynasty;
-  const league = useMemo(() => setUpTeam(dynasty, setup.team, setup).league, [dynasty, setup.team, setup.identity, setup.coach]);
+  const league = useMemo(() => startingDynasty(dynasty, setup).league, [dynasty, setup.team, setup.identity, setup.coach]);
   return (
     <FantasyDraftScreen
       league={league}
@@ -101,40 +131,6 @@ function DraftInProgress({ setup }: { setup: TeamSetup & { draft: NonNullable<Te
       onPicks={(picks) => d.saveSetup({ ...setup, draft: { ...setup.draft, picks } })}
       onDone={(drafted) => d.beginDynasty(setup, drafted)}
     />
-  );
-}
-
-function PickState({ data, onPick }: { data: LeagueData; onPick: (team: Team) => void }) {
-  const t = useTheme();
-  const teams = useMemo(
-    () => allTeams(data.league).map((team) => ({ team, ovr: teamRatings(team).overall })).sort((a, b) => b.ovr - a.ovr),
-    [data.league],
-  );
-  const cap = salaryCap(data.league.seed, data.league.season);
-  return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Pick your state</Text>
-      <Text style={{ color: t.muted, marginBottom: 8 }}>
-        {"Your state sets your division, your market and your home fans. Next you'll name the team and choose its look. Strongest rosters first; a weak team is a longer road, and a better story."}
-      </Text>
-      {teams.map(({ team, ovr }) => (
-        <Card key={team.abbr} style={{ paddingVertical: 4 }}>
-          <LinkRow label={`Choose ${team.state}`} onPress={() => onPick(team)}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Swatch abbr={team.abbr} size={40} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: t.text, fontWeight: "700" }}>{team.state}</Text>
-                <Text style={{ color: t.muted, fontSize: 12 }}>
-                  Now the {team.nickname} · coach {team.staff?.hc.lastName} ({team.staff ? staffOverall(team.staff.hc) : "–"}) · payroll{" "}
-                  {formatMoney(payroll(team, data.league.season))} of {formatMoney(cap)}
-                </Text>
-              </View>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: t.text, fontVariant: ["tabular-nums"] }}>{ovr.toFixed(0)}</Text>
-            </View>
-          </LinkRow>
-        </Card>
-      ))}
-    </ScrollView>
   );
 }
 
@@ -179,8 +175,12 @@ export function MakeItYours({ league, team, onBack, onDone, initial, friends, ba
     if (wasLogoName) setNickname(LOGOS.find((l) => l.id === id)!.nickname);
   };
 
-  const place = city.trim() || team.state;
-  const short = (tag.trim() || team.abbr).toUpperCase();
+  // A program goes by its region until named; a state team by its state.
+  const home = team.region ?? team.state;
+  const place = city.trim() || home;
+  // A program's blank short name comes from its name (never its hidden state's code).
+  const blankTag = team.region ? suggestedTag(league, team.abbr, city.trim() || team.region) : team.abbr;
+  const short = (tag.trim() || blankTag).toUpperCase();
   const trades = [nickHolder && `${nickHolder.state} becomes the ${team.nickname}`, logoHolder && logoHolder !== nickHolder && `${logoHolder.state} takes your old logo`].filter(Boolean);
 
   return (
@@ -199,20 +199,20 @@ export function MakeItYours({ league, team, onBack, onDone, initial, friends, ba
               {place} {nickname.trim() || "…"}
             </Text>
             <Text style={{ color: colors.onPrimary, fontSize: 12, opacity: 0.85 }}>
-              {team.state} · {league.conferences.find((c) => c.divisions.some((d) => d.teams.includes(team.abbr)))?.divisions.find((d) => d.teams.includes(team.abbr))?.name} division
+              {team.region ? `${team.region} region` : `${team.state} · ${league.conferences.find((c) => c.divisions.some((d) => d.teams.includes(team.abbr)))?.divisions.find((d) => d.teams.includes(team.abbr))?.name} division`}
             </Text>
           </View>
         </View>
 
         <Card style={{ gap: 10 }}>
           <SectionTitle>Name</SectionTitle>
-          <Field label="City or region (blank = the state)" value={city} onChangeText={setCity} placeholder={team.state} maxLength={IDENTITY_LIMITS.city} autoCorrect={false} />
+          <Field label={`City or region name (blank = ${team.region ? "the region" : "the state"})`} value={city} onChangeText={setCity} placeholder={home} maxLength={IDENTITY_LIMITS.city} autoCorrect={false} />
           <Field label="Nickname" value={nickname} onChangeText={setNickname} placeholder="Tigers" maxLength={IDENTITY_LIMITS.nickname} autoCorrect={false} />
           <Field
-            label="Short name, 2 to 4 letters (blank = the state's)"
+            label={`Short name, 2 to 4 letters (blank = ${blankTag})`}
             value={tag}
             onChangeText={(v) => setTag(v.replace(/[^A-Za-z]/g, "").toUpperCase())}
-            placeholder={team.abbr}
+            placeholder={blankTag}
             maxLength={4}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -252,7 +252,7 @@ export function MakeItYours({ league, team, onBack, onDone, initial, friends, ba
           <SectionTitle>Colors</SectionTitle>
           <Segmented
             options={[
-              { key: "designed", label: `${team.state}'s colors` },
+              { key: "designed", label: team.region ? "Suggested colors" : `${team.state}'s colors` },
               { key: "custom", label: "Your own" },
             ]}
             value={colorMode}

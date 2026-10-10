@@ -58,7 +58,7 @@ export default function BusinessScreen() {
     <>
       <Stack.Screen options={{ title: "Business" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <TeamBanner abbr={userTeam} title={`${size.charAt(0).toUpperCase()}${size.slice(1)} market`} subtitle={`${team.state} · ${POPULATION[userTeam]}M people. ${SIZE_NOTE[size]}`}>
+        <TeamBanner abbr={userTeam} title={`${size.charAt(0).toUpperCase()}${size.slice(1)} market`} subtitle={`${team.region ? `${team.region} region` : team.state} · ${POPULATION[userTeam]}M people. ${SIZE_NOTE[size]}`}>
           <StatRow>
             <Stat label="Cash" value={formatMoney(b.cash)} onDark={teamColors(userTeam).onPrimary} />
             <Stat label="Die-hards" value={`${b.fans.dieHard.toLocaleString()}k`} onDark={teamColors(userTeam).onPrimary} />
