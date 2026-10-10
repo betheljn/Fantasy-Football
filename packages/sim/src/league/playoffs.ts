@@ -10,6 +10,7 @@ import { leagueFormat } from "./format.ts";
 import type { League } from "./league.ts";
 import { computeRankings, type RankingEntry } from "./rankings.ts";
 import type { SeasonResult } from "./season.ts";
+import type { ScheduledGame } from "./schedule.ts";
 import { divisionStandings, type GameSummary, type TeamRecord } from "./standings.ts";
 
 export const PLAYOFF_TEAMS = 16;
@@ -66,6 +67,8 @@ export interface PlayoffResult {
   /** Championship week (format 2): the division title games, and the ranking before them. */
   titleGames?: TitleGame[];
   regularRanking?: RankingEntry[];
+  /** Format 2: the ranking after each playoff round (the Top 25 is redone as the postseason goes). */
+  roundRankings?: Partial<Record<PlayoffRound, RankingEntry[]>>;
   seeds: PlayoffSeed[];
   games: PlayoffGame[];
   champion: string;
@@ -112,15 +115,25 @@ export interface ChampionshipWeek {
 }
 
 /**
+ * Championship week's games, known as soon as the regular season ends (for
+ * lines and previews): in each division, first place hosts second.
+ */
+export function titleMatchups(league: League, season: SeasonResult): Array<ScheduledGame & { division: string }> {
+  return divisionStandings(league, season.results).map((d) => {
+    const [first, second] = [d.teams[0]!.team, d.teams[1]!.team];
+    return { id: `${season.season}-title-${second}@${first}`, week: titleWeek(season), home: first, away: second, kind: "division" as const, division: d.division };
+  });
+}
+
+/**
  * Championship week: in each division, first place hosts second for the
  * title. Ties can't stand (overtime until someone wins).
  */
 export function playChampionshipWeek(league: League, season: SeasonResult, opts: { onGame?: (game: GameResult) => void } = {}): ChampionshipWeek {
   const titleGames: TitleGame[] = [];
   const injuries: Injury[] = [];
-  for (const d of divisionStandings(league, season.results)) {
-    const [first, second] = [d.teams[0]!.team, d.teams[1]!.team];
-    const id = `${season.season}-title-${second}@${first}`;
+  for (const m of titleMatchups(league, season)) {
+    const [first, second, id] = [m.home, m.away, m.id];
     const seed = `${league.seed}:${id}`;
     const h = gameDayTeam(league.teams[first]!);
     const v = gameDayTeam(league.teams[second]!);
@@ -129,7 +142,7 @@ export function playChampionshipWeek(league: League, season: SeasonResult, opts:
     injuries.push(...result.injuries);
     opts.onGame?.(result);
     titleGames.push({
-      division: d.division,
+      division: m.division,
       first,
       second,
       summary: {
@@ -198,20 +211,39 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
     return result.winner === home.team ? home : away;
   };
 
+  // Format 2: the ranking is redone after every round, with every postseason game so far in it.
+  const roundRankings: Partial<Record<PlayoffRound, RankingEntry[]>> = {};
+  let last = ranking;
+  const rerank = (round: PlayoffRound) => {
+    if (!titles) return;
+    last = computeRankings(league, [...season.results, ...titles.titleGames.map((g) => g.summary), ...games.map((g) => g.summary)], last);
+    roundRankings[round] = last;
+  };
+
   // Fixed bracket: winners of adjacent games meet in the next round.
   let alive = BRACKET.map(([a, b]) => play("round_of_16", bySeed.get(a)!, bySeed.get(b)!));
+  rerank("round_of_16");
   for (const round of ["quarterfinal", "semifinal", "championship"] as const) {
     const next: PlayoffSeed[] = [];
     current = advanceInjuries(current, hurt);
     hurt = [];
     for (let i = 0; i < alive.length; i += 2) next.push(play(round, alive[i]!, alive[i + 1]!));
     alive = next;
+    rerank(round);
   }
   const final = games[games.length - 1]!.summary;
   const champion = alive[0]!.team;
+  // The final poll: the champion is No. 1 and the runner-up No. 2; the formula ranks everyone else.
+  const finalRanking = roundRankings.championship;
+  if (finalRanking) {
+    const runnerUp = final.home === champion ? final.away : final.home;
+    const top = [champion, runnerUp].map((t) => finalRanking.find((e) => e.team === t)!);
+    const rest = finalRanking.filter((e) => e.team !== champion && e.team !== runnerUp);
+    roundRankings.championship = [...top, ...rest].map((e, i) => ({ ...e, rank: i + 1 }));
+  }
   return {
     ranking,
-    ...(titles ? { titleGames: titles.titleGames, regularRanking } : {}),
+    ...(titles ? { titleGames: titles.titleGames, regularRanking, roundRankings } : {}),
     seeds,
     games,
     champion,

@@ -559,7 +559,8 @@ export function completeOffseason(
     season: league.season,
     champion: playoffs.champion,
     runnerUp: playoffs.runnerUp,
-    top25: playoffs.ranking.slice(0, 25).map((e) => ({
+    // Format 2: the final Top 25 comes after the championship game.
+    top25: (playoffs.roundRankings?.championship ?? playoffs.ranking).slice(0, 25).map((e) => ({
       rank: e.rank,
       team: e.team,
       record: `${e.record.wins}-${e.record.losses}${e.record.ties ? `-${e.record.ties}` : ""}`,

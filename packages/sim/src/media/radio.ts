@@ -191,6 +191,16 @@ const REACT: Record<Story["kind"], Voice> = {
   },
   rivalry: { numbers: ["Rivalry games run about four points closer than you'd expect. I checked."], hottake: ["That trophy belongs in one place and everybody knows where."], veteran: ["Throw the records out in a rivalry game. I've lived it."] },
   preview: { numbers: [""], hottake: [""], veteran: [""] },
+  title: {
+    numbers: ["Division title games are closer than the regular-season gap suggests. Rematches tighten up.", "Home teams win these about sixty percent of the time. That's what the season was for."],
+    hottake: ["Champions! Now go win four more and we'll talk.", "Second place showing up and taking the crown? THAT's a playoff team."],
+    veteran: ["Nothing like a title game in your own building. I can still hear it.", "You beat a team twice in a year, it gets personal. That one was personal."],
+  },
+  playoff: {
+    numbers: ["Single elimination. The best team wins the title maybe a quarter of the time.", "The seeds held this round. The bracket math says that won't last."],
+    hottake: ["Bracket's busted! Everybody's bracket! Mine's fine.", "One and done, baby. That's why we love it."],
+    veteran: ["Playoff football is a different sport. Ask anybody who's played it.", "Win and you're in the history books. Lose and you're on the couch."],
+  },
 };
 
 const BRAG: Voice = {

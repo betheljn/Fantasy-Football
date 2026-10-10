@@ -13,6 +13,7 @@ import type { GameSummary } from "../league/standings.ts";
 import { computeRecords, formatRecord } from "../league/standings.ts";
 import type { RankingEntry } from "../league/rankings.ts";
 import type { Schedule } from "../league/schedule.ts";
+import { ROUND_NAMES, type PlayoffResult, type PlayoffRound } from "../league/playoffs.ts";
 import type { SeasonStats } from "../league/seasonstats.ts";
 import { buildBoxScore, type PlayerStats } from "../stats/boxscore.ts";
 import { computeAwards } from "../dynasty/awards.ts";
@@ -36,7 +37,7 @@ export const MILESTONES: ReadonlyArray<{ key: PlayerStatKey; marks: readonly num
   { key: "tackles", marks: [750, 1_000, 1_500], what: "career tackles" },
 ];
 
-export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom" | "milestone";
+export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom" | "milestone" | "title" | "playoff";
 
 export interface Story {
   id: string;
@@ -376,6 +377,97 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
 }
 
 /** The national feed: the week's biggest stories (your team's recap and preview stay local). */
+/** Which part of the postseason a set of stories is about. */
+export type PostseasonStage = "titles" | PlayoffRound;
+
+/**
+ * The postseason in the news: championship week (each title, the upsets, the
+ * field and who just missed it), then each playoff round (upsets by seed, the
+ * champion). `userTeam` adds a local story about your own postseason.
+ */
+export function postseasonNews(league: League, season: number, playoffs: PlayoffResult, stage: PostseasonStage, userTeam?: string): Story[] {
+  const titles = playoffs.titleGames ?? [];
+  const regularWeeks = (playoffs.titleGames?.[0]?.summary.week ?? playoffs.games[0]!.summary.week) - (titles.length ? 1 : 0);
+  const week = stage === "titles" ? regularWeeks + 1 : playoffs.games.find((g) => g.round === stage)!.summary.week;
+  const rng = (key: string) => new Rng(`postseason:${league.seed}:${season}:${stage}:${key}`);
+  const stories: Story[] = [];
+  const add = (s: Omit<Story, "season" | "week" | "id"> & { key: string }) => {
+    const { key, ...rest } = s;
+    stories.push({ ...rest, id: `${season}-${week}-${key}`, season, week, importance: Math.round(Math.max(0, Math.min(100, s.importance))) });
+  };
+  const before = playoffs.regularRanking ?? playoffs.ranking;
+  const score = (g: GameSummary) => `${Math.max(g.homeScore, g.awayScore)}-${Math.min(g.homeScore, g.awayScore)}${g.overtime ? " in overtime" : ""}`;
+  const seedOf = new Map(playoffs.seeds.map((x) => [x.team, x.seed]));
+
+  if (stage === "titles") {
+    for (const t of titles) {
+      const g = t.summary;
+      const winner = g.winner!;
+      const loser = winner === g.home ? g.away : g.home;
+      const upset = winner === t.second;
+      const r = rng(g.id);
+      add({
+        key: `title-${t.division}`,
+        kind: "title",
+        importance: 44 + (upset ? 12 : 0) + Math.max(0, 26 - (before.find((e) => e.team === winner)?.rank ?? 26)),
+        teams: [winner, loser],
+        players: [],
+        headline: upset
+          ? pickLine(r, [`${nick(league, winner)} upset ${nick(league, loser)} for the ${t.division} title`, `${t.division} title goes to the ${nick(league, winner)}, ${score(g)}`])
+          : pickLine(r, [`${nick(league, winner)} win the ${t.division} title`, `${nick(league, winner)} hold off ${nick(league, loser)} for the ${t.division} crown`]),
+        body: `${st(league, winner)} beat ${st(league, loser)} ${score(g)}${upset ? " on the road" : " at home"} and takes the ${t.division} region's automatic bid.`,
+      });
+    }
+    // The field: the top seed, the last team in and the first one out.
+    const top = playoffs.seeds[0]!;
+    add({ key: "field", kind: "playoff", importance: 64, teams: [top.team], players: [], headline: `The field is set: ${nick(league, top.team)} are the No. 1 seed`, body: `Sixteen teams are in: the ten division champions and six at-large picks. ${st(league, top.team)} (${formatRecord(top.record)}) opens at home against the 16th seed.` });
+    const atLarge = playoffs.seeds.filter((x) => x.bid === "at_large");
+    const lastIn = atLarge.reduce((a, b) => (b.rank > a.rank ? b : a), atLarge[0]!);
+    const inField = new Set(playoffs.seeds.map((x) => x.team));
+    const firstOut = playoffs.ranking.find((e) => !inField.has(e.team));
+    if (lastIn) add({ key: "last-in", kind: "playoff", importance: 40, teams: [lastIn.team], players: [], headline: `${nick(league, lastIn.team)} squeeze in as the last at-large team`, body: `At ${formatRecord(lastIn.record)} and No. ${lastIn.rank}, ${st(league, lastIn.team)} gets the final bid.` });
+    if (firstOut) add({ key: "first-out", kind: "playoff", importance: 42, teams: [firstOut.team], players: [], headline: `${nick(league, firstOut.team)} left out at ${formatRecord(firstOut.record)}`, body: `${st(league, firstOut.team)} finished No. ${firstOut.rank}, the first team on the outside.` });
+  } else {
+    for (const pg of playoffs.games.filter((x) => x.round === stage)) {
+      const g = pg.summary;
+      const winner = g.winner!;
+      const loser = winner === g.home ? g.away : g.home;
+      const [ws, ls] = [seedOf.get(winner)!, seedOf.get(loser)!];
+      const upset = ws > ls;
+      const r = rng(g.id);
+      if (stage === "championship") {
+        add({ key: "champion", kind: "playoff", importance: 95, teams: [winner, loser], players: [], headline: pickLine(r, [`${nick(league, winner)} are league champions`, `Champions: ${nick(league, winner)} beat ${nick(league, loser)}, ${score(g)}`]), body: `The No. ${ws} seed ${st(league, winner)} beat No. ${ls} ${st(league, loser)} ${score(g)} at a neutral site for the title.` });
+        continue;
+      }
+      add({
+        key: `${stage}-${winner}`,
+        kind: upset ? "upset" : "playoff",
+        importance: (upset ? 50 + 2 * (ws - ls) : 28) + (stage === "semifinal" ? 14 : stage === "quarterfinal" ? 7 : 0),
+        teams: [winner, loser],
+        players: [],
+        headline: upset
+          ? pickLine(r, [`No. ${ws} seed ${nick(league, winner)} stun No. ${ls} ${nick(league, loser)}`, `Playoff upset: ${nick(league, winner)} knock out ${nick(league, loser)}`])
+          : pickLine(r, [`${nick(league, winner)} move on, ${score(g)}`, `${nick(league, winner)} beat ${nick(league, loser)} in the ${ROUND_NAMES[stage].toLowerCase()}`]),
+        body: `${st(league, winner)} (No. ${ws} seed) beat ${st(league, loser)} (No. ${ls}) ${score(g)}${stage === "semifinal" ? " and plays for the championship" : ""}.`,
+      });
+    }
+  }
+
+  // Your own postseason, in your local feed.
+  if (userTeam) {
+    const mySeed = seedOf.get(userTeam);
+    if (stage === "titles") {
+      const mine = titles.find((t) => t.first === userTeam || t.second === userTeam);
+      if (mine) add({ key: "yours", kind: "recap", local: true, importance: 50, teams: [userTeam], players: [], headline: mine.summary.winner === userTeam ? `${nick(league, userTeam)} win the ${mine.division} title` : `${nick(league, userTeam)} fall in the ${mine.division} title game`, body: mySeed ? `You're in as the No. ${mySeed} seed.` : "Your season is over." });
+      else if (mySeed) add({ key: "yours", kind: "recap", local: true, importance: 50, teams: [userTeam], players: [], headline: `${nick(league, userTeam)} get an at-large bid`, body: `You're the No. ${mySeed} seed.` });
+    } else {
+      const mine = playoffs.games.find((x) => x.round === stage && (x.summary.home === userTeam || x.summary.away === userTeam));
+      if (mine) add({ key: "yours", kind: "recap", local: true, importance: 50, teams: [userTeam], players: [], headline: mine.summary.winner === userTeam ? (stage === "championship" ? "You're the champions" : `${nick(league, userTeam)} advance`) : `${nick(league, userTeam)} are out`, body: `${score(mine.summary)} in the ${ROUND_NAMES[stage].toLowerCase()}.` });
+    }
+  }
+  return stories.sort((a, b) => b.importance - a.importance);
+}
+
 export function nationalFeed(stories: readonly Story[], limit = NATIONAL_LIMIT): Story[] {
   return stories.filter((s) => !s.local).slice(0, limit);
 }
