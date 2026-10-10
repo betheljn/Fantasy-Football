@@ -228,3 +228,42 @@ describe("team setups in the lobby", () => {
     expect((await post(`/leagues/${id}/setup`, { setup: null }, jai)).statusCode).toBe(409);
   });
 });
+
+describe("programs in the lobby", () => {
+  it("friends pick skill groups, share a region in join order, and their programs are built at the start", { timeout: 120_000 }, async () => {
+    const created = (await post("/leagues", { name: "Programs", displayName: "Jai" })).json();
+    made.push(created.league.id);
+    const id = created.league.id;
+    const jai = created.token;
+    const sam = (await post("/join", { inviteCode: created.league.inviteCode, displayName: "Sam" })).json().token;
+    const speed = ["speed", "coverage", "passRush"];
+
+    expect((await post(`/leagues/${id}/program`, { groups: ["speed", "speed", "coverage"] }, jai)).statusCode).toBe(400);
+    expect((await post(`/leagues/${id}/start`, {}, jai)).json().error).toMatch(/Waiting on a program/);
+    await post(`/leagues/${id}/program`, { groups: speed }, jai);
+    const lobby = (await post(`/leagues/${id}/program`, { groups: speed }, sam)).json();
+    const [j, s] = ["Jai", "Sam"].map((n) => lobby.members.find((m: { displayName: string }) => m.displayName === n));
+    expect(j.program.region).toBe("Southeast");
+    expect(s.program.region).toBe("Southeast");
+    expect(j.team).not.toBe(s.team);
+    expect(lobby.teams.find((t: { abbr: string }) => t.abbr === j.team)).toMatchObject({ name: "Southeast program", program: "Southeast", claimedBy: j.id });
+
+    // Your look is checked against your program's spot; your own setup comes back with where you'll be.
+    const coach = { firstName: "Dana", lastName: "Reyes", age: 44, style: "balanced", offenseScheme: "Pro Style", defenseScheme: "Multiple", aggressiveness: 50, tempo: 45, ratings: { gameManagement: 66, discipline: 66, development: 66, playCalling: 40 } };
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { city: "Gulf Coast", nickname: "Tigers", logo: "tigers" }, coach } }, jai)).statusCode).toBe(200);
+    const mine = (await get(`/leagues/${id}/setup`, jai)).json();
+    expect(mine).toMatchObject({ team: j.team, region: "Southeast", setup: { identity: { nickname: "Tigers" } } });
+    expect((await post(`/leagues/${id}/setup`, { setup: { identity: { nickname: "Tigers", logo: "lions" }, coach } }, sam)).json().error).toMatch(/friend/);
+
+    const started = await post(`/leagues/${id}/start`, {}, jai);
+    expect(started.statusCode).toBe(200);
+    const state = decodeState((await get(`/leagues/${id}/save`, jai)).body);
+    const league = state.dynasty.league;
+    expect(league.teams[j.team]).toMatchObject({ region: "Southeast", city: "Gulf Coast", nickname: "Tigers" });
+    expect(league.teams[s.team]!.region).toBe("Southeast");
+    expect(league.teams[j.team]!.staff!.hc.lastName).toBe("Reyes");
+    expect(Object.keys(state.humans).sort()).toEqual([j.team, s.team].sort());
+    expect(started.json().members.map((m: { team: string }) => m.team).sort()).toEqual([j.team, s.team].sort());
+    expect(state.programs).toBeUndefined();
+  });
+});

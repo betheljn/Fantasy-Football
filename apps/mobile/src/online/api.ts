@@ -1,7 +1,7 @@
 // Talking to the online-leagues server (apps/server). The server runs the sim
 // for online leagues; the app only asks it for things and shows the answers.
 import Constants from "expo-constants";
-import type { CoachBuild, CoachCall, FreeAgentOffer, Position, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
+import type { CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
 import { Platform } from "react-native";
 
 /**
@@ -25,6 +25,8 @@ export interface OnlineMember {
   ready: boolean;
   /** Their team's look and coach are set (lobby). */
   setUp?: boolean;
+  /** Their skill groups and the region their program lands in (lobby). */
+  program?: { groups: SkillGroup[]; region: string | null };
 }
 
 export interface OnlineTeam {
@@ -44,6 +46,8 @@ export interface OnlineTeam {
   colors?: { primary: string; trim: string };
   /** The head coach its friend built (lobby). */
   coach?: string;
+  /** A friend's program (lobby): its region. */
+  program?: string;
 }
 
 /** Your team's look and head coach, sent from the lobby. */
@@ -177,7 +181,8 @@ export const api = {
   league: (id: string, token: string) => call<OnlineLeague>("GET", `/leagues/${id}`, undefined, token),
   claim: (id: string, token: string, team: string | null) => call<OnlineLeague>("POST", `/leagues/${id}/claim`, { team }, token),
   setup: (id: string, token: string, setup: OnlineSetup | null) => call<OnlineLeague>("POST", `/leagues/${id}/setup`, { setup }, token),
-  mySetup: (id: string, token: string) => call<{ setup: OnlineSetup | null }>("GET", `/leagues/${id}/setup`, undefined, token),
+  mySetup: (id: string, token: string) => call<{ setup: OnlineSetup | null; team: string | null; region: string | null }>("GET", `/leagues/${id}/setup`, undefined, token),
+  program: (id: string, token: string, groups: SkillGroup[] | null) => call<OnlineLeague>("POST", `/leagues/${id}/program`, { groups }, token),
   start: (id: string, token: string) => call<OnlineLeague>("POST", `/leagues/${id}/start`, {}, token),
   ready: (id: string, token: string, ready: boolean) => call<{ advanced: AdvanceSummary | null; league: OnlineLeague }>("POST", `/leagues/${id}/ready`, { ready }, token),
   advance: (id: string, token: string) => call<{ advanced: AdvanceSummary; league: OnlineLeague }>("POST", `/leagues/${id}/advance`, {}, token),

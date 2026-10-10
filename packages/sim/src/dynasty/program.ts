@@ -11,6 +11,7 @@ import { assignContracts } from "../gen/contract-gen.ts";
 import { REGION_CORES, SKILL_GROUP_KEYS, corePull, regionOf, regions, type SkillGroup } from "../gen/regions.ts";
 import { generatePlayer, pickJersey, rollPotential, ROSTER_TEMPLATE } from "../gen/team-gen.ts";
 import { allTeams, teamRatings, type League } from "../league/league.ts";
+import { suggestedTag } from "../league/identity.ts";
 import { POSITIONS } from "../model/positions.ts";
 import { playerOverall, type Player } from "../model/player.ts";
 import { buildDepthChart, type Team } from "../model/team.ts";
@@ -52,13 +53,39 @@ export function regionFits(groups: readonly SkillGroup[]): RegionFit[] {
     .sort((a, b) => b.score - a.score || b.matches.length - a.matches.length || a.region.localeCompare(b.region));
 }
 
-/** The program in a region whose market is closest to the region's average (it makes way for yours). */
-export function programSlot(region: string): string {
+/** A region's spots for new programs: its programs from the most typical market (closest to the region's average) out. */
+export function programSlots(region: string): string[] {
   const states = regions().find((r) => r.name === region)?.states;
   if (!states) throw new Error(`No region ${region}`);
   const pop = (s: string) => POPULATION[s] ?? 3;
   const mean = states.reduce((t, s) => t + pop(s), 0) / states.length;
-  return [...states].sort((a, b) => Math.abs(pop(a) - mean) - Math.abs(pop(b) - mean) || a.localeCompare(b))[0]!;
+  return [...states].sort((a, b) => Math.abs(pop(a) - mean) - Math.abs(pop(b) - mean) || a.localeCompare(b));
+}
+
+/** The spot a new program in this region takes (the most typical one not already taken), if any is left. */
+export function programSlot(region: string, taken: ReadonlySet<string> = new Set()): string | undefined {
+  return programSlots(region).find((s) => !taken.has(s));
+}
+
+/**
+ * Where several new programs go (online: friends in the order they joined):
+ * each to the best-fit region with a spot left, taking the most typical spot.
+ * Cheap: no rosters are built.
+ */
+export function planPrograms(entries: ReadonlyArray<{ id: string; groups: readonly SkillGroup[] }>, taken: ReadonlySet<string> = new Set()): Map<string, { region: string; team: string }> {
+  const used = new Set(taken);
+  const out = new Map<string, { region: string; team: string }>();
+  for (const e of entries) {
+    if (skillChoiceProblem(e.groups)) continue;
+    for (const f of regionFits(e.groups)) {
+      const team = programSlot(f.region, used);
+      if (!team) continue;
+      used.add(team);
+      out.set(e.id, { region: f.region, team });
+      break;
+    }
+  }
+  return out;
 }
 
 export interface NewProgram {
@@ -76,17 +103,21 @@ export interface NewProgram {
  * `region`, if given). Its roster is about as strong as the program it
  * replaces, so the league stays balanced. Same choices, same program.
  */
-export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], region?: string): NewProgram {
+export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], where?: string | { region?: string; taken?: ReadonlySet<string> }): NewProgram {
   const problem = skillChoiceProblem(groups);
   if (problem) throw new Error(problem);
+  const opts = typeof where === "string" ? { region: where } : (where ?? {});
+  const taken = opts.taken ?? new Set<string>();
   const fits = regionFits(groups);
-  const home = region ?? fits[0]!.region;
-  if (!regions().some((r) => r.name === home)) throw new Error(`No region ${home}`);
+  // The best fit with a spot left (or the region asked for).
+  const candidates = opts.region ? [opts.region] : fits.map((f) => f.region);
+  const home = candidates.find((r) => programSlot(r, taken));
+  if (!home) throw new Error(opts.region ? `No room left in ${opts.region}` : "No region has room for another program");
   const league = dynasty.league;
-  const abbr = programSlot(home);
+  const abbr = programSlot(home, taken)!;
   const old = league.teams[abbr]!;
   const target = teamRatings(old).overall;
-  const seed = `${league.seed}:${league.season}:program:${groups.join(",")}:${home}`;
+  const seed = `${league.seed}:${league.season}:program:${groups.join(",")}:${home}:${abbr}`;
 
   // Calibrate talent so the new roster's starters match the program it replaces.
   // (Secant steps: strength isn't quite linear in talent, since the best local finds are kept.)
@@ -107,7 +138,9 @@ export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], r
   roster = best.roster;
 
   const team: Team = { ...old, roster, depthChart: buildDepthChart(roster), reserve: [], region: home, cap: { rollover: 0, deadMoney: 0 } };
-  const { city: _c, tag: _t, logo: _l, colors: _k, ...plain } = team;
+  const { city: _c, tag: _t, logo: _l, colors: _k, ...rest } = team;
+  // Its short name comes from its region (never the code of the state whose spot it took) until you name it.
+  const plain: Team = { ...rest, tag: suggestedTag(league, abbr, home) };
   // The folded program's players join the free agents.
   const rostered = new Set(allTeams(league).filter((t) => t.abbr !== abbr).flatMap((t) => t.roster.map((p) => p.id)));
   const freeAgents = freeAgentPool([...old.roster, ...(old.reserve ?? []), ...(league.freeAgents ?? [])], rostered);

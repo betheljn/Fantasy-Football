@@ -47,7 +47,7 @@ export async function changeLeague<R>(
   }
 }
 
-type LeagueRow = NonNullable<Awaited<ReturnType<Db["league"]["findUnique"]>>> & { members: Array<{ id: string; team: string | null; ready: boolean }> };
+type LeagueRow = NonNullable<Awaited<ReturnType<Db["league"]["findUnique"]>>> & { members: Array<{ id: string; team: string | null; ready: boolean; joinedAt: Date }> };
 
 /**
  * Play the league's next step (a week, the playoffs or the offseason). Members'

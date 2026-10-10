@@ -4,7 +4,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { fromSaveJson, type CoachBuild, type Dynasty, type TeamIdentityChoice } from "@dynasty/sim";
+import { fromSaveJson, teamLogo, type CoachBuild, type Dynasty, type TeamIdentityChoice } from "@dynasty/sim";
 import { Button } from "../../../components/ui";
 import { api, type OnlineLeague, type OnlineSetup } from "../../../online/api";
 import { myLeagues, type MyLeague } from "../../../online/store";
@@ -17,6 +17,9 @@ interface Loaded {
   view: OnlineLeague;
   dynasty: Dynasty;
   mine: OnlineSetup | null;
+  /** Your team in the lobby (your program's spot), and its region. */
+  team: string | null;
+  region: string | null;
 }
 
 export default function OnlineTeamSetupScreen() {
@@ -33,12 +36,13 @@ export default function OnlineTeamSetupScreen() {
       const me = (await myLeagues()).find((l) => l.id === id);
       if (!me) throw new Error("This phone isn't signed in to that league.");
       const [view, save, mine] = await Promise.all([api.league(me.id, me.token), api.save(me.id, me.token), api.mySetup(me.id, me.token)]);
-      setLoaded({ me, view, dynasty: fromSaveJson<{ dynasty: Dynasty }>(save.text).dynasty, mine: mine.setup });
+      setLoaded({ me, view, dynasty: fromSaveJson<{ dynasty: Dynasty }>(save.text).dynasty, mine: mine.setup, team: mine.team, region: mine.region });
     })().catch((e: Error) => setError(e.message));
   }, [id]);
 
-  const self = loaded?.view.members.find((m) => m.id === loaded.me.memberId);
-  const team = self?.team ? loaded?.dynasty.league.teams[self.team] : undefined;
+  // Your program shows as its region until it's built at the start (the spot is a state team until then).
+  const base = loaded?.team ? loaded.dynasty.league.teams[loaded.team] : undefined;
+  const team = base && loaded?.region ? { ...base, region: loaded.region } : base;
   // The other friends' teams, as they've set them up: off limits.
   const friends = useMemo((): FriendTeams => {
     if (!loaded) return {};
@@ -84,7 +88,7 @@ export default function OnlineTeamSetupScreen() {
     return (
       <View style={{ padding: 16, gap: 12 }}>
         {header}
-        <Text style={{ color: t.muted }}>Claim a state in the lobby first.</Text>
+        <Text style={{ color: t.muted }}>Build your program in the lobby first.</Text>
         <Button label="Back to the lobby" onPress={() => router.back()} />
       </View>
     );
@@ -99,7 +103,7 @@ export default function OnlineTeamSetupScreen() {
         <MakeItYours
           league={loaded.dynasty.league}
           team={team}
-          initial={loaded.mine?.identity}
+          initial={loaded.mine?.identity ?? (loaded.region ? { city: "", nickname: "", tag: "", logo: teamLogo(team).id } : undefined)}
           friends={friends}
           backLabel="Lobby"
           onBack={() => router.back()}
@@ -110,7 +114,7 @@ export default function OnlineTeamSetupScreen() {
         <CoachBuilderScreen
           league={loaded.dynasty.league}
           abbr={team.abbr}
-          teamLabel={`${identity.city?.trim() || team.state} ${identity.nickname.trim()}`}
+          teamLabel={`${identity.city?.trim() || team.region || team.state} ${identity.nickname.trim()}`}
           initial={loaded.mine?.coach}
           onBack={() => setIdentity(null)}
           onDone={save}

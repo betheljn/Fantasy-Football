@@ -4,12 +4,13 @@
 // Everything is decided on the server; this asks and shows. Used by the
 // league's own screen and, once the league is open in the app, by the hub.
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Button, Card, LogoBadge, SectionTitle, Swatch } from "../components/ui";
 import { designedColors } from "../field/colors";
 import { useDynasty, useLeagueMaybe } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
+import { SKILL_GROUPS } from "@dynasty/sim";
 import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
 
 /** Each offseason stage, as friends see it. */
@@ -141,7 +142,6 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
   const router = useRouter();
   const waiting = league.members.filter((m) => !m.team);
   const mine = self?.team ? league.teams.find((x) => x.abbr === self.team) : undefined;
-  const conferences = useMemo(() => [...new Set(league.teams.map((x) => x.conference))], [league.teams]);
   return (
     <>
       <Card>
@@ -170,10 +170,10 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         {self?.isCommissioner ? (
           <View style={{ marginTop: 10, gap: 6 }}>
             <Button label="Start the season" primary disabled={busy || waiting.length > 0} onPress={() => act(() => api.start(me.id, me.token))} />
-            {waiting.length > 0 ? <Text style={{ color: t.muted, fontSize: 12 }}>Waiting on a state from {waiting.map((m) => m.displayName).join(", ")}.</Text> : null}
+            {waiting.length > 0 ? <Text style={{ color: t.muted, fontSize: 12 }}>Waiting on a program from {waiting.map((m) => m.displayName).join(", ")}.</Text> : null}
           </View>
         ) : (
-          <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>The commissioner starts the season once everyone has a state.</Text>
+          <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>The commissioner starts the season once everyone has a program.</Text>
         )}
       </Card>
 
@@ -198,36 +198,20 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         </Card>
       ) : null}
 
-      <Card>
-        <SectionTitle>{self?.team ? `You're ${teamName(league, self.team)}` : "Claim your state"}</SectionTitle>
-        <Text style={{ color: t.muted, marginBottom: 6 }}>Team rating in brackets. Tap a free state to claim it{self?.team ? " instead" : ""}.</Text>
-        {conferences.map((c) => (
-          <View key={c} style={{ marginBottom: 8 }}>
-            <Text style={{ color: t.muted, fontWeight: "700", marginBottom: 2 }}>{c}</Text>
-            {league.teams
-              .filter((x) => x.conference === c)
-              .map((x) => {
-                const mine = x.abbr === self?.team;
-                const taken = !!x.claimedBy && !mine;
-                return (
-                  <Pressable
-                    key={x.abbr}
-                    disabled={busy || taken}
-                    onPress={() => act(() => api.claim(me.id, me.token, mine ? null : x.abbr))}
-                    accessibilityRole="button"
-                    accessibilityLabel={mine ? `Give up ${x.name}` : `Claim ${x.name}`}
-                    style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 5, opacity: taken ? 0.5 : pressed ? 0.6 : 1 })}
-                  >
-                    <TeamLook x={x} size={24} />
-                    <Text style={{ flex: 1, color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "400" }}>
-                      {x.name} <Text style={{ color: t.muted }}>({x.overall.toFixed(1)})</Text>
-                    </Text>
-                    <Text style={{ color: mine ? t.accent : t.muted, fontSize: 12 }}>{mine ? "yours · tap to give up" : taken ? memberName(league, x.claimedBy) : x.division}</Text>
-                  </Pressable>
-                );
-              })}
-          </View>
-        ))}
+      <Card style={{ gap: 8 }}>
+        <SectionTitle>Your program</SectionTitle>
+        {self?.program ? (
+          <>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: "800" }}>{self.program.region ? `${self.program.region} region` : "No region has room"}</Text>
+            <Text style={{ color: t.muted, fontSize: 12 }}>Built around {self.program.groups.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(", ")}. Friends who joined earlier get first pick of a region&apos;s five spots.</Text>
+            <Button label="Change skill groups" disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
+          </>
+        ) : (
+          <>
+            <Text style={{ color: t.muted }}>Pick the three skill groups you want to build around; they decide your region and its local talent.</Text>
+            <Button label="Build your program" primary disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
+          </>
+        )}
       </Card>
     </>
   );

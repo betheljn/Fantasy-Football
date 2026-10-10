@@ -328,7 +328,7 @@ Follow-ups also done: online, each friend makes their claimed team theirs
 from the lobby (look and coach, checked on the server, made when the league
 starts; a friend's name, logo or short name is off limits).
 
-### Milestone 20: regions and your program
+### Milestone 20: regions and your program (done)
 The league stops being "pick a state". Each division is a region with a
 talent core, and you build a new program there.
 Decided: regions are the 10 divisions; your program replaces one of the
@@ -345,7 +345,9 @@ only the region's states; you create the name, logo, colors and more.
 3. App: onboarding reworked: skill groups, your region and why, then your
    program's name, logo, colors and other options, your head coach, the
    fantasy draft (optional), first season
-4. Online: friends pick skill groups in the lobby instead of claiming states
+4. Online: friends pick skill groups in the lobby instead of claiming states;
+   friends who fit one region share it in the order they joined (its five
+   spots, most typical market first), then go to their next-best region
 
 ### Milestone 21: the new season shape
 Decided: 15 games (4 division, 6 conference, 5 non-conference) over 16

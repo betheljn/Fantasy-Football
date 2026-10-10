@@ -14,7 +14,7 @@ import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
-import { coachBuildProblem, friendIdentityClash, identityProblem, setUpTeam, type TeamIdentityChoice } from "@dynasty/sim";
+import { SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -23,25 +23,50 @@ const gzipped = promisify(gzip);
 const isUniqueClash = (e: unknown) => (e as { code?: string })?.code === "P2002";
 const clean = (s: string) => s.trim().replace(/\s+/g, " ");
 
-/** Setups still in force: by team, for friends who still claim the team they set up. */
-function liveSetups(state: LeagueState, members: ReadonlyArray<{ id: string; team: string | null }>): Map<string, TeamSetupChoice> {
+type LobbyMember = { id: string; team: string | null; joinedAt: Date };
+
+/**
+ * Each friend's team in the lobby: the spot their program will take (by their
+ * skill groups, in the order friends joined), or the state they claimed.
+ */
+function lobbyTeams(state: LeagueState, members: readonly LobbyMember[]): Map<string, { team: string; region?: string }> {
+  const joined = [...members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  const claimed = new Set(joined.filter((m) => m.team && !state.programs?.[m.id]).map((m) => m.team!));
+  const plan = planPrograms(
+    joined.filter((m) => state.programs?.[m.id]).map((m) => ({ id: m.id, groups: state.programs![m.id]!.groups })),
+    claimed,
+  );
+  const out = new Map<string, { team: string; region?: string }>();
+  for (const m of joined) {
+    const p = plan.get(m.id);
+    if (p) out.set(m.id, p);
+    else if (m.team && !state.programs?.[m.id]) out.set(m.id, { team: m.team });
+  }
+  return out;
+}
+
+/** Setups still in force, by team: for friends whose lobby team is still the one they set up. */
+function liveSetups(state: LeagueState, members: readonly LobbyMember[]): Map<string, TeamSetupChoice> {
+  const teams = lobbyTeams(state, members);
   const out = new Map<string, TeamSetupChoice>();
   for (const m of members) {
     const s = state.setups?.[m.id];
-    if (s && m.team === s.team) out.set(s.team, s);
+    const team = teams.get(m.id)?.team;
+    if (s && team) out.set(team, { ...s, team });
   }
   return out;
 }
 
 /** How a friend's set-up team will look once the league starts (shown in the lobby). */
-function lookOf(setup: TeamSetupChoice | undefined, abbr: string, state: LeagueState) {
+function lookOf(setup: TeamSetupChoice | undefined, abbr: string, state: LeagueState, region?: string) {
   if (!setup) return {};
   const { identity: id, coach } = setup;
-  const place = id.city?.trim() || state.dynasty.league.teams[abbr]!.state;
+  const place = id.city?.trim() || region || state.dynasty.league.teams[abbr]!.state;
   return {
     name: `${place} ${id.nickname.trim()}`,
     nickname: id.nickname.trim(),
-    tag: id.tag?.trim().toUpperCase() || abbr,
+    // A program's blank short name comes from its name (as it will at the start), never its spot's state code.
+    tag: id.tag?.trim().toUpperCase() || (region ? suggestedTag(state.dynasty.league, abbr, place) : abbr),
     logo: id.logo,
     ...(id.colors ? { colors: id.colors } : {}),
     coach: `${coach.firstName.trim()} ${coach.lastName.trim()}`,
@@ -49,13 +74,17 @@ function lookOf(setup: TeamSetupChoice | undefined, abbr: string, state: LeagueS
 }
 
 /** Why a friend's setup can't be used: the sim's rules, and never a name, logo or short name another friend has. */
-function setupProblem(state: LeagueState, members: ReadonlyArray<{ id: string; team: string | null }>, memberId: string, setup: TeamSetupChoice): string | null {
+function setupProblem(state: LeagueState, members: readonly LobbyMember[], memberId: string, setup: TeamSetupChoice): string | null {
   const league = state.dynasty.league;
   const problem = identityProblem(league, setup.team, setup.identity) ?? coachBuildProblem(setup.coach);
   if (problem) return problem;
   const live = liveSetups(state, members);
+  const teams = lobbyTeams(state, members);
   const friends: Record<string, TeamIdentityChoice | null> = {};
-  for (const m of members) if (m.team && m.id !== memberId) friends[m.team] = live.get(m.team)?.identity ?? null;
+  for (const m of members) {
+    const team = teams.get(m.id)?.team;
+    if (team && m.id !== memberId) friends[team] = live.get(team)?.identity ?? null;
+  }
   return friendIdentityClash(league, setup.team, setup.identity, friends);
 }
 
@@ -76,8 +105,11 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   async function view(leagueId: string) {
     const league = await db.league.findUniqueOrThrow({ where: { id: leagueId }, include: { members: { orderBy: { joinedAt: "asc" } } } });
     const { state, teams, version } = await loadState(leagueId);
-    const claimedBy = new Map(league.members.filter((m) => m.team).map((m) => [m.team!, m.id]));
-    const setups = liveSetups(state, league.members);
+    const inLobby = league.phase === "lobby";
+    const lobby = inLobby ? lobbyTeams(state, league.members) : new Map<string, { team: string; region?: string }>();
+    const teamOf = (m: { id: string; team: string | null }) => (inLobby ? (lobby.get(m.id)?.team ?? null) : m.team);
+    const claimedBy = new Map(league.members.filter((m) => teamOf(m)).map((m) => [teamOf(m)!, m.id]));
+    const setups = inLobby ? liveSetups(state, league.members) : new Map<string, TeamSetupChoice>();
     return {
       id: league.id,
       name: league.name,
@@ -93,8 +125,25 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       /** In the offseason: friends who've made their call for the open stage. */
       madeCall: madeCall(state),
       champion: state.progress.playoffs?.champion ?? null,
-      members: league.members.map((m) => ({ id: m.id, displayName: m.displayName, team: m.team, isCommissioner: m.isCommissioner, ready: m.ready, setUp: setups.has(m.team ?? "") })),
-      teams: teams.map((t) => ({ ...t, ...lookOf(setups.get(t.abbr), t.abbr, state), claimedBy: claimedBy.get(t.abbr) ?? null })),
+      members: league.members.map((m) => {
+        const program = inLobby ? state.programs?.[m.id] : undefined;
+        const placed = lobby.get(m.id);
+        return {
+          id: m.id,
+          displayName: m.displayName,
+          team: teamOf(m),
+          isCommissioner: m.isCommissioner,
+          ready: m.ready,
+          setUp: setups.has(teamOf(m) ?? ""),
+          ...(program ? { program: { groups: program.groups, region: placed?.region ?? null } } : {}),
+        };
+      }),
+      teams: teams.map((t) => {
+        // In the lobby a friend's program shows as its region until they name it.
+        const region = [...lobby.values()].find((p) => p.team === t.abbr)?.region;
+        const program = region ? { name: `${region} program`, program: region, tag: suggestedTag(state.dynasty.league, t.abbr, region) } : {};
+        return { ...t, ...program, ...lookOf(setups.get(t.abbr), t.abbr, state, region), claimedBy: claimedBy.get(t.abbr) ?? null };
+      }),
     };
   }
 
@@ -187,6 +236,34 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     },
   );
 
+  /** Your top three skill groups (null clears them): your program is built in the region they fit when the league starts. */
+  app.post<{ Params: { id: string }; Body: { groups: SkillGroup[] | null } }>(
+    "/leagues/:id/program",
+    { schema: { body: { type: "object", required: ["groups"], properties: { groups: { anyOf: [{ type: "null" }, { type: "array", items: { enum: [...SKILL_GROUP_KEYS] }, minItems: 3, maxItems: 3 }] } } } } },
+    async (req, reply) => {
+      const member = await memberOf(req, reply, req.params.id);
+      if (!member) return reply;
+      if ((await db.league.findUniqueOrThrow({ where: { id: member.leagueId } })).phase !== "lobby") return fail(reply, 409, "Teams are set once the league starts");
+      const groups = req.body.groups;
+      if (groups) {
+        const problem = skillChoiceProblem(groups);
+        if (problem) return fail(reply, 400, problem);
+      }
+      const r = await changeLeague(db, member.leagueId, (state, league) => {
+        if (league.phase !== "lobby") return { state: null, result: "Teams are set once the league starts" };
+        const { [member.id]: _old, ...others } = state.programs ?? {};
+        const programs = groups ? { ...others, [member.id]: { groups } } : others;
+        // A new program means a new spot: an old look may no longer fit it, so it's checked again when you save it.
+        return { state: { ...state, programs }, result: null };
+      });
+      if (!r) return fail(reply, 409, "The league is busy, try again");
+      if (r.result) return fail(reply, 409, r.result);
+      // A program replaces any state you'd claimed.
+      if (groups && member.team) await db.member.update({ where: { id: member.id }, data: { team: null } });
+      return view(member.leagueId);
+    },
+  );
+
   const str = (max: number) => ({ type: "string", maxLength: max }) as const;
   const rating = { type: "integer", minimum: 0, maximum: 99 } as const;
   const hex = { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" } as const;
@@ -240,12 +317,13 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   app.post<{ Params: { id: string }; Body: { setup: Omit<TeamSetupChoice, "team"> | null } }>("/leagues/:id/setup", { schema: { body: setupSchema } }, async (req, reply) => {
     const member = await memberOf(req, reply, req.params.id);
     if (!member) return reply;
-    if (!member.team) return fail(reply, 409, "Claim a team first");
-    const team = member.team;
     const locked = "Teams are set once the league starts";
+    const noTeam = "Build your program first";
     if ((await db.league.findUniqueOrThrow({ where: { id: member.leagueId } })).phase !== "lobby") return fail(reply, 409, locked);
     const r = await changeLeague(db, member.leagueId, (state, league) => {
       if (league.phase !== "lobby") return { state: null, result: locked };
+      const team = lobbyTeams(state, league.members).get(member.id)?.team;
+      if (!team) return { state: null, result: noTeam };
       const { [member.id]: _old, ...others } = state.setups ?? {};
       if (!req.body.setup) return { state: { ...state, setups: others }, result: null };
       const setup = { team, ...req.body.setup } as TeamSetupChoice;
@@ -254,7 +332,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       return { state: { ...state, setups: { ...others, [member.id]: setup } }, result: null };
     });
     if (!r) return fail(reply, 409, "The league is busy, try again");
-    if (r.result) return fail(reply, 400, r.result);
+    if (r.result) return fail(reply, r.result === noTeam || r.result === locked ? 409 : 400, r.result);
     return view(member.leagueId);
   });
 
@@ -262,8 +340,11 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   app.get<{ Params: { id: string } }>("/leagues/:id/setup", async (req, reply) => {
     const member = await memberOf(req, reply, req.params.id);
     if (!member) return reply;
-    const setup = (await loadState(member.leagueId)).state.setups?.[member.id];
-    return { setup: setup && setup.team === member.team ? { identity: setup.identity, coach: setup.coach } : null };
+    const { state } = await loadState(member.leagueId);
+    const league = await db.league.findUniqueOrThrow({ where: { id: member.leagueId }, include: { members: true } });
+    const setup = state.setups?.[member.id];
+    const placed = league.phase === "lobby" ? lobbyTeams(state, league.members).get(member.id) : undefined;
+    return { setup: setup && placed ? { identity: setup.identity, coach: setup.coach } : null, team: placed?.team ?? null, region: placed?.region ?? null };
   });
 
   app.post<{ Params: { id: string } }>("/leagues/:id/start", async (req, reply) => {
@@ -272,28 +353,45 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     if (!member.isCommissioner) return fail(reply, 403, "Only the commissioner can start the league");
     const league = await db.league.findUniqueOrThrow({ where: { id: member.leagueId }, include: { members: true, save: true } });
     if (league.phase !== "lobby") return fail(reply, 409, "The league has already started");
-    const waiting = league.members.filter((m) => !m.team);
-    if (waiting.length) return fail(reply, 409, `Waiting on a team from ${waiting.map((m) => m.displayName).join(", ")}`);
-
     const { state } = await loadState(league.id);
-    const humans = Object.fromEntries(league.members.map((m) => [m.team!, m.id]));
-    // Each friend's look and coach, in the order they joined (checked again: a claim may have moved since).
-    let dynasty = state.dynasty;
-    const live = liveSetups(state, league.members);
+    const lobby = lobbyTeams(state, league.members);
+    const waiting = league.members.filter((m) => !lobby.has(m.id));
+    if (waiting.length) return fail(reply, 409, `Waiting on a program from ${waiting.map((m) => m.displayName).join(", ")}`);
+
+    // Every friend's program, in the order they joined (the spots the lobby showed), then their looks and coaches.
     const members = [...league.members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+    let dynasty = state.dynasty;
+    const taken = new Set(members.filter((m) => !state.programs?.[m.id]).map((m) => lobby.get(m.id)!.team));
+    const teamOf = new Map<string, string>();
     for (const m of members) {
-      const setup = live.get(m.team!);
+      const program = state.programs?.[m.id];
+      if (!program) {
+        teamOf.set(m.id, lobby.get(m.id)!.team);
+        continue;
+      }
+      const made = createProgram(dynasty, program.groups, { taken });
+      dynasty = made.dynasty;
+      taken.add(made.team);
+      teamOf.set(m.id, made.team);
+    }
+    const live = liveSetups(state, league.members);
+    for (const m of members) {
+      const setup = live.get(teamOf.get(m.id)!);
       if (!setup) continue;
       const problem = setupProblem({ ...state, dynasty }, league.members, m.id, setup);
       if (problem) return fail(reply, 409, `${m.displayName}'s team setup no longer works (${problem}); they need to change it`);
       dynasty = setUpTeam(dynasty, setup.team, setup);
     }
-    const { setups: _made, ...rest } = state;
+    const humans = Object.fromEntries(members.map((m) => [teamOf.get(m.id)!, m.id]));
+    const { setups: _made, programs: _built, ...rest } = state;
     const data = encodeState(openSeason({ ...rest, dynasty, humans }));
     // Only start from the save we read (another start or change in between wins).
     const started = await db.$transaction(async (tx) => {
       const saved = await tx.leagueSave.updateMany({ where: { leagueId: league.id, version: league.save!.version }, data: { data, version: { increment: 1 } } });
       if (saved.count === 0) return false;
+      // Clear old claims first (the one-team-per-state rule), then everyone's team.
+      await tx.member.updateMany({ where: { leagueId: league.id }, data: { team: null } });
+      for (const [memberId, team] of teamOf) await tx.member.update({ where: { id: memberId }, data: { team } });
       await tx.league.update({ where: { id: league.id }, data: { phase: "season", deadline: deadlineAfter(new Date(), league.weekHours) } });
       return true;
     });

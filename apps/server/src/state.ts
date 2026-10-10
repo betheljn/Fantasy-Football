@@ -1,6 +1,6 @@
 // The league as the server holds it: the dynasty (in the sim's compact save
 // format) and who runs which team. Built and changed only by the sim.
-import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
+import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 
 export const STATE_VERSION = 1;
@@ -20,6 +20,8 @@ export interface LeagueState {
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
   /** In the lobby: each friend's look and coach for the team they claimed (by member id), made when the league starts. */
   setups?: Record<string, TeamSetupChoice>;
+  /** In the lobby: each friend's top three skill groups (by member id); their program is built when the league starts. */
+  programs?: Record<string, { groups: SkillGroup[] }>;
 }
 
 /** A friend's team made theirs: its identity and the head coach they built. */

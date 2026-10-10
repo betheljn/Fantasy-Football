@@ -98,11 +98,37 @@ describe("a program's short name", () => {
     expect(teamTag(named.teams[made.team]!)).toBe("PAC");
     const city = customizeTeam(made.dynasty.league, made.team, { city: "Bay City", nickname: "Tigers", logo: "tigers" });
     expect(teamTag(city.teams[made.team]!)).toBe("BAY");
-    // Taken already (another team goes by PAC): another try, still unique.
+    // Taken already (the program goes by PAC): anyone else asking for "Pacific" gets another, still unique.
     const other = Object.keys(made.dynasty.league.teams).find((t) => t !== made.team)!;
-    const clash = customizeTeam(made.dynasty.league, other, { nickname: "Wolves", logo: "wolves", tag: "PAC" });
-    const tag = suggestedTag(clash, made.team, "Pacific");
+    const tag = suggestedTag(made.dynasty.league, other, "Pacific");
     expect(tag).not.toBe("PAC");
     expect(tag).toMatch(/^[A-Z]{2,4}$/);
+  });
+});
+
+describe("several programs (online)", () => {
+  it("friends who fit one region share it from the most typical spot down, up to five, then go to their next best", async () => {
+    const { planPrograms, programSlots } = await import("../src/index.ts");
+    const groups: SkillGroup[] = ["speed", "coverage", "passRush"];
+    const six = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id, groups }));
+    const plan = planPrograms(six);
+    expect([...plan.values()].slice(0, 5).map((p) => p.team)).toEqual(programSlots("Southeast"));
+    expect(plan.get("f")!.region).toBe("Capital");
+    // Building: each friend's program in its own spot, different rosters.
+    const first = createProgram(DYNASTY, groups);
+    const second = createProgram(first.dynasty, groups, { taken: new Set([first.team]) });
+    expect(second.team).toBe(plan.get("b")!.team);
+    expect(second.dynasty.league.teams[first.team]!.region).toBe("Southeast");
+    const a = second.dynasty.league.teams[first.team]!.roster.map((p) => p.lastName);
+    const b = second.dynasty.league.teams[second.team]!.roster.map((p) => p.lastName);
+    expect(a).not.toEqual(b);
+  });
+});
+
+describe("an unnamed program", () => {
+  it("goes by its region's short name, never its spot's state code", async () => {
+    const { teamTag } = await import("../src/index.ts");
+    const made = createProgram(DYNASTY, ["speed", "coverage", "passRush"]);
+    expect(teamTag(made.dynasty.league.teams[made.team]!)).toBe("SOU");
   });
 });

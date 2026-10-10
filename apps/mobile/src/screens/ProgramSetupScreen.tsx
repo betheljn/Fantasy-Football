@@ -70,7 +70,7 @@ export function SkillGroupsScreen({ initial, onDone }: { initial?: SkillGroup[];
 }
 
 /** Your region: why it fits, its talent core, the states it covers. */
-export function RegionScreen({ groups, onBack, onDone, busy }: { groups: SkillGroup[]; onBack: () => void; onDone: () => void; busy?: boolean }) {
+export function RegionScreen({ groups, onBack, onDone, busy, doneLabel, note }: { groups: SkillGroup[]; onBack: () => void; onDone: () => void; busy?: boolean; doneLabel?: string; note?: string }) {
   const t = useTheme();
   const fits = regionFits(groups);
   const home = fits[0]!;
@@ -128,8 +128,8 @@ export function RegionScreen({ groups, onBack, onDone, busy }: { groups: SkillGr
           </Card>
         ) : null}
       </ScrollView>
-      <StickyFooter>
-        <Button label={busy ? "Building your program…" : `Build my ${home.region} program`} onPress={onDone} primary disabled={busy} />
+      <StickyFooter note={note}>
+        <Button label={busy ? "Building your program…" : (doneLabel ?? `Build my ${home.region} program`)} onPress={onDone} primary disabled={busy} />
       </StickyFooter>
     </View>
   );
