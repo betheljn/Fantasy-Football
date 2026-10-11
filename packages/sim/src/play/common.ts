@@ -10,9 +10,10 @@ import { conceptMatchup, type PlayConcepts } from "./concepts.ts";
  * The rules games are played under. Games record theirs so past games replay
  * exactly after the sim is retuned: 1 = the original run game; 2 = a real
  * fullback in two-back sets and tougher goal-line runs; 3 = blocked field
- * goals can be scooped and returned.
+ * goals can be scooped and returned; 4 = the play duel: both sides call a
+ * concept before each snap, and the matchup of the calls shapes the play.
  */
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
 
 export interface PlayContext {
   offense: Team;

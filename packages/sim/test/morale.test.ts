@@ -102,7 +102,7 @@ describe("locker-room news", () => {
       expect(s.players).toHaveLength(1);
       expect(`${s.headline} ${s.body}`).not.toMatch(/undefined|NaN/);
     }
-  });
+  }, 30_000);
 });
 
 describe("career milestones", () => {

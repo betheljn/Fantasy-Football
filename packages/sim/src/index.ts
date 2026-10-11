@@ -18,6 +18,7 @@ export * from "./play/kicking.ts";
 export * from "./drive/clock.ts";
 export * from "./drive/playcall.ts";
 export * from "./drive/drive.ts";
+export * from "./drive/duelcall.ts";
 export * from "./play/kickoff.ts";
 export * from "./play/scoring.ts";
 export * from "./game/game.ts";

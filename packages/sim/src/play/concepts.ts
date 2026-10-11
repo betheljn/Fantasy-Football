@@ -26,17 +26,19 @@ export interface OffenseConceptInfo {
   playAction?: boolean;
   /** The ball comes out fast (fewer sacks). */
   quickRelease?: boolean;
+  /** Passes: sack chance against an average one (quick throws get it out, long developing ones hold it). */
+  sackFactor?: number;
 }
 
 export const OFFENSE_CONCEPT_INFO: Record<OffenseConcept, OffenseConceptInfo> = {
   inside_run: { label: "Inside run", note: "Downhill between the tackles", kind: "run", direction: "middle" },
   outside_run: { label: "Outside run", note: "Stretch to the edge", kind: "run", direction: "edge" },
   draw: { label: "Draw", note: "Show pass, hand it off late", kind: "run", direction: "middle" },
-  screen: { label: "Screen", note: "Let them rush, dump it behind them", kind: "pass", band: "screen", quickRelease: true },
-  quick: { label: "Quick game", note: "Three-step drop, out in a beat", kind: "pass", band: "short", quickRelease: true },
-  intermediate: { label: "Intermediate", note: "Digs and crossers in the middle", kind: "pass", band: "intermediate" },
-  deep_shot: { label: "Deep shot", note: "Go routes and posts", kind: "pass", band: "deep" },
-  play_action: { label: "Play action", note: "Fake the run, throw over the top", kind: "pass", band: "intermediate", playAction: true },
+  screen: { label: "Screen", note: "Let them rush, dump it behind them", kind: "pass", band: "screen", quickRelease: true, sackFactor: 0.78 },
+  quick: { label: "Quick game", note: "Three-step drop, out in a beat", kind: "pass", band: "short", quickRelease: true, sackFactor: 0.97 },
+  intermediate: { label: "Intermediate", note: "Digs and crossers in the middle", kind: "pass", band: "intermediate", sackFactor: 1.12 },
+  deep_shot: { label: "Deep shot", note: "Go routes and posts", kind: "pass", band: "deep", sackFactor: 1.25 },
+  play_action: { label: "Play action", note: "Fake the run, throw over the top", kind: "pass", band: "intermediate", playAction: true, sackFactor: 1.15 },
 };
 
 export interface DefenseConceptInfo {
@@ -95,6 +97,9 @@ const WHY: Partial<Record<`${OffenseConcept}:${DefenseConcept}`, string>> = {
   "play_action:cover_3": "The fake pulled the curl defenders up.",
   "play_action:pass_blitz": "Nobody bites on the fake when they're already coming.",
 };
+
+/** The edge table as rows of numbers (OFFENSE_CONCEPTS by DEFENSE_CONCEPTS), for callers that weigh every matchup. */
+export const EDGE_TABLE: readonly (readonly number[])[] = OFFENSE_CONCEPTS.map((c) => TABLE[c]);
 
 export interface ConceptMatchup {
   /** The offense's edge, -2 (badly beaten) to +2 (right call). */

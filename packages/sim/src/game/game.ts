@@ -7,6 +7,7 @@ import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
 import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DrivePlay, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import { RULES_VERSION } from "../play/common.ts";
+import { newDuelBook } from "../drive/duelcall.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
 export const OVERTIME_TIMEOUTS = 2;
@@ -161,6 +162,8 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
   const rng = new Rng(seed);
   const answers: Array<CoachCall | null> = [];
   const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away });
+  // The play duel: what each side has called so far, for the other to read.
+  const book = (options.rules ?? RULES_VERSION) >= 4 ? newDuelBook() : undefined;
   // The teams as they stand now (injured players leave the field).
   const teams = injuries.teams;
   const other = (abbr: string) => teams[abbr === home.abbr ? away.abbr : home.abbr]!;
@@ -312,6 +315,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       injuries,
       ...(options.coach ? { coach: options.coach, log: live } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),
+      ...(book ? { book } : {}),
     });
     let step = steps.next();
     while (!step.done) {

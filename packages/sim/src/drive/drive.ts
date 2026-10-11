@@ -1,7 +1,9 @@
 import type { Injury, InjuryTracker } from "../game/injuries.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
-import type { PlayContext } from "../play/common.ts";
+import { RULES_VERSION, type PlayContext } from "../play/common.ts";
+import { DEFENSE_CONCEPT_INFO, DEFENSE_CONCEPTS, OFFENSE_CONCEPT_INFO, OFFENSE_CONCEPTS, type DefenseConcept, type OffenseConcept } from "../play/concepts.ts";
+import { chooseDefenseConcept, chooseOffenseConcepts, conceptForFormation, recordCalls, type DuelBook, type OffenseRead } from "./duelcall.ts";
 import { assessLiveBallPenalty, isNullified, rollPreSnapPenalty } from "../play/penalties.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import type { ConversionEvent, PlayEvent, Situation } from "../play/events.ts";
@@ -10,7 +12,7 @@ import { simulatePass } from "../play/pass.ts";
 import { blockChance, pickBlocker, specialUnits } from "../play/special.ts";
 import { simulateRun } from "../play/run.ts";
 import { QUARTER_SECONDS, clockAfterPlay, runClock, runoffSeconds } from "./clock.ts";
-import { chooseDefense, chooseOffense } from "./scheme.ts";
+import { chooseDefense, chooseOffense, isPrevent } from "./scheme.ts";
 import {
   buildDefense,
   buildOffense,
@@ -26,7 +28,7 @@ import {
   type Personnel,
 } from "../play/formation.ts";
 import { clockMistakeChance } from "../play/coaching.ts";
-import { callPlay, goForTwo, halfSecondsLeft, paceFor, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
+import { callPlay, goForTwo, halfSecondsLeft, paceFor, passProbability, timeoutCaller, type CallContext, type PlayCall } from "./playcall.ts";
 
 export type DriveResultType =
   | "touchdown"
@@ -79,6 +81,8 @@ export interface DriveInput {
   log?: DrivePlay[];
   /** The rules version (default: the current one). */
   rules?: number;
+  /** The play duel's film on both teams so far this game (rules 4): read before each call, added to after each snap. */
+  book?: DuelBook;
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -103,6 +107,8 @@ export interface OffensePrompt extends PromptBase {
   /** What the coaching staff would call (answering nothing takes it). */
   suggestion: PlayCall;
   options: PlayCall[];
+  /** The play duel (rules 4): the concept the coaches would run for a run call and for a pass call. */
+  concepts?: OffenseRead;
 }
 
 /** On defense, before the opponent's run or pass: how to line up against what they sent in. */
@@ -116,6 +122,8 @@ export interface DefensePrompt extends PromptBase {
   coverageOptions: Coverage[];
   /** Most extra rushers that may be sent. */
   maxBlitz: number;
+  /** The play duel (rules 4): the coordinator's concept (answering nothing keeps it). */
+  concept?: DefenseConcept;
 }
 
 /** Late in a half with the clock running: stop it with a timeout? */
@@ -139,11 +147,15 @@ export type SnapPrompt = OffensePrompt | DefensePrompt | TimeoutPrompt | TryProm
 /** Answer to an OffensePrompt: the play, and optionally a different personnel group or alignment. */
 export interface OffenseCall {
   call: PlayCall;
+  /** The play duel (rules 4): the concept, a run for a run call or a pass for a pass call (left out: the coaches' choice). */
+  concept?: OffenseConcept;
   personnel?: Personnel;
   set?: OffenseSet;
 }
 /** Answer to a DefensePrompt: anything left out keeps the coordinator's call. */
 export interface DefenseCall {
+  /** The play duel (rules 4): the concept, which sets the coverage and blitz (overriding those below). */
+  concept?: DefenseConcept;
   package?: DefensePackage;
   coverage?: Coverage;
   /** Extra rushers (0 to maxBlitz). */
@@ -176,6 +188,7 @@ export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): 
       if (!prompt.options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
       const personnel = answer.personnel ?? prompt.formation.personnel;
       if (personnel !== prompt.formation.personnel && !prompt.personnelOptions.includes(personnel)) throw new Error(`Can't line up in ${personnel} personnel`);
+      if (answer.concept !== undefined) checkOffenseConcept(answer.call, answer.concept);
       return;
     }
     case "defense": {
@@ -184,6 +197,7 @@ export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): 
       if (d.package && d.package !== prompt.formation.package && !prompt.packageOptions.includes(d.package)) throw new Error(`Can't line up in ${d.package}`);
       if (d.coverage && !prompt.coverageOptions.includes(d.coverage)) throw new Error(`No such coverage: ${d.coverage}`);
       if (d.blitz !== undefined && (!Number.isInteger(d.blitz) || d.blitz < 0 || d.blitz > prompt.maxBlitz)) throw new Error(`Can't send ${d.blitz} blitzers`);
+      if (d.concept !== undefined && !DEFENSE_CONCEPTS.includes(d.concept)) throw new Error(`No such call: ${d.concept}`);
       return;
     }
     case "timeout":
@@ -193,6 +207,11 @@ export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): 
       if (!("try" in answer) || (answer.try !== "kick" && answer.try !== "two_point")) wrongAnswer("try");
       return;
   }
+}
+
+function checkOffenseConcept(call: PlayCall, concept: OffenseConcept): void {
+  if (!OFFENSE_CONCEPTS.includes(concept)) throw new Error(`No such call: ${concept}`);
+  if (OFFENSE_CONCEPT_INFO[concept].kind !== call) throw new Error(`${OFFENSE_CONCEPT_INFO[concept].label} isn't a ${call}`);
 }
 
 /** Defensive packages a team can put on the field (enough at each position on its depth chart). */
@@ -306,6 +325,8 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
   let elapsed = 0;
 
   const homeField = input.homeTeam === off ? 1 : input.homeTeam === def ? -1 : 0;
+  // The play duel: both sides pick a concept before each snap.
+  const duel = (input.rules ?? RULES_VERSION) >= 4;
 
   /** Add an event to the drive; points always come from the event itself. */
   const record = (event: PlayEvent, clockAfter: number) => {
@@ -377,6 +398,11 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     let offenseFormation = chooseOffense(rng, offense, callContext(), input.rules);
     const cc = { ...callContext(), personnel: offenseFormation.personnel, set: offenseFormation.set };
     let call = callPlay(rng, cc);
+    const prevent = isPrevent(cc);
+    const readOffense = () => chooseOffenseConcepts(rng, offense, defense, cc.situation, input.book, offenseFormation.set, offenseFormation.personnel, prevent);
+    // The coaches' concepts, drawn only for a run or a pass (so other calls play out as before).
+    let concepts: OffenseRead | undefined = duel && (call === "run" || call === "pass") ? readOffense() : undefined;
+    let chosen: OffenseConcept | undefined;
     if (input.coach === off) {
       const options = callOptions(cc, call);
       const groups = personnelOptions(offense);
@@ -387,11 +413,17 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
         personnelOptions: groups,
         suggestion: call,
         options,
+        ...(concepts ? { concepts } : {}),
       };
       if (answer) {
         if (!("call" in answer)) wrongAnswer("offense");
         if (!options.includes(answer.call)) throw new Error(`Can't call ${answer.call} here`);
         call = answer.call;
+        if (answer.concept !== undefined) {
+          if (!duel) throw new Error("No play-duel calls under these rules");
+          checkOffenseConcept(call, answer.concept);
+          chosen = answer.concept;
+        }
         const personnel = answer.personnel ?? offenseFormation.personnel;
         const set = answer.set ?? offenseFormation.set;
         if (personnel !== offenseFormation.personnel || set !== offenseFormation.set) {
@@ -403,7 +435,15 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       }
     }
     const scrimmageCall = call === "run" || call === "pass";
-    let defenseFormation = scrimmageCall ? chooseDefense(rng, defense, cc, offenseFormation) : undefined;
+    // A run or pass the coaches didn't suggest: their concept for it now.
+    if (duel && scrimmageCall && !concepts && chosen === undefined) concepts = readOffense();
+    const offenseConcept: OffenseConcept | undefined = duel && scrimmageCall ? (chosen ?? concepts![call as "run" | "pass"]) : undefined;
+    let defenseConcept: DefenseConcept | undefined;
+    const pickDefense = duel
+      ? (prev: boolean) =>
+          (defenseConcept = chooseDefenseConcept(rng, defense, offense, cc.situation, input.book, offenseFormation.personnel, offenseFormation.set, passProbability({ ...cc, personnel: offenseFormation.personnel, set: offenseFormation.set }), prev))
+      : undefined;
+    let defenseFormation = scrimmageCall ? chooseDefense(rng, defense, cc, offenseFormation, pickDefense) : undefined;
     if (defenseFormation && input.coach === def) {
       const answer = yield {
         kind: "defense",
@@ -413,13 +453,19 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
         packageOptions: packageOptions(defense),
         coverageOptions: Object.keys(COVERAGES) as Coverage[],
         maxBlitz: MAX_BLITZ,
+        ...(defenseConcept ? { concept: defenseConcept } : {}),
       };
       if (answer) {
-        if (!("package" in answer || "coverage" in answer || "blitz" in answer) && Object.keys(answer).length > 0) wrongAnswer("defense");
+        if (!("concept" in answer || "package" in answer || "coverage" in answer || "blitz" in answer) && Object.keys(answer).length > 0) wrongAnswer("defense");
         const d = answer as DefenseCall;
+        if (d.concept !== undefined && !duel) throw new Error("No play-duel calls under these rules");
+        if (d.concept !== undefined && !DEFENSE_CONCEPTS.includes(d.concept)) throw new Error(`No such call: ${d.concept}`);
+        const named = d.concept !== undefined ? DEFENSE_CONCEPT_INFO[d.concept] : undefined;
         const pkg = d.package ?? defenseFormation.package;
-        const coverage = d.coverage ?? defenseFormation.coverage;
-        const blitz = d.blitz ?? defenseFormation.blitzers.length;
+        const coverage = named?.coverage ?? d.coverage ?? defenseFormation.coverage;
+        const blitz = named?.blitz ?? d.blitz ?? defenseFormation.blitzers.length;
+        // A changed coverage or blitz, called the old way, is the concept it amounts to.
+        if (duel) defenseConcept = d.concept ?? (coverage !== defenseFormation.coverage || blitz !== defenseFormation.blitzers.length ? conceptForFormation(coverage, blitz) : defenseConcept);
         if (pkg !== defenseFormation.package || coverage !== defenseFormation.coverage || blitz !== defenseFormation.blitzers.length) {
           if (!packageOptions(defense).includes(pkg)) throw new Error(`Can't line up in ${pkg}`);
           if (!(coverage in COVERAGES)) throw new Error(`No such coverage: ${coverage}`);
@@ -436,6 +482,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       homeField,
       ...(input.rules !== undefined ? { rules: input.rules } : {}),
       ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
+      ...(offenseConcept && defenseConcept ? { concepts: { offense: offenseConcept, defense: defenseConcept } } : {}),
     };
 
     // Pre-snap foul: no play, walk it off, snap again. The clock is left alone.
@@ -450,6 +497,11 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
 
     let event = runCall(rng, call, ctx);
     if (event.kind === "run" || event.kind === "pass") event = assessLiveBallPenalty(rng, ctx, event);
+    if (ctx.concepts && (event.kind === "run" || event.kind === "pass")) {
+      // The calls go on the play (for the reveal) and into both teams' film.
+      event = { ...event, calls: ctx.concepts };
+      if (input.book) recordCalls(input.book, off, def, cc.situation, ctx.concepts.offense, ctx.concepts.defense);
+    }
 
     const before = clock;
     const after = clockAfterPlay({ quarter, clock }, event);

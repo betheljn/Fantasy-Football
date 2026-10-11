@@ -128,7 +128,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const sackRate = clamp(
     (0.062 - 0.025 * line - 0.012 * hot - HOME_FIELD.sackRate * home + 0.018 * blitzBite - 0.006 * extraBlockers + (playAction !== null ? 0.004 : 0)) *
       clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5) * // slippery QBs escape
-      (concept?.quickRelease ? 0.75 : 1) -
+      (concept?.sackFactor ?? 1) -
       CONCEPT_EFFECT.sack * callEdge,
     0.015,
     0.2,

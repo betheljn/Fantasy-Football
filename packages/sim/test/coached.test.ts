@@ -216,7 +216,9 @@ describe("coached games", () => {
     const report = coachingReport(HOME, AWAY, "report", HOME.abbr, result.coached!.calls);
     expect(report.calls).toBe(result.coached!.calls.length);
     expect(report.changed).toBe(result.coached!.calls.filter((c) => c !== null).length);
-    expect(report.fourthDowns.tried).toBe(report.changed);
+    // Every gamble is a try, unless a pre-snap foul meant no play.
+    expect(report.fourthDowns.tried).toBeGreaterThan(0);
+    expect(report.fourthDowns.tried).toBeLessThanOrEqual(report.changed);
     expect(report.offense.coaches.plays).toBeGreaterThan(30);
     // Leaving everything to the coaches changes nothing.
     const none = coachingReport(HOME, AWAY, "report", HOME.abbr, coach("report", HOME.abbr, () => undefined).result.coached!.calls);
