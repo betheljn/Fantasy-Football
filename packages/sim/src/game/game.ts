@@ -217,6 +217,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       winner: null,
       final: { quarter: last?.quarter ?? quarter, clock: last?.clockAfter ?? clock },
       injuries: [...injuries.all],
+      rules: options.rules ?? RULES_VERSION,
     };
   };
 

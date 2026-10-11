@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
 import { teamColors, teamShort } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
@@ -17,6 +17,8 @@ export interface GameContext {
   title?: string;
   records?: Record<string, string>;
   neutralSite?: boolean;
+  /** Your team, if it's playing (for the play duel's recap). */
+  mine?: string;
 }
 
 /** Both teams' colors edge to edge, the score big, and the clock and situation between them. */
@@ -237,6 +239,7 @@ export function Recap({
   onPlayer,
   finish,
   report,
+  duel,
 }: {
   game: GameResult;
   box: BoxScore;
@@ -250,6 +253,8 @@ export function Recap({
   finish?: { label: string; onPress: () => void };
   /** A game you coached: how your calls went. */
   report?: CoachingReport | null;
+  /** Your team's play duel. */
+  duel?: DuelRecap | null;
 }) {
   const t = useTheme();
   const winner = game.winner;
@@ -294,6 +299,7 @@ export function Recap({
         ) : null}
         <FlowChart game={game} chances={chances} pregame={pregame} upto={chances.length - 1} width={width - 48} />
       </Card>
+      {duel ? <DuelCard recap={duel} onPlay={onPlay} /> : null}
       {report ? <CallsCard report={report} /> : null}
       {swings.length ? (
         <Card style={{ gap: 6 }}>
@@ -311,6 +317,48 @@ export function Recap({
         </Card>
       ) : null}
     </View>
+  );
+}
+
+/** The play duel: calls won and lost, how the plays went by the call, and what each side read. */
+function DuelCard({ recap: r, onPlay }: { recap: DuelRecap; onPlay: (index: number) => void }) {
+  const t = useTheme();
+  const ypp = (s: DuelSide, k: "won" | "lost") => (s.byCall[k].plays ? (s.byCall[k].yards / s.byCall[k].plays).toFixed(1) : "-");
+  const side = (title: string, s: DuelSide, offense: boolean) => (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: t.text }}>
+        <Text style={{ fontWeight: "800" }}>{title}: </Text>
+        won {s.won} call{s.won === 1 ? "" : "s"}, lost {s.lost}, even {s.even}
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>
+        {offense ? "You gained" : "They gained"} {ypp(s, "won")} yds a play when you won the call, {ypp(s, "lost")} when you lost it
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>{s.concepts.slice(0, 3).map((c) => `${c.label} ${c.plays}×`).join(" · ")}</Text>
+    </View>
+  );
+  const moment = (label: string, m: DuelRecap["best"], color: string) =>
+    m ? (
+      <Pressable onPress={() => onPlay(m.seq)} accessibilityRole="button" accessibilityHint="Replay this play on the field">
+        <Text style={{ color: t.text }}>
+          <Text style={{ color, fontWeight: "800" }}>{label}: </Text>
+          {m.text}
+        </Text>
+      </Pressable>
+    ) : null;
+  return (
+    <Card style={{ gap: 8 }}>
+      <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>The duel</Text>
+      <Text style={{ color: t.text, fontWeight: "700" }}>{r.headline}</Text>
+      {side("Offense", r.offense, true)}
+      {side("Defense", r.defense, false)}
+      {r.reads.map((line) => (
+        <Text key={line} style={{ color: t.text, fontSize: 13 }}>
+          {line}
+        </Text>
+      ))}
+      {moment("Best call", r.best, "#2e9d57")}
+      {moment("Worst call", r.worst, "#d1453b")}
+    </Card>
   );
 }
 

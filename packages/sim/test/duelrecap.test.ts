@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Rng, duelRecap, generateTeams, isNullified, revealCall, simulateGame, startCoachedGame, type PlayEvent, type Team } from "../src/index.ts";
+import { Rng, coachingReport, duelRecap, generateTeams, isNullified, revealCall, simulateGame, startCoachedGame, type PlayEvent, type Team } from "../src/index.ts";
 
 const [A, B] = generateTeams(new Rng("duelrecap-test"), 2) as [Team, Team];
 
@@ -15,7 +15,8 @@ describe("the reveal", () => {
   });
 
   it("has nothing to reveal without calls (older rules) or off a scrimmage play", () => {
-    expect(revealCall({ ...base, calls: undefined })).toBeNull();
+    const { calls: _calls, ...plain } = base;
+    expect(revealCall(plain)).toBeNull();
     const kick = simulateGame(A, B, "reveal").plays.find((p) => p.event.kind === "punt")!.event;
     expect(revealCall(kick)).toBeNull();
   });
@@ -70,5 +71,20 @@ describe("the duel recap", () => {
 
   it("is null for a game without calls", () => {
     expect(duelRecap(simulateGame(A, B, "recap", { rules: 3 }), A.abbr)).toBeNull();
+  });
+});
+
+describe("the coaching report in the play duel", () => {
+  it("counts a different concept as a changed call", () => {
+    const game = startCoachedGame(A, B, "report-duel", A.abbr);
+    while (game.prompt) {
+      const p = game.prompt;
+      game.answer(p.kind === "defense" ? { concept: p.concept === "cover_4" ? "cover_2" : "cover_4" } : undefined);
+    }
+    const r = coachingReport(A, B, "report-duel", A.abbr, game.result!.coached!.calls);
+    expect(r.changed).toBeGreaterThan(20);
+    // Every changed call is a snap against your defense, unless a pre-snap foul meant no play.
+    expect(r.defense.mine.plays).toBeLessThanOrEqual(r.changed);
+    expect(r.defense.mine.plays).toBeGreaterThan(r.changed * 0.9);
   });
 });

@@ -179,24 +179,27 @@ export function duelRecap(game: GameResult, team: string): DuelRecap | null {
     const pool = snaps.filter((s) => s.half === half && (s.e.offense === team) === mine);
     return { n: pool.length, pct: pct(pool.filter(pred).length, pool.length) };
   };
-  const fav = sides.offense.concepts[0];
+  // A call nothing beats (Base) has nothing to catch on to: the favourite that can be beaten.
+  const fav = sides.offense.concepts.find((c) => countersTo(c.concept as OffenseConcept).length);
   if (fav && fav.plays >= 8) {
     const beats = countersTo(fav.concept as OffenseConcept);
     const [a, b] = [0, 1].map((h) => share((x) => beats.includes(x.r.defense), h as 0 | 1, true));
     const names = list(beats.map((d) => DEFENSE_CONCEPT_INFO[d].label));
-    const use = `${fav.label} was your most-called play (${pct(fav.plays, sides.offense.snaps)}% of snaps)`;
+    const top = fav === sides.offense.concepts[0];
+    const use = `${fav.label} was your most-called play${top ? "" : " that can be beaten"} (${pct(fav.plays, sides.offense.snaps)}% of snaps)`;
     reads.push(
       a!.n && b!.n && b!.pct - a!.pct >= 10
         ? `${use}, and they caught on: calls that beat it (${names}) on ${a!.pct}% of your snaps in the first half, ${b!.pct}% after.`
         : `${use}; they called something that beats it (${names}) on ${pct(snaps.filter((x) => x.e.offense === team && beats.includes(x.r.defense)).length, sides.offense.snaps)}% of your snaps.`,
     );
   }
-  const favD = sides.defense.concepts[0];
+  const favD = sides.defense.concepts.find((c) => answersTo(c.concept as DefenseConcept).length);
   if (favD && favD.plays >= 8) {
     const beats = answersTo(favD.concept as DefenseConcept);
     const [a, b] = [0, 1].map((h) => share((x) => beats.includes(x.r.offense), h as 0 | 1, false));
     const names = list(beats.map((c) => OFFENSE_CONCEPT_INFO[c].label));
-    const use = `${favD.label} was your most-called defense (${pct(favD.plays, sides.defense.snaps)}%)`;
+    const top = favD === sides.defense.concepts[0];
+    const use = `${favD.label} was your most-called defense${top ? "" : " that can be beaten"} (${pct(favD.plays, sides.defense.snaps)}%)`;
     reads.push(
       a!.n && b!.n && b!.pct - a!.pct >= 10
         ? `${use}, and their offense caught on: calls that beat it (${names}) on ${a!.pct}% of their snaps in the first half, ${b!.pct}% after.`

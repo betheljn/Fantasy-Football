@@ -7,6 +7,9 @@ import {
   formatSpot,
   periodLabel,
   pointsForEvent,
+  revealCall,
+  OFFENSE_CONCEPT_INFO,
+  DEFENSE_CONCEPT_INFO,
   type GameResult,
   type PlayerLookup,
 } from "@dynasty/sim";
@@ -16,7 +19,7 @@ import { teamShort } from "../field/colors";
 export type FeedRow =
   | { kind: "period"; key: string; index: number; label: string }
   | { kind: "drive"; key: string; index: number; team: string; text: string }
-  | { kind: "play"; key: string; index: number; team: string; clock: string; situation: string; text: string; scoring: boolean; score: string; big: boolean };
+  | { kind: "play"; key: string; index: number; team: string; clock: string; situation: string; text: string; scoring: boolean; score: string; big: boolean; calls?: string };
 
 const PERIOD_NAMES = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
 const SCRIMMAGE = new Set(["run", "pass", "kneel", "spike", "punt", "field_goal", "penalty"]);
@@ -47,6 +50,7 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
       scoring: Object.keys(pointsForEvent(e)).length > 0,
       score: `${teamShort(game.away)} ${p.score[game.away]} – ${teamShort(game.home)} ${p.score[game.home]}`,
       big: isBigPlay(p.event),
+      ...callsLine(e),
     });
     // The drive's summary only after its last play, so it never gives away how a drive ends.
     const ending = driveEnd.get(i + 1);
@@ -61,6 +65,14 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
     }
   });
   return rows;
+}
+
+/** The play duel's calls on a run or pass: "Inside run vs Run blitz · defense won the call". */
+function callsLine(e: GameResult["plays"][number]["event"]): { calls?: string } {
+  const r = revealCall(e);
+  if (!r) return {};
+  const verdict = r.winner === "even" ? "even call" : `${r.winner === "offense" ? teamShort(e.offense) : teamShort(e.defense)} won the call`;
+  return { calls: `${OFFENSE_CONCEPT_INFO[r.offense].label} vs ${DEFENSE_CONCEPT_INFO[r.defense].label} · ${verdict}` };
 }
 
 /** A play worth seeing again: points, a turnover, a sack, or 20+ yards. */

@@ -6,7 +6,7 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { coachingReport, lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
+import { coachingReport, duelRecap, lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
 import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
@@ -39,6 +39,10 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
     () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, game.coached.team, game.coached.calls, game.rules !== undefined ? { rules: game.rules } : {}) : null),
     [tab, game, home, away],
   );
+
+  // The play duel, for your team (the one you coached, or yours if it's playing).
+  const duelTeam = game.coached?.team ?? (context?.mine && (context.mine === game.home || context.mine === game.away) ? context.mine : undefined);
+  const duel = useMemo(() => (tab === "recap" && duelTeam ? duelRecap(game, duelTeam) : null), [tab, game, duelTeam]);
 
   const pb = usePlayback(plays);
   // Coming straight from a game you just played: open on the final whistle.
@@ -87,6 +91,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
             {item.situation ? <Text style={s.situation}>{item.situation}</Text> : null}
           </View>
           <Text style={s.playText}>{item.text}</Text>
+          {item.calls ? <Text style={s.calls}>{item.calls}</Text> : null}
           {item.scoring ? <Text style={s.scoreText}>{item.score}</Text> : null}
         </View>
       </Pressable>
@@ -178,7 +183,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
           </ScrollView>
         ) : tab === "recap" && box ? (
           <ScrollView>
-            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} report={report} />
+            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} report={report} duel={duel} />
           </ScrollView>
         ) : tab === "leaders" && box ? (
           <ScrollView>
@@ -248,5 +253,6 @@ const styles = (t: Theme) =>
     team: { fontSize: 12, fontWeight: "700", color: t.text },
     situation: { fontSize: 12, color: t.muted },
     playText: { fontSize: 14, color: t.text, lineHeight: 19 },
+    calls: { fontSize: 12, color: t.muted, marginTop: 2 },
     scoreText: { marginTop: 3, fontSize: 12, fontWeight: "700", color: t.score },
   });

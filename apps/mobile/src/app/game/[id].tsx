@@ -90,7 +90,7 @@ export default function GameRoute() {
         game={found.game}
         home={found.home}
         away={found.away}
-        context={{ title: found.title, records: { [found.home.abbr]: before(found.home.abbr), [found.away.abbr]: before(found.away.abbr) }, neutralSite: "neutralSite" in found ? found.neutralSite : false }}
+        context={{ title: found.title, records: { [found.home.abbr]: before(found.home.abbr), [found.away.abbr]: before(found.away.abbr) }, neutralSite: "neutralSite" in found ? found.neutralSite : false, mine: userTeam }}
         finish={finish}
         startAtEnd={final === "1"}
       />
