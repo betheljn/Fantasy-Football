@@ -12,6 +12,7 @@ export { simulateRun } from "./play/run.ts";
 export { simulatePass } from "./play/pass.ts";
 export type { PlayContext } from "./play/common.ts";
 export { RULES_VERSION } from "./play/common.ts";
+export * from "./play/concepts.ts";
 export * from "./feed/describe.ts";
 export * from "./play/kicking.ts";
 export * from "./drive/clock.ts";

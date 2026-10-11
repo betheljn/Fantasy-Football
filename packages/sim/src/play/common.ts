@@ -3,6 +3,7 @@ import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { Direction, Fumble, Situation, StopReason, Turnover } from "./events.ts";
 import type { DefenseFormation, Formations } from "./formation.ts";
+import { conceptMatchup, type PlayConcepts } from "./concepts.ts";
 
 /** Everything a single play needs. Plays never mutate this. */
 /**
@@ -23,6 +24,14 @@ export interface PlayContext {
   formations?: Formations;
   /** The rules version (default: the current one). */
   rules?: number;
+  /** The play duel's calls (used from rules 4): the offense's concept and the defense's. */
+  concepts?: PlayConcepts;
+}
+
+/** The calls on this play, if the duel is on (rules 4 and later), with the offense's edge from the matchup. */
+export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null {
+  if (!ctx.concepts || (ctx.rules ?? RULES_VERSION) < 4) return null;
+  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge };
 }
 
 /**

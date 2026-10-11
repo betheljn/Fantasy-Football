@@ -6,6 +6,7 @@ import {
   fumbleTurnover,
   HOME_FIELD,
   clamp,
+  duel,
   edge,
   exponential,
   pickDirection,
@@ -20,6 +21,7 @@ import type { IncompleteReason, PassPlayEvent } from "./events.ts";
 import { assignCoverage, COVERAGES, formationInfo, formationsFor, type Coverage } from "./formation.ts";
 import { coverageSkill, passBlocking, passRushing, routeRunning } from "../model/ratings.ts";
 import { coachingEdges, offenseProfile } from "./coaching.ts";
+import { CONCEPT_EFFECT, OFFENSE_CONCEPT_INFO } from "./concepts.ts";
 
 type Band = "screen" | "short" | "intermediate" | "deep";
 const BAND_NAMES: Band[] = ["screen", "short", "intermediate", "deep"];
@@ -117,11 +119,17 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const blitzBite = extraRushers * clamp(1 - 0.35 * hot, 0.4, 1.6);
   const extraBlockers = Math.max(0, o.tes.length - 1) + (o.rbs.length - 1);
   const home = ctx.homeField ?? 0;
-  // Play action from under center on early downs freezes the second level.
-  const playAction = f.offense.set === "under_center" && sit.down <= 2 ? edge(q.playAction) : null;
+  // The duel: the offense's concept sets the depth (and play action, a quick release); the matchup gives an edge.
+  const call = duel(ctx);
+  const concept = call && OFFENSE_CONCEPT_INFO[call.offense].kind === "pass" ? OFFENSE_CONCEPT_INFO[call.offense] : null;
+  const callEdge = concept ? call!.edge : 0;
+  // Play action from under center on early downs freezes the second level (a play-action call sells it from anywhere).
+  const playAction = concept?.playAction || (f.offense.set === "under_center" && sit.down <= 2) ? edge(q.playAction) : null;
   const sackRate = clamp(
     (0.062 - 0.025 * line - 0.012 * hot - HOME_FIELD.sackRate * home + 0.018 * blitzBite - 0.006 * extraBlockers + (playAction !== null ? 0.004 : 0)) *
-      clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5), // slippery QBs escape
+      clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5) * // slippery QBs escape
+      (concept?.quickRelease ? 0.75 : 1) -
+      CONCEPT_EFFECT.sack * callEdge,
     0.015,
     0.2,
   );
@@ -171,7 +179,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   // Uncovered receivers are still tackled by someone: the nearest underneath defender.
   const nearest = r.cover ?? pickTackler(rng, d, 5);
 
-  const band = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0, offenseProfile(ctx.offense).deep);
+  const picked = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0, offenseProfile(ctx.offense).deep);
+  const band: Band = concept?.band ?? picked;
   const spec = BANDS[band];
   const airYards = Math.min(spec.air(rng), sit.yardline >= 100 ? 0 : 100 - sit.yardline);
 
@@ -197,6 +206,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
       contested -
       pressurePenalty +
       paBoost +
+      CONCEPT_EFFECT.completion * callEdge +
       HOME_FIELD.completion * home +
       coachingEdges(ctx.offense, ctx.defense).completion,
     0.1,
@@ -270,7 +280,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
 
   // Completion: add yards after the catch, with the odd broken tackle for a big gain.
   // No deep help (Cover 0) or an uncovered receiver means more room to run.
-  let yac = band === "screen" ? Math.max(0, rng.normal(5, 3)) : Math.max(0, rng.normal(3, 2));
+  // The duel: the right call (a screen into a blitz) leaves room to run; the wrong one runs into a wall.
+  let yac = Math.max(0, (band === "screen" ? rng.normal(5, 3) : rng.normal(3, 2)) + CONCEPT_EFFECT.yac * callEdge * (band === "screen" || band === "short" ? 1.5 : 1));
   const openField = (shell.deepSafeties === 0 ? 0.04 : 0) + (r.cover ? 0 : 0.04) - 0.01 * shell.deepSafeties;
   const moves = edge((t.elusiveness + t.speed + t.jukeMove + t.breakTackle) / 4);
   const breakRate = clamp(0.045 + 0.03 * moves + 0.02 * sep + openField - 0.015 * edge(nearest.ratings.tackle), 0.02, 0.2);
