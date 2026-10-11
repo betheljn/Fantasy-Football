@@ -35,6 +35,10 @@ export function OnlineHub() {
     const started = d.coaching?.game === next.id;
     items.push({ key: "coach", icon: "american-football-outline", title: started ? "Keep coaching your game" : `Coach your game ${next.home === userTeam ? "vs" : "at"} ${opp}`, detail: started ? "Your calls so far are with the league" : "Make the calls; the league plays it with them when the week is played", go: `/coach/${next.id}` });
   }
+  // Against a friend: a duel, both of you calling every snap.
+  if (next && opp && me.humans[opp]) {
+    items.push({ key: "duel", icon: "flash-outline", title: `Duel ${next.home === userTeam ? "vs" : "at"} ${opp}`, detail: "You both call every snap; neither sees the other's call. Your coaches finish anything left when the week is played", go: `/coach/${next.id}` });
+  }
   if (off && !madeCall) items.push({ key: "call", icon: "clipboard-outline", title: `Offseason: ${STAGE_NAMES[off.stage]}`, detail: "Make your call, or the AI makes it when the stage closes", go: "/offseason" });
   if (off && madeCall) items.push({ key: "call", icon: "checkmark-done-outline", title: `Offseason: ${STAGE_NAMES[off.stage]}`, detail: "Your call is in. Change it until the stage closes", go: "/offseason" });
   if (waiting) items.push({ key: "offers", icon: "mail-unread-outline", title: `${waiting} trade offer${waiting === 1 ? "" : "s"} from friends`, detail: "Accept or decline", go: "/offers" });

@@ -1,7 +1,7 @@
 // Talking to the online-leagues server (apps/server). The server runs the sim
 // for online leagues; the app only asks it for things and shows the answers.
 import Constants from "expo-constants";
-import type { CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
+import type { DuelView, CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
 import { Platform } from "react-native";
 
 /**
@@ -143,6 +143,16 @@ export interface MoveAnswer {
   saveVersion: number;
 }
 
+/** Your duel this week (a game against a friend), as the server lets you see it. */
+export interface OnlineDuel extends DuelView {
+  game: string;
+  home: string;
+  away: string;
+  week: number;
+  /** Calls you handed to your coaches, if any. */
+  handoff: { until: "drive" | "half" | "game"; at: number } | null;
+}
+
 /** A trade one friend offered another. */
 export interface TradeOffer {
   id: string;
@@ -195,6 +205,9 @@ export const api = {
     call<{ sent: boolean; problems: string[]; offer?: TradeOffer }>("POST", `/leagues/${id}/offers`, { proposal }, token),
   answerOffer: (id: string, token: string, offerId: string, action: "accept" | "decline" | "withdraw") =>
     call<{ offer: TradeOffer; problems: string[]; saveVersion?: number }>("POST", `/leagues/${id}/offers/${offerId}`, { action }, token),
+  duel: (id: string, token: string) => call<{ duel: OnlineDuel | null }>("GET", `/leagues/${id}/duel`, undefined, token),
+  duelCall: (id: string, token: string, at: number, coachCall: CoachCall | null) => call<{ duel: OnlineDuel }>("POST", `/leagues/${id}/duel/call`, { at, call: coachCall }, token),
+  duelHand: (id: string, token: string, until: "drive" | "half" | "game") => call<{ duel: OnlineDuel }>("POST", `/leagues/${id}/duel/hand`, { until }, token),
   games: (id: string, token: string, week?: number) =>
     call<{ season: number; week: number; games: OnlineGame[] }>("GET", `/leagues/${id}/games${week ? `?week=${week}` : ""}`, undefined, token),
 };

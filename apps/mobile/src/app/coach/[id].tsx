@@ -7,6 +7,7 @@ import { AppState, Text } from "react-native";
 import { coachScheduledGame } from "@dynasty/sim";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { CoachView } from "../../screens/CoachView";
+import { DuelScreen } from "../../screens/DuelScreen";
 import { useTheme } from "../../theme";
 import { teamShort } from "../../field/colors";
 
@@ -21,7 +22,7 @@ export default function CoachRoute() {
   const { league, schedule, results, userTeam, weeksPlayed } = useLeague();
   const g = schedule.games.find((x) => x.id === id);
   const mine = !!g && (g.home === userTeam || g.away === userTeam);
-  // Online: your games against AI teams (games between friends are left to the coaches for now).
+  // Online: your games against AI teams here; a game against a friend is a duel (below).
   const friendly = !!g && !!d.online && !!d.online.humans[g.home === userTeam ? g.away : g.home];
   const seasonOn = d.online ? d.canMakeMoves : d.phase === "season";
   const playable = !!g && mine && !friendly && seasonOn && g.week === weeksPlayed + 1 && !results.some((r) => r.id === id);
@@ -52,7 +53,16 @@ export default function CoachRoute() {
     };
   }, []);
 
-  if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>{friendly ? "Games between friends are left to the coaches for now." : "This game can't be coached now."}</Text>;
+  const duelOn = friendly && mine && seasonOn && !!g && g.week === weeksPlayed + 1 && !results.some((r) => r.id === id);
+  if (duelOn && d.online && g) {
+    return (
+      <>
+        <Stack.Screen options={{ title: `${teamShort(g.away)} at ${teamShort(g.home)} · Duel` }} />
+        <DuelScreen league={league} game={g} online={d.online} onGone={d.refreshOnline} />
+      </>
+    );
+  }
+  if (!game || !g) return <Text style={{ padding: 16, color: t.text }}>This game can't be coached now.</Text>;
   return (
     <>
       <Stack.Screen options={{ title: `${teamShort(g.away)} at ${teamShort(g.home)} · Week ${g.week}` }} />

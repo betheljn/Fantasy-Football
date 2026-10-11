@@ -57,9 +57,17 @@ interface Props {
   onCall: () => void;
   /** At the final whistle. */
   finish: { label: string; onPress: () => void };
+  /** Your team (default: the coached team). In a duel you may be either side. */
+  team?: string;
+  /** A duel: the game isn't over, the next call is your friend's ("Waiting on Sam's call"). */
+  waiting?: string | null;
+  /** A duel, while waiting: the snap at hand. */
+  waitingAt?: { situation: GamePrompt["situation"]; offense: string; defense: string } | null;
+  /** A duel: hand your calls to your coaches (the server does it). */
+  onHand?: (until: "drive" | "half" | "game") => void;
 }
 
-export function CoachView({ game, home, away, title, onCall, finish }: Props) {
+export function CoachView({ game, home, away, title, onCall, finish, team, waiting, waitingAt, onHand }: Props) {
   const t = useTheme();
   const s = styles(t);
   // The game object changes in place; this counts the calls so the screen redraws.
@@ -73,7 +81,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
   // Mid-game, the latest play looks on to the coming snap (who has the ball, and where).
   const prompt = game.prompt;
   const wp = useMemo(() => {
-    if (!prompt) return winChances(sofar, edge);
+    if (!prompt) return waitingAt ? winChances(sofar, edge, { team: waitingAt.offense, yardline: waitingAt.situation.yardline }) : winChances(sofar, edge);
     const last = sofar.plays.at(-1)?.event;
     const next =
       prompt.kind === "offense" || prompt.kind === "defense"
@@ -82,10 +90,10 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
           ? { team: prompt.team, yardline: 25 }
           : { team: last?.offense ?? prompt.team, yardline: prompt.situation.yardline };
     return winChances(sofar, edge, next);
-  }, [sofar, edge, prompt]);
+  }, [sofar, edge, prompt, waitingAt]);
   const pb = usePlayback(plays, true);
   const play = pb.play;
-  const over = !game.prompt;
+  const over = !game.prompt && !waiting;
   // The field may still be catching up to the game: show the score as of the play on it.
   const caughtUp = !play || (pb.pos === plays.length - 1 && pb.done);
   const revealed = !play ? -1 : caughtUp ? sofar.plays.length - 1 : pb.done ? play.index : play.index - 1;
@@ -98,6 +106,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
     onCall();
   };
   const hand = (what: "drive" | "half" | "game") => {
+    if (onHand) return onHand(what);
     if (what === "drive") game.autoDrive();
     else if (what === "half") game.autoHalf();
     else while (game.prompt) game.answer();
@@ -122,9 +131,9 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       <Scoreboard
         game={sofar}
         score={over && caughtUp ? game.result!.score : score}
-        possession={over && caughtUp ? null : caughtUp && p ? offenseOf(p) : (play?.offense ?? null)}
-        status={over && caughtUp ? `Final${game.result!.overtime ? " OT" : ""}` : caughtUp && p ? clockLine(p) : play ? play.clock : title}
-        sub={over && caughtUp ? title : caughtUp && p ? downLine(p) : play?.situation || " "}
+        possession={over && caughtUp ? null : caughtUp && p ? offenseOf(p) : caughtUp && waitingAt ? waitingAt.offense : (play?.offense ?? null)}
+        status={over && caughtUp ? `Final${game.result!.overtime ? " OT" : ""}` : caughtUp && p ? clockLine(p) : caughtUp && waitingAt ? clockOf(waitingAt.situation) : play ? play.clock : title}
+        sub={over && caughtUp ? title : caughtUp && p ? downLine(p) : caughtUp && waitingAt ? formatDownDistance(waitingAt.situation, waitingAt.offense, waitingAt.defense) : play?.situation || " "}
       />
       <WinBar game={sofar} home={chance} />
 
@@ -164,7 +173,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       <Text style={s.caption} numberOfLines={2}>
         {play ? (pb.done ? play.caption : "…") : ""}
       </Text>
-      {play && pb.done ? <Reveal event={sofar.plays[play.index]?.event} team={coachedTeam(game)} theme={t} /> : null}
+      {play && pb.done ? <Reveal event={sofar.plays[play.index]?.event} team={team ?? coachedTeam(game)} theme={t} /> : null}
 
       <View style={s.controls}>
         <Small label={`${pb.speed}×`} onPress={pb.cycleSpeed} theme={t} />
@@ -172,7 +181,13 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       </View>
 
       <ScrollView style={s.bar} contentContainerStyle={{ padding: 12, gap: 10 }}>
-        {p && !caughtUp ? (
+        {waiting && caughtUp ? (
+          <View style={{ alignItems: "center", gap: 10, paddingVertical: 16 }}>
+            <Text style={s.head}>{waiting}</Text>
+            <Text style={s.coach}>Neither of you sees the other's call until the snap.</Text>
+            {onHand ? <Small label="Coaches: the rest of the game" onPress={() => hand("game")} theme={t} /> : null}
+          </View>
+        ) : (p || waiting) && !caughtUp ? (
           // The next call waits for the field, so it doesn't give the play away.
           <View style={{ alignItems: "center", gap: 8, paddingVertical: 12 }}>
             <Text style={s.coach}>The play's on…</Text>
@@ -234,7 +249,11 @@ function Reveal({ event, team, theme: t }: { event: GamePrompt["sofar"]["plays"]
 
 /** "Q2 4:12" for a pause. */
 function clockLine(p: GamePrompt): string {
-  return `${p.situation.quarter <= 4 ? `Q${p.situation.quarter}` : "OT"} ${formatClock(p.situation.clock)}`;
+  return clockOf(p.situation);
+}
+
+function clockOf(s: GamePrompt["situation"]): string {
+  return `${s.quarter <= 4 ? `Q${s.quarter}` : "OT"} ${formatClock(s.clock)}`;
 }
 
 /** Who has the ball at a pause. */

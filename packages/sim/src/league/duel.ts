@@ -32,6 +32,8 @@ export interface DuelView {
   prompt: DuelPrompt | null;
   /** Calls made so far (the index the next call goes in). */
   made: number;
+  /** The snap a call is waiting on (public: both sides see the down, distance and who has the ball). */
+  at: { situation: SnapPrompt["situation"]; offense: string; defense: string } | null;
   over: boolean;
 }
 
@@ -53,7 +55,11 @@ export function duelView(league: League, game: ScheduledGame, calls: ReadonlyArr
     const { sofar: _sofar, ...rest } = p;
     prompt = rest;
   }
-  return { calls: visible, turn: p?.team ?? null, prompt, made: g.calls.length, over: !p };
+  // Who has the ball: the offense's call or the defense's are about a snap; a timeout or a try, the last play's offense.
+  const last = p?.sofar.plays.at(-1)?.event;
+  const offense = !p ? null : p.kind === "offense" || p.kind === "try" ? p.team : p.kind === "defense" ? p.opponent : (last?.offense ?? p.team);
+  const at = p && offense ? { situation: p.situation, offense, defense: offense === game.home ? game.away : game.home } : null;
+  return { calls: visible, turn: p?.team ?? null, prompt, made: g.calls.length, over: !p, at };
 }
 
 /**

@@ -370,7 +370,7 @@ and replays don't change).
 3. Rankings after title games and each playoff round; news, radio, picks
 4. App and server: the new calendar, championship week, playoff picture
 
-### Milestone 22: the play duel (the core of the game)
+### Milestone 22: the play duel (the core of the game) (done)
 Playing, not watching: before each snap you and the opponent each pick a
 call; the matchup of the calls, the players' ratings and a little engine
 randomness decide the play.
