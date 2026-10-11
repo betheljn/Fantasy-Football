@@ -49,7 +49,7 @@ export interface GameResult {
   /** The rules it was played under. */
   rules?: number;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
-  coached?: { team: string; calls: Array<CoachCall | null> };
+  coached?: { team: string; calls: Array<CoachCall | null>; rival?: string };
 }
 
 export interface GameOptions {
@@ -59,6 +59,8 @@ export interface GameOptions {
   playoff?: boolean;
   /** A team whose calls a person makes (see gameSteps). */
   coach?: string;
+  /** The other team, also coached by a person (a duel between friends): its answers are in `calls` too, in the order the game asked. */
+  rival?: string;
   /** The coached team's answers, in order, to replay a coached game (missing ones take the coaches' call). */
   calls?: ReadonlyArray<CoachCall | null>;
   /** The rules to play under (default: the current ones); replays pass the game's own. */
@@ -276,7 +278,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
 
       if (ko.touchdown) {
         let two: boolean | undefined;
-        if (options.coach === receiving.abbr) {
+        if (options.coach === receiving.abbr || (options.rival !== undefined && options.rival === receiving.abbr)) {
           const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length, sofar: snapshot() };
           answers.push(answer ?? null);
           two = tryAnswer(answer);
@@ -315,6 +317,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
       ...(options.coach ? { coach: options.coach, log: live } : {}),
+      ...(options.coach && options.rival ? { rival: options.rival } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),
       ...(book ? { book } : {}),
     });
@@ -352,6 +355,6 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     final: { quarter, clock },
     injuries: injuries.all,
     rules: options.rules ?? RULES_VERSION,
-    ...(options.coach ? { coached: { team: options.coach, calls: answers } } : {}),
+    ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival } : {}) } } : {}),
   };
 }

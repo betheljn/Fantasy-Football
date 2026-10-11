@@ -41,7 +41,8 @@ export default function GameRoute() {
       }
       const teams = teamsFor(log, league, summary);
       // Replayed under the rules it was played with (older games, the older rules).
-      const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls } : {};
+      // (A duel between friends has both coaches' calls.)
+      const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls, ...(summary.coached.rival ? { rival: summary.coached.rival } : {}) } : {};
       return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1 }) };
     }
     // Championship week (format 2): a division title game.

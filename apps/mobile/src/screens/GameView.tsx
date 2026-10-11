@@ -22,6 +22,19 @@ import { Leaders, Pregame, Recap, Scoreboard, WinBar, type GameContext } from ".
 type Tab = "preview" | "plays" | "leaders" | "box" | "recap";
 
 /** Watch one finished game (the sim has already decided it; this only replays it). */
+/** Whose calls a coached game's report is about: yours in a duel between friends, else the coached team. */
+function reportTeam(game: GameResult, mine?: string): string {
+  const c = game.coached!;
+  return c.rival && mine === c.rival ? c.rival : c.team;
+}
+
+/** In a duel, the other coach (the report replays their calls too). */
+function rivalOf(game: GameResult, mine?: string): { rival?: string } {
+  const c = game.coached!;
+  if (!c.rival) return {};
+  return { rival: reportTeam(game, mine) === c.team ? c.rival : c.team };
+}
+
 export function GameView({ game, home, away, context, finish, startAtEnd }: { game: GameResult; home: Team; away: Team; context?: GameContext; finish?: { label: string; onPress: () => void }; startAtEnd?: boolean }) {
   const theme = useTheme();
   const s = styles(theme);
@@ -36,12 +49,12 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
 
   // A game you coached: how your calls went (worked out when the recap opens).
   const report = useMemo(
-    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, game.coached.team, game.coached.calls, game.rules !== undefined ? { rules: game.rules } : {}) : null),
+    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, reportTeam(game, context?.mine), game.coached.calls, { ...(game.rules !== undefined ? { rules: game.rules } : {}), ...rivalOf(game, context?.mine) }) : null),
     [tab, game, home, away],
   );
 
   // The play duel, for your team (the one you coached, or yours if it's playing).
-  const duelTeam = game.coached?.team ?? (context?.mine && (context.mine === game.home || context.mine === game.away) ? context.mine : undefined);
+  const duelTeam = (game.coached ? reportTeam(game, context?.mine) : undefined) ?? (context?.mine && (context.mine === game.home || context.mine === game.away) ? context.mine : undefined);
   const duel = useMemo(() => (tab === "recap" && duelTeam ? duelRecap(game, duelTeam) : null), [tab, game, duelTeam]);
 
   const pb = usePlayback(plays);

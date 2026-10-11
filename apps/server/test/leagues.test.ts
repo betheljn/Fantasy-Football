@@ -279,3 +279,41 @@ describe("programs in the lobby", () => {
     expect(state.programs).toBeUndefined();
   });
 });
+
+describe("duels between friends", () => {
+  it("each friend sees their own call, makes it, and concepts pass the call schema", { timeout: 60_000 }, async () => {
+    const created = await post("/leagues", { name: "Duel Night", displayName: "Jai" });
+    const { token: jai, league } = created.json();
+    made.push(league.id);
+    const sam = (await post("/join", { inviteCode: league.inviteCode, displayName: "Sam" })).json().token;
+    // Sam claims Ohio's week-1 opponent, so the two meet in week 1.
+    const { scheduleOf } = await import("../src/season.ts");
+    const state = decodeState((await get(`/leagues/${league.id}/save`, jai)).body);
+    const g = scheduleOf(state).games.find((x) => x.week === 1 && (x.home === "OH" || x.away === "OH"))!;
+    const rival = g.home === "OH" ? g.away : g.home;
+    expect((await post(`/leagues/${league.id}/claim`, { team: "OH" }, jai)).statusCode).toBe(200);
+    expect((await post(`/leagues/${league.id}/claim`, { team: rival }, sam)).statusCode).toBe(200);
+    expect((await post(`/leagues/${league.id}/start`, {}, jai)).statusCode).toBe(200);
+
+    const views = await Promise.all([jai, sam].map(async (t) => (await get(`/leagues/${league.id}/duel`, t)).json().duel));
+    expect(views[0].game).toBe(g.id);
+    const turn = views.findIndex((v) => v.prompt);
+    const [mine, theirs] = turn === 0 ? [jai, sam] : [sam, jai];
+    const prompt = views[turn].prompt;
+    expect(prompt.kind).toBe("offense");
+    // Out of turn: refused. In turn, a concept call with personnel and alignment (four fields) is taken.
+    expect((await post(`/leagues/${league.id}/duel/call`, { at: 0, call: null }, theirs)).statusCode).toBe(409);
+    const call = { call: "pass", concept: "quick", personnel: prompt.formation.personnel, set: "shotgun" };
+    const done = await post(`/leagues/${league.id}/duel/call`, { at: 0, call }, mine);
+    expect(done.statusCode).toBe(200);
+    expect(done.json().duel.made).toBe(1);
+    // Now it's the other friend's defense, and they can't see the call.
+    const other = (await get(`/leagues/${league.id}/duel`, theirs)).json().duel;
+    expect(other.prompt.kind).toBe("defense");
+    expect(other.calls).toEqual([]);
+    expect((await post(`/leagues/${league.id}/duel/call`, { at: 1, call: { concept: "cover_9" } }, theirs)).statusCode).toBe(400);
+    expect((await post(`/leagues/${league.id}/duel/call`, { at: 1, call: { concept: "man_press" } }, theirs)).statusCode).toBe(200);
+    // Handing the rest to the coaches.
+    expect((await post(`/leagues/${league.id}/duel/hand`, { until: "game" }, mine)).statusCode).toBe(200);
+  });
+});

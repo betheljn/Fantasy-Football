@@ -2,6 +2,7 @@
 // format) and who runs which team. Built and changed only by the sim.
 import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
+import type { DuelEntry } from "./duels.ts";
 
 export const STATE_VERSION = 1;
 
@@ -18,6 +19,8 @@ export interface LeagueState {
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
   /** Friends coaching their game this week: their calls so far, by team (private until the week is played). */
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
+  /** This week's games between friends: both coaches' calls, by game id (private: each sees only their duelView). */
+  duels?: Record<string, DuelEntry>;
   /** In the lobby: each friend's look and coach for the team they claimed (by member id), made when the league starts. */
   setups?: Record<string, TeamSetupChoice>;
   /** In the lobby: each friend's top three skill groups (by member id); their program is built when the league starts. */

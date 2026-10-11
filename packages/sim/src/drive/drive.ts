@@ -77,6 +77,8 @@ export interface DriveInput {
   injuries?: InjuryTracker;
   /** A team whose calls are made by a person: the drive pauses for its calls (see SnapPrompt). */
   coach?: string;
+  /** The other team, also called by a person (a duel between friends): its calls pause the drive too. */
+  rival?: string;
   /** Where to log the drive's plays as they happen (so a paused game can show the drive so far). */
   log?: DrivePlay[];
   /** The rules version (default: the current one). */
@@ -296,7 +298,7 @@ const SCRIMMAGE_KINDS = new Set<PlayEvent["kind"]>(["run", "pass", "kneel", "spi
 
 /** A drive with no coached team: runs straight through. */
 export function simulateDrive(rng: Rng, input: DriveInput): DriveResult {
-  const { coach: _coach, ...uncoached } = input;
+  const { coach: _coach, rival: _rival, ...uncoached } = input;
   const r = driveSteps(rng, uncoached).next();
   if (!r.done) throw new Error("An uncoached drive asked for a call");
   return r.value;
@@ -325,6 +327,8 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
   let elapsed = 0;
 
   const homeField = input.homeTeam === off ? 1 : input.homeTeam === def ? -1 : 0;
+  /** Is this team's call made by a person? */
+  const coached = (team: string) => team === input.coach || (input.rival !== undefined && team === input.rival);
   // The play duel: both sides pick a concept before each snap.
   const duel = (input.rules ?? RULES_VERSION) >= 4;
 
@@ -389,7 +393,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
   const conversion = function* (team: Team, other: Team): Generator<SnapPrompt, void, CoachCall | undefined> {
     const marginAfterTd =
       input.score[team.abbr]! + points[team.abbr]! - (input.score[other.abbr]! + points[other.abbr]!);
-    const two = input.coach === team.abbr ? tryAnswer(yield tryPrompt(team, other.abbr, quarter, clock, marginAfterTd, timeouts)) : undefined;
+    const two = coached(team.abbr) ? tryAnswer(yield tryPrompt(team, other.abbr, quarter, clock, marginAfterTd, timeouts)) : undefined;
     record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two, input.rules), clock);
   };
 
@@ -403,7 +407,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     // The coaches' concepts, drawn only for a run or a pass (so other calls play out as before).
     let concepts: OffenseRead | undefined = duel && (call === "run" || call === "pass") ? readOffense() : undefined;
     let chosen: OffenseConcept | undefined;
-    if (input.coach === off) {
+    if (coached(off)) {
       const options = callOptions(cc, call);
       const groups = personnelOptions(offense);
       const answer = yield {
@@ -444,7 +448,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
           (defenseConcept = chooseDefenseConcept(rng, defense, offense, cc.situation, input.book, offenseFormation.personnel, offenseFormation.set, passProbability({ ...cc, personnel: offenseFormation.personnel, set: offenseFormation.set }), prev))
       : undefined;
     let defenseFormation = scrimmageCall ? chooseDefense(rng, defense, cc, offenseFormation, pickDefense) : undefined;
-    if (defenseFormation && input.coach === def) {
+    if (defenseFormation && coached(def)) {
       const answer = yield {
         kind: "defense",
         ...base(def),
@@ -585,14 +589,21 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       const callerTeam = caller === "offense" ? offense : caller === "defense" ? defense : undefined;
       const miss = clockMistakeChance(callerTeam);
       if (caller && miss > 0 && rng.chance(miss)) caller = null;
-      // A coached team decides its own timeouts late in a half (unless the other side just stopped the clock).
-      const side = input.coach === off ? "offense" : input.coach === def ? "defense" : null;
-      if (side && caller !== (side === "offense" ? "defense" : "offense") && timeouts[input.coach!]! > 0 && clock > 0 && (caller === side || halfSecondsLeft(next.situation) <= TIMEOUT_WINDOW)) {
-        const answer = yield { kind: "timeout", ...base(input.coach!), suggestion: caller === side };
-        if (answer) {
-          if (!("timeout" in answer)) wrongAnswer("timeout");
-          caller = answer.timeout ? side : null;
+      // A coached team decides its own timeouts late in a half (unless an uncoached other side just
+      // stopped the clock). In a duel both are asked, the offense first; the first to take one stops it.
+      const sides = (["offense", "defense"] as const).filter((sd) => coached(sd === "offense" ? off : def));
+      for (const side of sides) {
+        const team = side === "offense" ? off : def;
+        const other = side === "offense" ? "defense" : "offense";
+        if (!sides.includes(other) && caller === other) break;
+        if (timeouts[team]! > 0 && clock > 0 && (caller === side || halfSecondsLeft(next.situation) <= TIMEOUT_WINDOW)) {
+          const answer = yield { kind: "timeout", ...base(team), suggestion: caller === side };
+          if (answer) {
+            if (!("timeout" in answer)) wrongAnswer("timeout");
+            caller = answer.timeout ? side : caller === side ? null : caller;
+          }
         }
+        if (caller === side) break;
       }
       if (caller) {
         const team = caller === "offense" ? off : def;

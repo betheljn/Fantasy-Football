@@ -28,6 +28,7 @@ import {
   type CoachCall,
 } from "@dynasty/sim";
 import { scheduleOf } from "./season.ts";
+import { duelUnderWay } from "./duels.ts";
 import type { LeagueState } from "./state.ts";
 
 export type Move =
@@ -70,6 +71,7 @@ export function friendTradeProblems(s: LeagueState, team: string, t: TradePropos
   if (!w) return ["Trading is closed right now."];
   if (t.from !== team) return ["You can only offer your own players and picks."];
   if (!s.humans[t.to] || t.to === team) return ["Offers go to a friend's team."];
+  if (duelUnderWay(s, t.from) || duelUnderWay(s, t.to)) return ["A duel is under way: trades wait until it's played."];
   return checkTrade(s.dynasty.league, w, t);
 }
 
@@ -94,6 +96,7 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const t = move.proposal;
     if (t.from !== team) return refuse("You can only offer your own players and picks.");
     if (s.humans[t.to]) return refuse("Trades between friends aren't in online leagues yet.");
+    if (duelUnderWay(s, team)) return refuse("Your duel is under way: trades wait until it's played.");
     const problems = checkTrade(league, w, t);
     if (problems.length) return refuse(...problems);
     const verdict = judgeTrade(league, w, t, t.to, true);
@@ -103,11 +106,13 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
 
   if (!seasonOn) return refuse("Moves can be made during the regular season.");
   const own = league.teams[team]!;
+  // A duel under way is played with the rosters it started with.
+  if (move.kind !== "coach" && duelUnderWay(s, team)) return refuse("Your duel is under way: roster moves wait until it's played.");
 
   if (move.kind === "coach") {
     const g = scheduleOf(s).games.find((x) => x.id === move.game);
     if (!g || g.week !== week || (g.home !== team && g.away !== team)) return refuse("That isn't your game this week.");
-    if (s.humans[g.home === team ? g.away : g.home]) return refuse("Games between friends are left to the coaches for now.");
+    if (s.humans[g.home === team ? g.away : g.home]) return refuse("Games between friends are duels: call yours from the duel screen.");
     if (move.calls.length > MAX_CALLS) return refuse("Too many calls.");
     const { [team]: _old, ...others } = s.coaching ?? {};
     const coaching = move.calls.length ? { ...others, [team]: { game: move.game, calls: move.calls } } : others;

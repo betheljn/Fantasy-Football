@@ -387,6 +387,13 @@ drawn up, so a coach who doesn't fit your philosophy costs you.
 3. Sim: the reveal and the duel recap (calls won and lost, why)
 4. App: the call sheet (concept cards before each snap, the reveal after)
 5. Online: games between friends become real duels
+   5a. Sim: a game both teams' coaches call (one list of calls in the order
+       the game asks); each coach sees the calls up to the last play, never
+       the other's call before making their own
+   5b. Server: the duel call by call (your view, your call, hand a drive, a
+       half or the game to your coaches); roster moves wait while a duel is
+       under way; the week plays it, the coaches calling anything left
+   5c. App: the duel screen (your call, waiting on your friend, the reveal)
 
 ### Milestone 23: owner and coach progression
 Decided: you are the owner, and the owner is who levels up; coaches level

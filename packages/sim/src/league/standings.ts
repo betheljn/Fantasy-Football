@@ -9,6 +9,8 @@ import type { CoachCall } from "../drive/drive.ts";
 export interface CoachedCalls {
   team: string;
   calls: Array<CoachCall | null>;
+  /** A duel between friends: the other team, also coached (its answers are in `calls`, in the order the game asked). */
+  rival?: string;
 }
 
 /** The outcome of one scheduled game: all standings need. */

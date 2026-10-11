@@ -10,11 +10,12 @@ import { advanceLeague, changeLeague, deadlineAfter } from "./advance.ts";
 import { fail, hashToken, newInviteCode, newToken, requireMember } from "./auth.ts";
 import type { Db } from "./db.ts";
 import { MAX_CALLS, applyMove, type Move } from "./moves.ts";
+import { duelFor, handDuel, makeDuelCall } from "./duels.ts";
 import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
-import { SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { DEFENSE_CONCEPTS, OFFENSE_CONCEPTS, SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type CoachCall, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -458,9 +459,11 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   const callSchema = {
     type: "object",
     additionalProperties: false,
-    maxProperties: 3,
+    maxProperties: 4,
     properties: {
       call: { enum: ["run", "pass", "punt", "field_goal", "kneel", "spike"] },
+      // The play duel: a concept on either side of the ball (the sim checks it fits the call).
+      concept: { enum: [...OFFENSE_CONCEPTS, ...DEFENSE_CONCEPTS] },
       personnel: { enum: ["10", "11", "12", "13", "21"] },
       set: { enum: ["shotgun", "under_center"] },
       package: { enum: ["base", "nickel", "dime", "goal_line"] },
@@ -502,6 +505,53 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     return { ...r.result, saveVersion: r.version };
   });
 
+  /** Your duel this week (a game against a friend): what you may see of it, and your call if it's waiting. */
+  app.get<{ Params: { id: string } }>("/leagues/:id/duel", async (req, reply) => {
+    const member = await memberOf(req, reply, req.params.id);
+    if (!member) return reply;
+    if (!member.team) return { duel: null };
+    const { state, version } = await loadState(req.params.id);
+    return { duel: duelFor(state, member.team), saveVersion: version };
+  });
+
+  /** A call in your duel (null: your coaches' call); `at` is how many calls you saw made. */
+  app.post<{ Params: { id: string }; Body: { at: number; call: CoachCall | null } }>(
+    "/leagues/:id/duel/call",
+    { schema: { body: { type: "object", required: ["at", "call"], properties: { at: { type: "integer", minimum: 0, maximum: MAX_CALLS }, call: { anyOf: [{ type: "null" }, callSchema] } } } } },
+    async (req, reply) => {
+      const member = await memberOf(req, reply, req.params.id);
+      if (!member) return reply;
+      if (!member.team) return fail(reply, 409, "Claim a team first");
+      const team = member.team;
+      const r = await changeLeague(db, member.leagueId, (state) => {
+        const d = makeDuelCall(state, team, req.body.at, req.body.call);
+        return { state: d.state, result: d.state ? { done: true as const, duel: duelFor(d.state, team) } : { done: false as const, problem: d.problem } };
+      });
+      if (!r) return fail(reply, 409, "The league is busy (a week may be being played): try again");
+      if (!r.result.done) return fail(reply, 409, r.result.problem);
+      return { duel: r.result.duel, saveVersion: r.version };
+    },
+  );
+
+  /** Hand your calls to your coaches until the end of this drive, this half, or the game. */
+  app.post<{ Params: { id: string }; Body: { until: "drive" | "half" | "game" } }>(
+    "/leagues/:id/duel/hand",
+    { schema: { body: { type: "object", required: ["until"], properties: { until: { enum: ["drive", "half", "game"] } } } } },
+    async (req, reply) => {
+      const member = await memberOf(req, reply, req.params.id);
+      if (!member) return reply;
+      if (!member.team) return fail(reply, 409, "Claim a team first");
+      const team = member.team;
+      const r = await changeLeague(db, member.leagueId, (state) => {
+        const d = handDuel(state, team, req.body.until);
+        return { state: d.state, result: d.state ? { done: true as const, duel: duelFor(d.state, team) } : { done: false as const, problem: d.problem } };
+      });
+      if (!r) return fail(reply, 409, "The league is busy (a week may be being played): try again");
+      if (!r.result.done) return fail(reply, 409, r.result.problem);
+      return { duel: r.result.duel, saveVersion: r.version };
+    },
+  );
+
   /** A week's results (the last week played if none is given). */
   app.get<{ Params: { id: string }; Querystring: { week?: number } }>(
     "/leagues/:id/games",
@@ -524,7 +574,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     const { state, version, data: raw } = await loadState(req.params.id);
     reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
     // In the offseason, other friends' calls for the open stage stay private (and everyone's coaching calls).
-    const data = state.offseason || state.coaching ? encodeState(forMember(state, member.team)) : raw;
+    const data = state.offseason || state.coaching || state.duels ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
     if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));
     return reply.send(data);

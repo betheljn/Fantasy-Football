@@ -43,6 +43,11 @@ export function recordChoice(s: LeagueState, team: string, c: OffseasonChoice): 
 
 /** The save as one friend may see it: other friends' calls for the open stage are theirs alone. */
 export function forMember(s: LeagueState, team: string | null): LeagueState {
+  // Duels are shown call by call (GET /duel), never whole.
+  if (s.duels) {
+    const { duels: _duels, ...rest } = s;
+    s = rest;
+  }
   // Other friends' coaching calls are theirs alone.
   if (s.coaching && Object.keys(s.coaching).some((t) => t !== team)) {
     const mine = team ? s.coaching[team] : undefined;

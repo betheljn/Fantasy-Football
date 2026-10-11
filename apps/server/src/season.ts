@@ -43,6 +43,7 @@ import {
   type TradeRecord,
 } from "@dynasty/sim";
 import type { LeagueState } from "./state.ts";
+import { weekDuels } from "./duels.ts";
 
 /** Everything played this season so far (cleared when the next season opens). */
 export interface SeasonProgress {
@@ -127,7 +128,9 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   // Friends' coached games are played with their calls (anything they didn't call is their coaches').
   const coached = Object.entries(s.coaching ?? {})
     .filter(([, c]) => sched.games.some((g) => g.id === c.game && g.week === week))
-    .map(([team, c]) => ({ game: c.game, team, calls: c.calls }));
+    .map(([team, c]) => ({ game: c.game, team, calls: c.calls }) as { game: string; team: string; calls: typeof c.calls; rival?: string })
+    // Games between friends: both coaches' calls.
+    .concat(weekDuels(s, week));
   const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g), coached);
   const collection = collectWeek(structuredClone(p.collection), league0, sched.season, played.games);
   const hurt = injuryNews(league0, played.games.flatMap((g) => g.result.injuries), week);
@@ -159,9 +162,9 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   };
 }
 
-/** The week's coached calls are used up once it's played. */
+/** The week's coached calls (and duels) are used up once it's played. */
 function withoutCoaching(s: LeagueState): LeagueState {
-  const { coaching: _done, ...rest } = s;
+  const { coaching: _done, duels: _duels, ...rest } = s;
   return rest;
 }
 

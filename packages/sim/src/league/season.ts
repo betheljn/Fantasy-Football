@@ -35,7 +35,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
   // Injured players sit.
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  const result = simulateGame(home.team, away.team, seed, coached ? { coach: coached.team, calls: coached.calls } : {});
+  const result = simulateGame(home.team, away.team, seed, coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {});
   const out = home.out.length + away.out.length > 0 ? { out: { [game.home]: home.out, [game.away]: away.out } } : {};
   const summary: GameSummary = {
     id: game.id,
@@ -51,7 +51,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     rules: result.rules ?? 1,
     ...out,
     // The calls as played (any that no longer fit became the coaches').
-    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)] } } : {}),
+    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)], ...(coached.rival ? { rival: coached.rival } : {}) } } : {}),
   };
   return { summary, result };
 }

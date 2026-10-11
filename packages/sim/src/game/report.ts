@@ -85,6 +85,11 @@ export function coachingReport(home: Team, away: Team, seed: number | string, te
   for (const a of calls) {
     const p = game.prompt;
     if (!p) break;
+    // A duel: the other coach's calls play on, but they aren't yours to report.
+    if (p.team !== team) {
+      game.answer(a ?? undefined);
+      continue;
+    }
     const before = p.sofar.plays.length;
     game.answer(a ?? undefined);
     const after = game.sofar.plays.slice(before).map((x) => x.event);
