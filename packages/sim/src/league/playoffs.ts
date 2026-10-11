@@ -4,6 +4,7 @@
 // a neutral site. In format 2 leagues championship week comes first: each
 // division's top two meet for the title (the winner is its champion and gets
 // the automatic bid), and the ranking is redone with those games in it.
+import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
 import { simulateGame, type GameResult } from "../game/game.ts";
 import { leagueFormat } from "./format.ts";
@@ -174,6 +175,7 @@ export function playChampionshipWeek(league: League, season: SeasonResult, opts:
         seed,
         rules: result.rules ?? 1,
         ...(h.out.length + v.out.length > 0 ? { out: { [first]: h.out, [second]: v.out } } : {}),
+        ...callTally(result),
       },
     });
   }
@@ -222,6 +224,7 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
         seed,
         rules: result.rules ?? 1,
         ...(h.out.length + v.out.length > 0 ? { out: { [home.team]: h.out, [away.team]: v.out } } : {}),
+        ...callTally(result),
       },
     });
     return result.winner === home.team ? home : away;

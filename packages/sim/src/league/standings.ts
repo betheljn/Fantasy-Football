@@ -33,6 +33,8 @@ export interface GameSummary {
   rules?: number;
   /** A game a person coached: the team and its calls (replay with simulateGame's coach/calls options). */
   coached?: CoachedCalls;
+  /** The play duel (rules 4): calls each team won and lost, as [won, lost]. */
+  calls?: Record<string, [number, number]>;
 }
 
 export interface WLT {

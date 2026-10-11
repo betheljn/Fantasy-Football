@@ -1,4 +1,5 @@
 // Playing a season: simulate each scheduled game and keep a compact summary.
+import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
 import { simulateGame, startCoachedGame, type CoachedGame, type GameResult } from "../game/game.ts";
 import type { League } from "./league.ts";
@@ -50,6 +51,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     seed,
     rules: result.rules ?? 1,
     ...out,
+    ...callTally(result),
     // The calls as played (any that no longer fit became the coaches').
     ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)], ...(coached.rival ? { rival: coached.rival } : {}) } } : {}),
   };

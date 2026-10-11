@@ -8,6 +8,7 @@
 // own team that week; anyone who didn't is covered by the AI (injured reserve
 // and free-agent signings, as for every AI team).
 import {
+  withOwners,
   addGameToSeason,
   aiInSeasonMoves,
   aiTradeWeek,
@@ -101,6 +102,7 @@ const tradedIds = (trades: readonly TradeRecord[]) => new Set(trades.flatMap((t)
 
 /** A season opens: fresh progress and the AI's first round of trade talks (before week 1). */
 export function openSeason(s: LeagueState): LeagueState {
+  s = { ...s, dynasty: withOwners(s.dynasty, humanTeams(s)) };
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
@@ -112,6 +114,8 @@ export function openSeason(s: LeagueState): LeagueState {
  * other friends' teams are covered by the AI this time.
  */
 export function advance(s: LeagueState, ready: ReadonlySet<string>): { state: LeagueState; summary: AdvanceSummary } {
+  // Every friend is an owner, earning XP (leagues from before owners get theirs now).
+  s = { ...s, dynasty: withOwners(s.dynasty, humanTeams(s)) };
   const step = nextStep(s);
   if (step.kind === "week") return playNextWeek(s, ready);
   if (step.kind === "playoffs") return playPlayoffs(s);

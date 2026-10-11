@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { bankOwners, type OwnerProgress } from "./progression.ts";
 import { teamChoices, type PerTeam } from "../choices.ts";
 import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
@@ -137,6 +138,8 @@ export interface Dynasty {
   finances?: Record<string, SeasonFinances[]>;
   /** The last few spring seasons. */
   springs?: SpringSeason[];
+  /** The owners people play (your team; online, each friend's): their XP and levels. */
+  owners?: Record<string, OwnerProgress>;
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -596,6 +599,8 @@ export function completeOffseason(
       hofVotes: [...(dynasty.hofVotes ?? []), vote].slice(-5),
       business: books.business,
       finances,
+      // Owners bank the season's XP (games, calls, titles, awards, and their players' growth).
+      ...(dynasty.owners ? { owners: bankOwners(dynasty.owners, league.season, { results: played.season.results, playoffs, awards }, league, s.developed) } : {}),
     },
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };

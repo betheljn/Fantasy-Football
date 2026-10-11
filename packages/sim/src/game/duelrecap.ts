@@ -40,6 +40,25 @@ export function revealCall(e: PlayEvent): CallReveal | null {
   return { offense, defense, edge, winner, why, text: `${head}: ${verdict}.${why ? ` ${why}` : ""}` };
 }
 
+/** Calls each team won and lost in a game, for its summary (nothing for a game without calls). */
+export function callTally(game: GameResult): { calls?: Record<string, [number, number]> } {
+  const t: Record<string, [number, number]> = { [game.home]: [0, 0], [game.away]: [0, 0] };
+  let any = false;
+  for (const p of game.plays) {
+    const e = p.event;
+    if ((e.kind !== "run" && e.kind !== "pass") || isNullified(e)) continue;
+    const r = revealCall(e);
+    if (!r) continue;
+    any = true;
+    if (r.winner === "even") continue;
+    const winner = r.winner === "offense" ? e.offense : e.defense;
+    const loser = winner === e.offense ? e.defense : e.offense;
+    t[winner]![0]++;
+    t[loser]![1]++;
+  }
+  return any ? { calls: t } : {};
+}
+
 /** Did the play do its job? Half the distance on first down, 70% on second, all of it on third and fourth. */
 export function playSucceeded(e: ScrimmagePlayEvent): boolean {
   if (e.turnover) return false;

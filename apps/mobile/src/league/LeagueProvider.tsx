@@ -84,6 +84,8 @@ import {
   pressConference,
   seasonReview,
   startFrontOffice,
+  withOwners,
+  newOwner,
   teamOwner,
   teamRatings,
   type PressConference,
@@ -509,6 +511,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         let ready = loaded && !loaded.dynasty.league.freeAgents ? { ...loaded, dynasty: { ...loaded.dynasty, league: ensureFreeAgents(loaded.dynasty.league) } } : loaded;
         // Saves from before owners: you own the team.
         if (ready?.userTeam && !ready.office) ready = { ...ready, office: startFrontOffice("owner") };
+        // Saves from before owner progress: you start earning XP now.
+        if (ready?.userTeam) ready = { ...ready, dynasty: withOwners(ready.dynasty, [ready.userTeam]) };
         setState(ready);
         checkpointRef.current = p;
         setRestoring(p);
@@ -1015,14 +1019,17 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const { setup: _done, ...rest } = state;
       const base = startingDynasty(state.dynasty, setup);
       const dynasty = drafted ? { ...base, league: drafted } : base;
-      persist(openSeason({ ...rest, dynasty, userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
+      persist(openSeason({ ...rest, dynasty: withOwners(dynasty, [setup.team]), userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
     },
     press: pressNow(state),
     takeJob: (abbr) => {
       const s = stateRef.current;
       if (!s?.fired || !s.fired.offers.includes(abbr)) return;
       // A new team, a new owner: start fresh with them, then on with the offseason.
-      const next: SaveState = { ...s, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
+      // Your XP and level go with you.
+      const { [s.userTeam]: yours, ...others } = s.dynasty.owners ?? {};
+      const dynasty = { ...s.dynasty, owners: { ...others, [abbr]: yours ?? newOwner() } };
+      const next: SaveState = { ...s, dynasty, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
       setState(next);
       stateRef.current = next;
       beginOffseasonFlow(next);
