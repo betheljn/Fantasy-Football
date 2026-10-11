@@ -402,6 +402,12 @@ too; both have upgrades that improve player growth and games.
 2. Owner upgrades: facilities (growth), recruiting points, analytics (film
    study: see opponent tendencies), coaching clinic; coach levels and
    abilities; coach-philosophy fit
+   2a. Owner upgrades: a point per level, tier n costs n; facilities (player
+       growth), recruiting (scouting reach now, recruiting points later),
+       analytics (film study: their playbook, this game's film, self-scout),
+       coaching clinic (coach XP); off the field only, never in a play
+   2b. Coach XP, levels and abilities
+   2c. Coach-philosophy fit
 3. App: owner profile, upgrade tree, coach abilities
 
 ### Milestone 24: recruiting

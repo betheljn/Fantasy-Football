@@ -10,7 +10,7 @@ import type { GameSummary } from "../league/standings.ts";
 import type { PlayoffResult } from "../league/playoffs.ts";
 import type { League } from "../league/league.ts";
 import { playerOverall } from "../model/player.ts";
-import type { Team } from "../model/team.ts";
+import type { Team, UpgradeTrack } from "../model/team.ts";
 
 export type XpSource = "win" | "tie" | "loss" | "calls" | "winning_season" | "division_title" | "playoff_berth" | "playoff_win" | "championship" | "award" | "development";
 
@@ -67,6 +67,8 @@ export interface OwnerProgress {
   /** Banked XP (seasons finished). */
   xp: number;
   seasons: OwnerSeason[];
+  /** Tiers bought in each upgrade track. */
+  upgrades?: Partial<Record<UpgradeTrack, number>>;
 }
 
 export const MAX_LEVEL = 50;
@@ -174,7 +176,7 @@ export const newOwner = (): OwnerProgress => ({ xp: 0, seasons: [] });
 /** Bank a finished season's XP. */
 export function bankSeason(progress: OwnerProgress, season: number, lines: XpLine[]): OwnerProgress {
   const xp = totalXp(lines);
-  return { xp: progress.xp + xp, seasons: [...progress.seasons.filter((s) => s.season !== season), { season, xp, lines }] };
+  return { ...progress, xp: progress.xp + xp, seasons: [...progress.seasons.filter((s) => s.season !== season), { season, xp, lines }] };
 }
 
 /** Banked XP for every owner, for a season that's done (development compares the league before and after it). */
@@ -204,4 +206,86 @@ export function withOwners<D extends { owners?: Record<string, OwnerProgress> }>
     added = true;
   }
   return added ? { ...dynasty, owners } : dynasty;
+}
+
+// --- upgrades: each level is a point; a track's tier n costs n points ---
+
+export interface UpgradeInfo {
+  label: string;
+  /** What each tier does. */
+  tiers: readonly string[];
+}
+
+export const UPGRADES: Record<UpgradeTrack, UpgradeInfo> = {
+  facilities: {
+    label: "Facilities",
+    tiers: ["Weight room: +4% player growth", "Training staff: +8% growth", "Sports science: +12% growth", "Performance center: +16% growth", "Elite campus: +20% growth"],
+  },
+  recruiting: {
+    label: "Recruiting",
+    tiers: ["Regional network: +8% scouting reach", "Area scouts: +16%", "National network: +24%", "Data scouting: +32%", "Everywhere: +40%"],
+  },
+  analytics: {
+    label: "Analytics",
+    tiers: ["Scouting report: their playbook's leanings by situation", "Film study: what they've called this game", "Self-scout: your own tendencies, as they see them"],
+  },
+  clinic: {
+    label: "Coaching clinic",
+    tiers: ["Clinic: coaches earn 15% more XP", "Coaching retreat: +30%", "Mentor program: +45%", "Staff college: +60%", "Coaching tree: +75%"],
+  },
+};
+
+export const UPGRADE_TRACKS = Object.keys(UPGRADES) as UpgradeTrack[];
+
+/** Coach XP multiplier per clinic tier. */
+export const CLINIC_PER_TIER = 0.15;
+
+/** Points it costs to buy the next tier of a track (the tier's number). */
+export const upgradeCost = (nextTier: number) => nextTier;
+
+/** Points spent on upgrades. */
+export function pointsSpent(upgrades: Partial<Record<UpgradeTrack, number>> | undefined): number {
+  let spent = 0;
+  for (const t of UPGRADE_TRACKS) for (let tier = 1; tier <= (upgrades?.[t] ?? 0); tier++) spent += upgradeCost(tier);
+  return spent;
+}
+
+/** Points to spend: one per level gained, less what's been spent. */
+export function upgradePoints(progress: OwnerProgress | undefined, liveXp = 0): number {
+  return ownerLevel((progress?.xp ?? 0) + liveXp).level - 1 - pointsSpent(progress?.upgrades);
+}
+
+/** Why this tier can't be bought now, or null. */
+export function upgradeProblem(progress: OwnerProgress | undefined, track: UpgradeTrack, liveXp = 0): string | null {
+  if (!UPGRADES[track]) return "That isn't an upgrade";
+  const next = (progress?.upgrades?.[track] ?? 0) + 1;
+  if (next > UPGRADES[track].tiers.length) return `${UPGRADES[track].label} is maxed out`;
+  const cost = upgradeCost(next);
+  const have = upgradePoints(progress, liveXp);
+  return have < cost ? `${UPGRADES[track].label} tier ${next} takes ${cost} point${cost === 1 ? "" : "s"} (you have ${have})` : null;
+}
+
+/** Buy the next tier of a track for `team`'s owner (`liveXp`: this season's XP so far counts toward levels). */
+export function buyUpgrade<D extends { owners?: Record<string, OwnerProgress>; league: League }>(dynasty: D, team: string, track: UpgradeTrack, liveXp = 0): D {
+  const progress = dynasty.owners?.[team];
+  if (!progress) throw new Error("No owner for that team");
+  const problem = upgradeProblem(progress, track, liveXp);
+  if (problem) throw new Error(problem);
+  const upgrades = { ...progress.upgrades, [track]: (progress.upgrades?.[track] ?? 0) + 1 };
+  return syncUpgrades({ ...dynasty, owners: { ...dynasty.owners, [team]: { ...progress, upgrades } } });
+}
+
+/** Put each owner's upgrades on their team (and take them off any team no owner runs). */
+export function syncUpgrades<D extends { owners?: Record<string, OwnerProgress>; league: League }>(dynasty: D): D {
+  const teams = { ...dynasty.league.teams };
+  let changed = false;
+  for (const [abbr, team] of Object.entries(teams)) {
+    const want = dynasty.owners?.[abbr]?.upgrades;
+    const has = team.upgrades;
+    if (JSON.stringify(want ?? {}) === JSON.stringify(has ?? {})) continue;
+    const { upgrades: _old, ...rest } = team;
+    teams[abbr] = want && Object.keys(want).length ? { ...rest, upgrades: want } : rest;
+    changed = true;
+  }
+  return changed ? { ...dynasty, league: { ...dynasty.league, teams } } : dynasty;
 }

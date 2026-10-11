@@ -86,6 +86,7 @@ import {
   startFrontOffice,
   withOwners,
   newOwner,
+  syncUpgrades,
   teamOwner,
   teamRatings,
   type PressConference,
@@ -1028,7 +1029,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       // A new team, a new owner: start fresh with them, then on with the offseason.
       // Your XP and level go with you.
       const { [s.userTeam]: yours, ...others } = s.dynasty.owners ?? {};
-      const dynasty = { ...s.dynasty, owners: { ...others, [abbr]: yours ?? newOwner() } };
+      const dynasty = syncUpgrades({ ...s.dynasty, owners: { ...others, [abbr]: yours ?? newOwner() } });
       const next: SaveState = { ...s, dynasty, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
       setState(next);
       stateRef.current = next;

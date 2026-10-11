@@ -3,6 +3,11 @@
 // the same sim rules (and the same functions, with the same arguments) as in
 // the app, so a move made on a phone lands exactly the same here.
 import {
+  buyUpgrade,
+  seasonXp,
+  totalXp,
+  upgradeProblem,
+  type UpgradeTrack,
   DRAFT_WEEK,
   POSITIONS,
   applyTrade,
@@ -37,7 +42,9 @@ export type Move =
   | { kind: "sign"; player: string }
   | { kind: "trade"; proposal: TradeProposal }
   /** Your calls so far in your game this week (empty: leave it all to your coaches). */
-  | { kind: "coach"; game: string; calls: Array<CoachCall | null> };
+  | { kind: "coach"; game: string; calls: Array<CoachCall | null> }
+  /** The next tier of an owner upgrade (any time: upgrades never touch a play). */
+  | { kind: "upgrade"; track: UpgradeTrack };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
 export const MAX_CALLS = 600;
@@ -89,6 +96,14 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
   const week = s.weeksPlayed + 1;
   // (A league started before rosters were logged has no log yet; moves start it, as in the app.)
   const log = p.lineups ?? startLog(league);
+
+  if (move.kind === "upgrade") {
+    // This season's XP so far counts toward your level.
+    const live = totalXp(seasonXp(team, { results: p.results, playoffs: p.playoffs }));
+    const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
+    if (problem) return refuse(problem);
+    return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
 
   if (move.kind === "trade") {
     const w = tradeWindowOf(s);

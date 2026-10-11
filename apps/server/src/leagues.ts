@@ -482,6 +482,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           { type: "object", required: ["kind", "pos", "ids"], properties: { kind: { const: "depth" }, pos: { type: "string", maxLength: 3 }, ids: { type: "array", items: idSchema, maxItems: 72 } } },
           { type: "object", required: ["kind", "player"], properties: { kind: { enum: ["ir", "sign"] }, player: idSchema } },
           { type: "object", required: ["kind", "proposal"], properties: { kind: { const: "trade" }, proposal: proposalSchema } },
+          { type: "object", required: ["kind", "track"], properties: { kind: { const: "upgrade" }, track: { enum: ["facilities", "recruiting", "analytics", "clinic"] } } },
           {
             type: "object",
             required: ["kind", "game", "calls"],

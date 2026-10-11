@@ -35,7 +35,12 @@ export interface Team {
   cap?: TeamCap;
   /** Staff buyouts still being paid: each remaining season of a fired staff member's deal, $K. */
   staffDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number; readonly name: string }>;
+  /** The owner's upgrades (a team people play): tiers bought in each track. Off the field only: never in a play. */
+  upgrades?: Partial<Record<UpgradeTrack, number>>;
 }
+
+/** Owner upgrade tracks (see dynasty/progression.ts). */
+export type UpgradeTrack = "facilities" | "recruiting" | "analytics" | "clinic";
 
 export interface TeamCap {
   /** Unused cap carried in from last season, $K. */

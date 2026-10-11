@@ -1,7 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
-import { bankOwners, type OwnerProgress } from "./progression.ts";
+import { bankOwners, syncUpgrades, type OwnerProgress } from "./progression.ts";
 import { teamChoices, type PerTeam } from "../choices.ts";
 import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
@@ -584,7 +584,8 @@ export function completeOffseason(
   };
 
   return {
-    dynasty: {
+    // (Owners' upgrades go back on their teams: the offseason rebuilds rosters and teams.)
+    dynasty: syncUpgrades({
       league: nextLeague,
       history: [...dynasty.history, record],
       careers,
@@ -601,7 +602,7 @@ export function completeOffseason(
       finances,
       // Owners bank the season's XP (games, calls, titles, awards, and their players' growth).
       ...(dynasty.owners ? { owners: bankOwners(dynasty.owners, league.season, { results: played.season.results, playoffs, awards }, league, s.developed) } : {}),
-    },
+    }),
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };
 }

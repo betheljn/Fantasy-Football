@@ -6,10 +6,16 @@ import type { GmPhilosophy } from "../model/staff.ts";
 import { Rng } from "../rng.ts";
 import { staffEdge } from "../play/coaching.ts";
 
-/** Scouting quality multiplier from the scouting director (1 = average). */
+/** Owner upgrades: player growth per facilities tier, scouting reach per recruiting tier. */
+export const FACILITIES_PER_TIER = 0.04;
+export const RECRUITING_PER_TIER = 0.08;
+
+/** Scouting quality multiplier from the scouting director, and the owner's recruiting upgrades (1 = average). */
 export function scoutingQuality(team: Team | undefined): number {
   const s = team?.staff?.scout;
-  return s ? Math.max(0.5, Math.min(1.8, 1 + 0.4 * staffEdge(s.scouting))) : 1;
+  const staff = s ? Math.max(0.5, Math.min(1.8, 1 + 0.4 * staffEdge(s.scouting))) : 1;
+  // The owner's recruiting upgrades widen the department's reach.
+  return staff * (1 + RECRUITING_PER_TIER * (team?.upgrades?.recruiting ?? 0));
 }
 
 /**
@@ -98,8 +104,10 @@ export interface DevelopmentFactor {
 
 /** The head coach's effect on how his players develop. */
 export function developmentFactor(team: Team | undefined): DevelopmentFactor {
+  // The owner's facilities add to growth on top of the head coach.
+  const facilities = 1 + FACILITIES_PER_TIER * (team?.upgrades?.facilities ?? 0);
   const hc = team?.staff?.hc;
-  if (!hc) return { growth: 1, decline: 1 };
+  if (!hc) return { growth: facilities, decline: 1 };
   const e = staffEdge(hc.development);
-  return { growth: Math.max(0.7, Math.min(1.35, 1 + 0.15 * e)), decline: Math.max(0.8, Math.min(1.2, 1 - 0.1 * e)) };
+  return { growth: Math.max(0.7, Math.min(1.35, 1 + 0.15 * e)) * facilities, decline: Math.max(0.8, Math.min(1.2, 1 - 0.1 * e)) };
 }
