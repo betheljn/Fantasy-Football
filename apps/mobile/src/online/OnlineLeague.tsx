@@ -6,11 +6,11 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Button, Card, LogoBadge, SectionTitle, Swatch } from "../components/ui";
+import { Button, Card, Chips, LogoBadge, SectionTitle, Swatch } from "../components/ui";
 import { designedColors } from "../field/colors";
 import { useDynasty, useLeagueMaybe } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
-import { SKILL_GROUPS } from "@dynasty/sim";
+import { SKILL_GROUPS, regions } from "@dynasty/sim";
 import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
 
 /** Each offseason stage, as friends see it. */
@@ -198,17 +198,34 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         </Card>
       ) : null}
 
+      {self?.isCommissioner && league.members.some((m) => m.program) ? (
+        <Card style={{ gap: 10 }}>
+          <SectionTitle>Regions</SectionTitle>
+          <Text style={{ color: t.muted, fontSize: 12 }}>Each program&apos;s region was drawn at random. As commissioner you can move any of them before the start (a region holds five).</Text>
+          {league.members
+            .filter((m) => m.program)
+            .map((m) => (
+              <View key={m.id} style={{ gap: 4 }}>
+                <Text style={{ color: t.text, fontWeight: "700" }}>
+                  {m.displayName} <Text style={{ color: t.muted, fontWeight: "400" }}>· {m.program!.region ?? "no room"}</Text>
+                </Text>
+                <Chips options={regions().map((r) => ({ key: r.name, label: r.name }))} value={m.program!.region ?? ""} onChange={(r) => act(() => api.region(me.id, me.token, m.id, r))} />
+              </View>
+            ))}
+        </Card>
+      ) : null}
+
       <Card style={{ gap: 8 }}>
         <SectionTitle>Your program</SectionTitle>
         {self?.program ? (
           <>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: "800" }}>{self.program.region ? `${self.program.region} region` : "No region has room"}</Text>
-            <Text style={{ color: t.muted, fontSize: 12 }}>Built around {self.program.groups.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(", ")}. Friends who joined earlier get first pick of a region&apos;s five spots.</Text>
+            <Text style={{ color: t.muted, fontSize: 12 }}>Built around {self.program.groups.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(", ")}. Your region was drawn at random; the commissioner can move it.</Text>
             <Button label="Change skill groups" disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
           </>
         ) : (
           <>
-            <Text style={{ color: t.muted }}>Pick the three skill groups you want to build around; they decide your region and its local talent.</Text>
+            <Text style={{ color: t.muted }}>Pick the three skill groups you want to build around. Your region is drawn at random.</Text>
             <Button label="Build your program" primary disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
           </>
         )}

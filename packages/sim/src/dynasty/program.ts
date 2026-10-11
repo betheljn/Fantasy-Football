@@ -8,7 +8,7 @@
 import { POPULATION } from "../business/business.ts";
 import { freeAgentPool } from "../contracts/inseason.ts";
 import { assignContracts } from "../gen/contract-gen.ts";
-import { REGION_CORES, SKILL_GROUP_KEYS, corePull, regionOf, regions, type SkillGroup } from "../gen/regions.ts";
+import { REGION_CORES, SKILL_GROUP_KEYS, corePull, regionOf, regions, skillGroupOf, type SkillGroup } from "../gen/regions.ts";
 import { generatePlayer, pickJersey, rollPotential, ROSTER_TEMPLATE } from "../gen/team-gen.ts";
 import { allTeams, teamRatings, type League } from "../league/league.ts";
 import { suggestedTag } from "../league/identity.ts";
@@ -72,20 +72,32 @@ export function programSlot(region: string, taken: ReadonlySet<string> = new Set
  * each to the best-fit region with a spot left, taking the most typical spot.
  * Cheap: no rosters are built.
  */
-export function planPrograms(entries: ReadonlyArray<{ id: string; groups: readonly SkillGroup[] }>, taken: ReadonlySet<string> = new Set()): Map<string, { region: string; team: string }> {
+export function planPrograms(entries: ReadonlyArray<{ id: string; groups: readonly SkillGroup[]; region?: string }>, taken: ReadonlySet<string> = new Set()): Map<string, { region: string; team: string }> {
   const used = new Set(taken);
   const out = new Map<string, { region: string; team: string }>();
   for (const e of entries) {
     if (skillChoiceProblem(e.groups)) continue;
-    for (const f of regionFits(e.groups)) {
-      const team = programSlot(f.region, used);
+    for (const region of regionOrder(e.groups, e.region)) {
+      const team = programSlot(region, used);
       if (!team) continue;
       used.add(team);
-      out.set(e.id, { region: f.region, team });
+      out.set(e.id, { region, team });
       break;
     }
   }
   return out;
+}
+
+/** Where a program looks for a spot: its region (if set), then the regions its groups fit, best first. */
+function regionOrder(groups: readonly SkillGroup[], region?: string): string[] {
+  const fits = regionFits(groups).map((f) => f.region);
+  return region ? [region, ...fits.filter((r) => r !== region)] : fits;
+}
+
+/** A region drawn at random (the same for the same seed): where a new program goes unless one is chosen. */
+export function randomRegion(seed: string): string {
+  const all = regions();
+  return all[new Rng(`region:${seed}`).int(0, all.length - 1)]!.name;
 }
 
 export interface NewProgram {
@@ -109,10 +121,10 @@ export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], w
   const opts = typeof where === "string" ? { region: where } : (where ?? {});
   const taken = opts.taken ?? new Set<string>();
   const fits = regionFits(groups);
-  // The best fit with a spot left (or the region asked for).
-  const candidates = opts.region ? [opts.region] : fits.map((f) => f.region);
-  const home = candidates.find((r) => programSlot(r, taken));
-  if (!home) throw new Error(opts.region ? `No room left in ${opts.region}` : "No region has room for another program");
+  // The region asked for (or the best fit), else the next best with a spot left.
+  if (opts.region && !regions().some((r) => r.name === opts.region)) throw new Error(`No region ${opts.region}`);
+  const home = regionOrder(groups, opts.region).find((r) => programSlot(r, taken));
+  if (!home) throw new Error("No region has room for another program");
   const league = dynasty.league;
   const abbr = programSlot(home, taken)!;
   const old = league.teams[abbr]!;
@@ -123,7 +135,7 @@ export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], w
   // (Secant steps: strength isn't quite linear in talent, since the best local finds are kept.)
   const strength = (r: Player[]) => teamRatings({ ...old, roster: r, depthChart: buildDepthChart(r) }).overall;
   let mean = 58;
-  let roster = programRoster(seed, abbr, home, mean, league.season);
+  let roster = programRoster(seed, abbr, home, mean, league.season, groups);
   let got = strength(roster);
   let best = { roster, miss: Math.abs(got - target) };
   let prev: { mean: number; got: number } | null = null;
@@ -131,7 +143,7 @@ export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], w
     const slope = prev && Math.abs(got - prev.got) > 0.05 ? (got - prev.got) / (mean - prev.mean) : 1;
     prev = { mean, got };
     mean += (target - got) / Math.max(0.3, Math.min(2, slope));
-    roster = programRoster(seed, abbr, home, mean, league.season);
+    roster = programRoster(seed, abbr, home, mean, league.season, groups);
     got = strength(roster);
     if (Math.abs(got - target) < best.miss) best = { roster, miss: Math.abs(got - target) };
   }
@@ -150,7 +162,10 @@ export function createProgram(dynasty: Dynasty, groups: readonly SkillGroup[], w
 }
 
 /** A fresh 72-man roster: the best of several candidates per spot, mostly local. */
-function programRoster(seed: string, abbr: string, region: string, talentMean: number, season: number): Player[] {
+/** How much a player in one of your chosen skill groups is favored when the roster is built (overall points). */
+export const CHOSEN_GROUP_EDGE = 5;
+
+function programRoster(seed: string, abbr: string, region: string, talentMean: number, season: number, groups: readonly SkillGroup[]): Player[] {
   const rng = new Rng(seed);
   const local = (p: Player) => regionOf(p.home ?? "") === region;
   const roster: Player[] = [];
@@ -170,7 +185,9 @@ function programRoster(seed: string, abbr: string, region: string, talentMean: n
       if (local(p)) locals++;
     }
     // Local players first (best first), then outsiders, in the mix the program is built from.
-    const byOvr = (a: Player, b: Player) => playerOverall(b) - playerOverall(a) || a.id.localeCompare(b.id);
+    // Best first, with an edge for players in the skill groups you chose.
+    const fit = (p: Player) => playerOverall(p) + (groups.includes(skillGroupOf(p)) ? CHOSEN_GROUP_EDGE : 0);
+    const byOvr = (a: Player, b: Player) => fit(b) - fit(a) || a.id.localeCompare(b.id);
     // You scout your own region deeply and elsewhere lightly: outsiders come from the first look only.
     const near = candidates.filter(local).sort(byOvr);
     const far = candidates.slice(0, spots * CANDIDATES).filter((p) => !local(p)).sort(byOvr);

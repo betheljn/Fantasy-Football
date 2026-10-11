@@ -66,6 +66,8 @@ export interface SaveState {
 export interface TeamSetup {
   /** Your top three skill groups: your program, in the region they fit (absent: a state team, from before programs). */
   groups?: SkillGroup[];
+  /** The region your program was placed in (drawn at random; absent: the best fit for your groups, from before). */
+  region?: string;
   team: string;
   role: "owner" | "gm";
   identity: TeamIdentityChoice;

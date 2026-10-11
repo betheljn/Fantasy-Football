@@ -10,7 +10,7 @@ import { useTheme } from "../theme";
 const STATE_NAME = new Map(STATES.map(([name, abbr]) => [abbr, name]));
 
 /** Rank three skill groups: tap to add in order, tap again to take it out. */
-export function SkillGroupsScreen({ initial, onDone }: { initial?: SkillGroup[]; onDone: (groups: SkillGroup[]) => void }) {
+export function SkillGroupsScreen({ initial, onDone, randomRegion }: { initial?: SkillGroup[]; onDone: (groups: SkillGroup[]) => void; randomRegion?: boolean }) {
   const t = useTheme();
   const [picked, setPicked] = useState<SkillGroup[]>(initial ?? []);
   const toggle = (g: SkillGroup) => setPicked((p) => (p.includes(g) ? p.filter((x) => x !== g) : p.length < 3 ? [...p, g] : p));
@@ -21,7 +21,9 @@ export function SkillGroupsScreen({ initial, onDone }: { initial?: SkillGroup[];
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Build your program</Text>
         <Text style={{ color: t.muted }}>
-          {"Every region turns out its own kind of player. Pick the three skill groups you most want to build around, most important first: they decide which region your program calls home and the local talent that comes with it."}
+          {randomRegion
+            ? "Every region turns out its own kind of player, and yours will be drawn at random. Pick the three skill groups you most want to build around, most important first: players in them get the edge when your roster is built."
+            : "Every region turns out its own kind of player. Pick the three skill groups you most want to build around, most important first: they decide which region your program calls home and the local talent that comes with it."}
         </Text>
         <Card>
           <SectionTitle>{`Your top three (${picked.length} of 3)`}</SectionTitle>
@@ -50,7 +52,7 @@ export function SkillGroupsScreen({ initial, onDone }: { initial?: SkillGroup[];
             );
           })}
         </Card>
-        {fits.length ? (
+        {fits.length && !randomRegion ? (
           <Card>
             <SectionTitle>Best fits so far</SectionTitle>
             {fits.slice(0, 3).map((f, i) => (
@@ -70,10 +72,12 @@ export function SkillGroupsScreen({ initial, onDone }: { initial?: SkillGroup[];
 }
 
 /** Your region: why it fits, its talent core, the states it covers. */
-export function RegionScreen({ groups, onBack, onDone, busy, doneLabel, note }: { groups: SkillGroup[]; onBack: () => void; onDone: () => void; busy?: boolean; doneLabel?: string; note?: string }) {
+export function RegionScreen({ groups, region, onBack, onDone, busy, doneLabel, note }: { groups: SkillGroup[]; region?: string; onBack: () => void; onDone: () => void; busy?: boolean; doneLabel?: string; note?: string }) {
   const t = useTheme();
   const fits = regionFits(groups);
-  const home = fits[0]!;
+  // A region given (drawn at random, or set by the commissioner) is home; otherwise the best fit.
+  const home = (region ? fits.find((f) => f.region === region) : undefined) ?? fits[0]!;
+  const drawn = !!region;
   const states = regions().find((r) => r.name === home.region)!.states;
   return (
     <View style={{ flex: 1 }}>
@@ -89,7 +93,9 @@ export function RegionScreen({ groups, onBack, onDone, busy, doneLabel, note }: 
         <Card>
           <SectionTitle>Why here</SectionTitle>
           <Text style={{ color: t.text }}>
-            {home.matches.length === 3
+            {drawn
+              ? `Drawn at random. ${home.matches.length ? `It's known for ${home.matches.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(" and ")}, ${home.matches.length === 3 ? "all three of your picks" : "among your picks"}.` : "None of your picks are what it's known for, so you'll build against the grain."} Your skill groups still shape your roster: players in them get the edge when it's built.`
+              : home.matches.length === 3
               ? "Your three choices are exactly what this region is known for."
               : home.matches.length
                 ? `Known for ${home.matches.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(" and ")}, the closest fit for your choices.`
@@ -116,7 +122,7 @@ export function RegionScreen({ groups, onBack, onDone, busy, doneLabel, note }: 
           </Text>
         </Card>
 
-        {fits.length > 1 ? (
+        {!drawn && fits.length > 1 ? (
           <Card>
             <SectionTitle>Next closest</SectionTitle>
             {fits.slice(1, 3).map((f) => (

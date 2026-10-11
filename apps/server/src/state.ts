@@ -21,7 +21,7 @@ export interface LeagueState {
   /** In the lobby: each friend's look and coach for the team they claimed (by member id), made when the league starts. */
   setups?: Record<string, TeamSetupChoice>;
   /** In the lobby: each friend's top three skill groups (by member id); their program is built when the league starts. */
-  programs?: Record<string, { groups: SkillGroup[] }>;
+  programs?: Record<string, { groups: SkillGroup[]; region?: string }>;
 }
 
 /** A friend's team made theirs: its identity and the head coach they built. */

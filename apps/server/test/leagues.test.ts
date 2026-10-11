@@ -241,10 +241,22 @@ describe("programs in the lobby", () => {
     expect((await post(`/leagues/${id}/program`, { groups: ["speed", "speed", "coverage"] }, jai)).statusCode).toBe(400);
     expect((await post(`/leagues/${id}/start`, {}, jai)).json().error).toMatch(/Waiting on a program/);
     await post(`/leagues/${id}/program`, { groups: speed }, jai);
-    const lobby = (await post(`/leagues/${id}/program`, { groups: speed }, sam)).json();
+    const drawn = (await post(`/leagues/${id}/program`, { groups: speed }, sam)).json();
+    // Regions are drawn at random; only the commissioner can move a program.
+    for (const m of drawn.members) expect(m.program.region).toBeTruthy();
+    const samId = drawn.members.find((m: { displayName: string }) => m.displayName === "Sam").id;
+    const jaiId = drawn.members.find((m: { displayName: string }) => m.displayName === "Jai").id;
+    expect((await post(`/leagues/${id}/region`, { memberId: jaiId, region: "Pacific" }, sam)).statusCode).toBe(403);
+    expect((await post(`/leagues/${id}/region`, { memberId: samId, region: "Atlantis" }, jai)).statusCode).toBe(400);
+    await post(`/leagues/${id}/region`, { memberId: jaiId, region: "Southeast" }, jai);
+    const lobby = (await post(`/leagues/${id}/region`, { memberId: samId, region: "Southeast" }, jai)).json();
+    // New skill groups keep the region.
     const [j, s] = ["Jai", "Sam"].map((n) => lobby.members.find((m: { displayName: string }) => m.displayName === n));
     expect(j.program.region).toBe("Southeast");
     expect(s.program.region).toBe("Southeast");
+    const regrouped = (await post(`/leagues/${id}/program`, { groups: ["bigMen", "runStop", "powerRun"] }, sam)).json();
+    expect(regrouped.members.find((m: { displayName: string }) => m.displayName === "Sam").program.region).toBe("Southeast");
+    await post(`/leagues/${id}/program`, { groups: speed }, sam);
     expect(j.team).not.toBe(s.team);
     expect(lobby.teams.find((t: { abbr: string }) => t.abbr === j.team)).toMatchObject({ name: "Southeast program", program: "Southeast", claimedBy: j.id });
 

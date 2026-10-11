@@ -183,6 +183,7 @@ export const api = {
   setup: (id: string, token: string, setup: OnlineSetup | null) => call<OnlineLeague>("POST", `/leagues/${id}/setup`, { setup }, token),
   mySetup: (id: string, token: string) => call<{ setup: OnlineSetup | null; team: string | null; region: string | null }>("GET", `/leagues/${id}/setup`, undefined, token),
   program: (id: string, token: string, groups: SkillGroup[] | null) => call<OnlineLeague>("POST", `/leagues/${id}/program`, { groups }, token),
+  region: (id: string, token: string, memberId: string, region: string) => call<OnlineLeague>("POST", `/leagues/${id}/region`, { memberId, region }, token),
   start: (id: string, token: string) => call<OnlineLeague>("POST", `/leagues/${id}/start`, {}, token),
   ready: (id: string, token: string, ready: boolean) => call<{ advanced: AdvanceSummary | null; league: OnlineLeague }>("POST", `/leagues/${id}/ready`, { ready }, token),
   advance: (id: string, token: string) => call<{ advanced: AdvanceSummary; league: OnlineLeague }>("POST", `/leagues/${id}/advance`, {}, token),

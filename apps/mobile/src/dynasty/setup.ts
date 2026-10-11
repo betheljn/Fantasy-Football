@@ -5,6 +5,6 @@ import { createProgram, setUpTeam, type Dynasty } from "@dynasty/sim";
 import type { TeamSetup } from "./save";
 
 export function startingDynasty(dynasty: Dynasty, setup: TeamSetup): Dynasty {
-  const base = setup.groups ? createProgram(dynasty, setup.groups).dynasty : dynasty;
+  const base = setup.groups ? createProgram(dynasty, setup.groups, setup.region ? { region: setup.region } : undefined).dynasty : dynasty;
   return setUpTeam(base, setup.team, setup);
 }

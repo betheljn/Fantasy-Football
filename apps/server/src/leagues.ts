@@ -14,7 +14,7 @@ import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
-import { SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -33,7 +33,7 @@ function lobbyTeams(state: LeagueState, members: readonly LobbyMember[]): Map<st
   const joined = [...members].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   const claimed = new Set(joined.filter((m) => m.team && !state.programs?.[m.id]).map((m) => m.team!));
   const plan = planPrograms(
-    joined.filter((m) => state.programs?.[m.id]).map((m) => ({ id: m.id, groups: state.programs![m.id]!.groups })),
+    joined.filter((m) => state.programs?.[m.id]).map((m) => ({ id: m.id, groups: state.programs![m.id]!.groups, ...(state.programs![m.id]!.region ? { region: state.programs![m.id]!.region } : {}) })),
     claimed,
   );
   const out = new Map<string, { team: string; region?: string }>();
@@ -251,8 +251,10 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       }
       const r = await changeLeague(db, member.leagueId, (state, league) => {
         if (league.phase !== "lobby") return { state: null, result: "Teams are set once the league starts" };
-        const { [member.id]: _old, ...others } = state.programs ?? {};
-        const programs = groups ? { ...others, [member.id]: { groups } } : others;
+        const { [member.id]: old, ...others } = state.programs ?? {};
+        // Your region is drawn at random the first time (the commissioner can change it); new groups keep it.
+        const region = old?.region ?? randomRegion(`${state.seed}:${member.id}`);
+        const programs = groups ? { ...others, [member.id]: { groups, region } } : others;
         // A new program means a new spot: an old look may no longer fit it, so it's checked again when you save it.
         return { state: { ...state, programs }, result: null };
       });
@@ -260,6 +262,28 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       if (r.result) return fail(reply, 409, r.result);
       // A program replaces any state you'd claimed.
       if (groups && member.team) await db.member.update({ where: { id: member.id }, data: { team: null } });
+      return view(member.leagueId);
+    },
+  );
+
+  /** The commissioner puts a friend's program in another region (lobby only). */
+  app.post<{ Params: { id: string }; Body: { memberId: string; region: string } }>(
+    "/leagues/:id/region",
+    { schema: { body: { type: "object", required: ["memberId", "region"], properties: { memberId: idSchema, region: { type: "string", maxLength: 24 } } } } },
+    async (req, reply) => {
+      const member = await memberOf(req, reply, req.params.id);
+      if (!member) return reply;
+      if (!member.isCommissioner) return fail(reply, 403, "Only the commissioner can change regions");
+      if (!regions().some((r) => r.name === req.body.region)) return fail(reply, 400, `No region ${req.body.region}`);
+      if ((await db.league.findUniqueOrThrow({ where: { id: member.leagueId } })).phase !== "lobby") return fail(reply, 409, "Teams are set once the league starts");
+      const r = await changeLeague(db, member.leagueId, (state, league) => {
+        if (league.phase !== "lobby") return { state: null, result: "Teams are set once the league starts" };
+        const program = state.programs?.[req.body.memberId];
+        if (!program) return { state: null, result: "That friend hasn't built a program yet" };
+        return { state: { ...state, programs: { ...state.programs, [req.body.memberId]: { ...program, region: req.body.region } } }, result: null };
+      });
+      if (!r) return fail(reply, 409, "The league is busy, try again");
+      if (r.result) return fail(reply, 409, r.result);
       return view(member.leagueId);
     },
   );
@@ -369,7 +393,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
         teamOf.set(m.id, lobby.get(m.id)!.team);
         continue;
       }
-      const made = createProgram(dynasty, program.groups, { taken });
+      const made = createProgram(dynasty, program.groups, { taken, ...(program.region ? { region: program.region } : {}) });
       dynasty = made.dynasty;
       taken.add(made.team);
       teamOf.set(m.id, made.team);

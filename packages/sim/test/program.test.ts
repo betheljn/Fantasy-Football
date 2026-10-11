@@ -132,3 +132,36 @@ describe("an unnamed program", () => {
     expect(teamTag(made.dynasty.league.teams[made.team]!)).toBe("SOU");
   });
 });
+
+describe("random regions", () => {
+  it("draw a region from the seed (same seed, same region), across all ten", async () => {
+    const { randomRegion, regions } = await import("../src/index.ts");
+    expect(randomRegion("abc")).toBe(randomRegion("abc"));
+    const seen = new Set(Array.from({ length: 200 }, (_, i) => randomRegion(`s${i}`)));
+    expect(seen.size).toBe(regions().length);
+  });
+
+  it("a program goes to its set region (next best only if it's full)", async () => {
+    const { planPrograms, programSlots } = await import("../src/index.ts");
+    const groups: SkillGroup[] = ["speed", "coverage", "passRush"];
+    const plan = planPrograms(["a", "b", "c", "d", "e", "f"].map((id) => ({ id, groups, region: "Pacific" })));
+    expect([...plan.values()].slice(0, 5).map((p) => p.team)).toEqual(programSlots("Pacific"));
+    expect(plan.get("f")!.region).toBe("Southeast");
+    expect(createProgram(DYNASTY, groups, { region: "Pacific" }).region).toBe("Pacific");
+  });
+
+  it("your skill groups still shape the roster, wherever it is", () => {
+    const count = (groups: SkillGroup[]) => {
+      const made = createProgram(DYNASTY, groups, { region: "Mountain" });
+      return made.dynasty.league.teams[made.team]!.roster.filter((p) => groups.includes(skillGroupOf(p))).length;
+    };
+    // The same region, two different sets of choices: each roster leans to its own.
+    const speed: SkillGroup[] = ["speed", "coverage", "catchers"];
+    const trenches: SkillGroup[] = ["bigMen", "runStop", "powerRun"];
+    const made = createProgram(DYNASTY, speed, { region: "Mountain" });
+    const other = createProgram(DYNASTY, trenches, { region: "Mountain" });
+    const inSpeed = (r: typeof made) => r.dynasty.league.teams[r.team]!.roster.filter((p) => speed.includes(skillGroupOf(p))).length;
+    expect(inSpeed(made)).toBeGreaterThan(inSpeed(other));
+    expect(count(trenches)).toBeGreaterThan(0);
+  });
+});

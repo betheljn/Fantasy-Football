@@ -12,6 +12,7 @@ import {
   identityProblem,
   teamLogo,
   createProgram,
+  randomRegion,
   suggestedTag,
   teamPlace,
   type Dynasty,
@@ -44,26 +45,28 @@ const COLORS = [
 export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
   const d = useDynasty();
   const [groups, setGroups] = useState<SkillGroup[] | null>(null);
-  const [program, setProgram] = useState<{ groups: SkillGroup[]; dynasty: Dynasty; team: string } | null>(null);
+  const [program, setProgram] = useState<{ groups: SkillGroup[]; region: string; dynasty: Dynasty; team: string } | null>(null);
   const [building, setBuilding] = useState(false);
   const [look, setLook] = useState<{ role: Role; identity: TeamIdentityChoice } | null>(null);
   const [coach, setCoach] = useState<CoachBuild | null>(null);
   const dynasty = d.save?.dynasty;
   // The league as your choices make it (program, look and coach), which the draft starts from.
-  const setup: TeamSetup | null = program && look && coach ? { groups: program.groups, team: program.team, role: look.role, identity: look.identity, coach } : null;
+  const setup: TeamSetup | null = program && look && coach ? { groups: program.groups, region: program.region, team: program.team, role: look.role, identity: look.identity, coach } : null;
   const setupLeague = useMemo(() => (dynasty && setup ? startingDynasty(dynasty, setup).league : null), [dynasty, setup?.team, look, coach]);
 
   // A draft under way (saved): carry on with it.
   if (d.setup?.draft) return <DraftInProgress setup={d.setup as TeamSetup & { draft: NonNullable<TeamSetup["draft"]> }} />;
   if (!dynasty) return null;
+  // Your region is drawn at random (from this league's seed: the same draw if you go back).
+  const drawn = randomRegion(`${dynasty.league.seed}:program`);
 
   const build = () => {
     if (!groups) return;
     setBuilding(true);
     // Let the button show it's working, then build (a moment on a phone).
     setTimeout(() => {
-      const made = createProgram(dynasty, groups);
-      setProgram({ groups, dynasty: made.dynasty, team: made.team });
+      const made = createProgram(dynasty, groups, { region: drawn });
+      setProgram({ groups, region: made.region, dynasty: made.dynasty, team: made.team });
       setBuilding(false);
     }, 30);
   };
@@ -73,11 +76,11 @@ export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, display: groups ? "none" : "flex" }}>
-        <SkillGroupsScreen initial={program?.groups} onDone={setGroups} />
+        <SkillGroupsScreen initial={program?.groups} onDone={setGroups} randomRegion />
       </View>
       {groups ? (
         <View style={{ flex: 1, display: program ? "none" : "flex" }}>
-          <RegionScreen groups={groups} busy={building} onBack={() => setGroups(null)} onDone={build} />
+          <RegionScreen groups={groups} region={drawn} busy={building} onBack={() => setGroups(null)} onDone={build} />
         </View>
       ) : null}
       {program && team ? (
