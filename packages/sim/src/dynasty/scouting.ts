@@ -22,6 +22,7 @@ export function seasonWeeks(state: Pick<ScoutingState, "weeks">): number {
 }
 import { draftValue, type DraftClass, type Prospect } from "./draftclass.ts";
 import { scoutingQuality } from "./frontoffice.ts";
+import { recruitingWeek, type RecruitingChoices } from "./recruiting.ts";
 
 export const SCOUTING = {
   pointsPerWeek: 12,
@@ -54,6 +55,8 @@ export interface ScoutingState {
   focus: Record<string, Record<PlayerId, number>>;
   /** team -> scout quality multiplier on points (1 = average staff). */
   quality: Record<string, number>;
+  /** Recruiting: team -> prospect -> his interest in the program, 0-100 (absent: from before recruiting). */
+  interest?: Record<string, Record<PlayerId, number>>;
 }
 
 export interface RangeEstimate {
@@ -264,8 +267,12 @@ export function advanceScoutingWeek(
   league: League,
   draftClass: DraftClass,
   choices: Record<string, Array<{ prospect: PlayerId; points: number }>> = {},
+  /** Recruiting: teams people run spend their week's points as given (everyone else recruits on its own). */
+  recruiting: RecruitingChoices = {},
 ): ScoutingState {
   if (state.week >= seasonWeeks(state)) return state;
+  // Recruiting first (from where interest stood): its visits are scouting looks too.
+  const recruited = recruitingWeek(state, league, draftClass, (team, p) => quickEstimate(state, team, p), recruiting);
   const focus: ScoutingState["focus"] = {};
   for (const team of Object.keys(state.focus)) {
     const spend = choices[team] ?? aiScoutingChoices(state, league, draftClass, team);
@@ -277,9 +284,10 @@ export function advanceScoutingWeek(
       mine[prospect] = (mine[prospect] ?? 0) + p;
       left -= p;
     }
+    for (const [prospect, pts] of Object.entries(recruited.visits[team] ?? {})) mine[prospect] = (mine[prospect] ?? 0) + pts;
     focus[team] = mine;
   }
-  return { ...state, week: state.week + 1, focus };
+  return { ...state, week: state.week + 1, focus, interest: recruited.interest };
 }
 
 /** The combine: physical attributes become known exactly to everyone. */

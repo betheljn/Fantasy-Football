@@ -48,6 +48,7 @@ export * from "./league/season.ts";
 export * from "./league/duel.ts";
 export * from "./dynasty/progression.ts";
 export * from "./dynasty/coaches.ts";
+export * from "./dynasty/recruiting.ts";
 export * from "./play/film.ts";
 export * from "./league/seasonstats.ts";
 export * from "./league/playoffs.ts";

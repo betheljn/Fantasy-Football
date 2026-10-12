@@ -412,8 +412,23 @@ too; both have upgrades that improve player growth and games.
 
 ### Milestone 24: recruiting
 Local and outside talent: recruiting points from your coach and upgrades;
-local prospects cost less; you can recruit anywhere. (To decide: how
-recruiting and the draft fit together.)
+local prospects cost less; you can recruit anywhere.
+Decided: the draft stays the only way in; recruiting builds a prospect's
+interest in your program, so you learn more about him and he's likelier to
+fall to you (other teams shy off a player leaning elsewhere); online,
+friends recruit head to head for the same prospects.
+1. Sim: interest and recruiting points: weekly points (head coach, the
+   recruiting upgrade), spent on prospects (local ones cost less), interest
+   that builds with diminishing returns and fades a little when ignored; a
+   prospect leans to the team he's warmest on; recruiting visits scout him;
+   AI teams recruit too
+2. Sim: the draft: other teams' boards mark down a prospect leaning
+   elsewhere, so recruits fall toward you; a recruit who lands with the team
+   he leaned to arrives happy
+3. App: the recruiting board (prospects, interest, local tags, spend the
+   week's points) and leanings on the draft board
+4. Online: friends' weekly recruiting calls, private until the week is
+   played, head to head for the same prospects
 
 ### Milestone 25: practice and game day
 Weekly practice plan (focus, intensity, injury risk, installing plays for
