@@ -87,6 +87,14 @@ import {
   withOwners,
   newOwner,
   syncUpgrades,
+  buyUpgrade,
+  upgradeProblem,
+  seasonXp,
+  totalXp,
+  abilityProblem,
+  chooseAbility,
+  type UpgradeTrack,
+  type CoachAbility,
   teamOwner,
   teamRatings,
   type PressConference,
@@ -257,6 +265,12 @@ export interface DynastyControls {
   /** Your depth chart is locked: you have picks on your own players this week. */
   depthLocked: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
+  /** Buy the next tier of an owner upgrade (null, or why not). */
+  buyUpgrade: (track: UpgradeTrack) => string | null;
+  /** Your coaches can pick up new abilities now (before week 1, until your week-1 game is being coached). */
+  abilityWindow: boolean;
+  /** Give one of your coaches a new ability (null, or why not). */
+  pickAbility: (ability: CoachAbility) => string | null;
   /** Picks: your points and slates; the board for the coming week (worked out on request, with progress). */
   picks: PicksState;
   board: GameLines[] | null;
@@ -334,6 +348,11 @@ const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, boar
  * championship week once the regular season is over (format 2, before it's
  * played); null when there's nothing left to pick.
  */
+/** Before week 1, while your week-1 game isn't being coached: your coaches can pick up abilities. */
+function abilityWindow(s: SaveState | null, offseason: unknown): boolean {
+  return !!s?.userTeam && !offseason && !s.report && s.weeksPlayed === 0 && !(s.coaching && s.coaching.calls.length > 0);
+}
+
 function boardWeek(s: SaveState | null, schedule: Schedule | null): number | null {
   if (!s || !schedule) return null;
   if (s.weeksPlayed < schedule.weeks) return s.weeksPlayed + 1;
@@ -1209,6 +1228,27 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
     canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
     depthLocked,
+    buyUpgrade: (track) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      const live = totalXp(seasonXp(s.userTeam, { results: s.results, playoffs: s.playoffs ?? null }));
+      const problem = upgradeProblem(s.dynasty.owners?.[s.userTeam], track, live);
+      if (problem) return problem;
+      persist({ ...s, dynasty: buyUpgrade(s.dynasty, s.userTeam, track, live) }, true);
+      if (online) sendMove({ kind: "upgrade", track });
+      return null;
+    },
+    abilityWindow: abilityWindow(state, offseason),
+    pickAbility: (ability) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      if (!abilityWindow(s, offseason)) return "Coaches pick up new abilities before the season starts (until your week-1 game is under way).";
+      const problem = abilityProblem(s.dynasty.league.teams[s.userTeam], ability);
+      if (problem) return problem;
+      persist({ ...s, dynasty: { ...s.dynasty, league: chooseAbility(s.dynasty.league, s.userTeam, ability) } }, true);
+      if (online) sendMove({ kind: "ability", ability });
+      return null;
+    },
     setDepthChart: (pos, ids) => {
       if (!state || offseason || !state.userTeam || seasonOver || depthLocked) return;
       const league = state.dynasty.league;

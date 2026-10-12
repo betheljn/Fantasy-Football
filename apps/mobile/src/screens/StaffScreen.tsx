@@ -3,7 +3,8 @@
 // for any open seats from the coaches and executives available.
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { STAFF_ROLE_NAMES, formatMoney, type StaffMember, type StaffOpening, type StaffSeat, type StaffSlot } from "@dynasty/sim";
+import { COACH_ABILITIES, STAFF_ROLE_NAMES, callingStyle, coachLevel, defenseSchemeFit, formatMoney, offenseSchemeFit, type CallingStyle, type StaffMember, type StaffOpening, type StaffSeat, type StaffSlot } from "@dynasty/sim";
+import { useLeagueMaybe } from "../league/LeagueProvider";
 import { Card, SectionTitle, StickyFooter } from "../components/ui";
 import { useTheme, type Theme } from "../theme";
 
@@ -112,6 +113,9 @@ export function HireScreen(props: {
 }) {
   const t = useTheme();
   const { openings } = props;
+  // How each candidate's scheme fits the way you called plays last season.
+  const data = useLeagueMaybe();
+  const style = data ? callingStyle(data.results, data.userTeam) : null;
   const [picks, setPicks] = useState<Map<StaffSlot, string>>(() => new Map(props.initial ?? []));
   const spent = openings.openings.reduce((s, o) => s + (o.candidates.find((c) => c.member.id === picks.get(o.slot))?.ask ?? 0), 0);
   const room = openings.budget - openings.committed - spent;
@@ -142,6 +146,7 @@ export function HireScreen(props: {
               })
             }
             theme={t}
+            style={style}
           />
         ))}
       </ScrollView>
@@ -153,7 +158,19 @@ export function HireScreen(props: {
 }
 
 /** One open seat: the best ten candidates plus everyone you can afford; over-budget ones can't be picked. */
-function Opening({ opening: o, picked, room, onPick, theme: t }: { opening: StaffOpening; picked: string | undefined; room: number; onPick: (id: string | null) => void; theme: Theme }) {
+/** A coach's level and abilities, and how his scheme fits your calls ("Level 4 · Shot caller · Great fit with your calls"). */
+function coachLine(m: StaffMember, style: CallingStyle | null): string | null {
+  if (m.role !== "HC" && m.role !== "OC" && m.role !== "DC") return null;
+  const parts = [`Level ${coachLevel(m.xp).level}`, ...(m.abilities ?? []).map((a) => COACH_ABILITIES[a].label)];
+  const scheme = m.role === "OC" ? { side: "offense" as const, scheme: m.scheme } : m.role === "DC" ? { side: "defense" as const, scheme: m.scheme } : m.calls ? { side: m.calls.side, scheme: m.calls.scheme } : null;
+  if (style && scheme) {
+    const fit = scheme.side === "offense" ? offenseSchemeFit(scheme.scheme as never, style) : defenseSchemeFit(scheme.scheme as never, style);
+    if (fit) parts.push(`${fit.grade} with your calls`);
+  }
+  return parts.join(" · ");
+}
+
+function Opening({ opening: o, picked, room, onPick, theme: t, style }: { opening: StaffOpening; picked: string | undefined; room: number; onPick: (id: string | null) => void; theme: Theme; style: CallingStyle | null }) {
   // Room for this seat: what's left overall plus whatever this seat's current pick costs.
   const seatRoom = room + (o.candidates.find((c) => c.member.id === picked)?.ask ?? 0);
   const shown = o.candidates.filter((c, i) => i < 10 || c.ask <= seatRoom);
@@ -186,6 +203,7 @@ function Opening({ opening: o, picked, room, onPick, theme: t }: { opening: Staf
                 {c.member.firstName} {c.member.lastName}
               </Text>
               {staffStyle(c.member) ? <Text style={{ color: t.text, fontSize: 12 }}>{staffStyle(c.member)}</Text> : null}
+              {coachLine(c.member, style) ? <Text style={{ color: t.accent, fontSize: 12 }}>{coachLine(c.member, style)}</Text> : null}
               <Text style={{ color: t.muted, fontSize: 12 }}>
                 age {c.member.age} · {from}
                 {c.reputation >= 1 ? ` · strong record (+${c.reputation.toFixed(0)})` : c.reputation <= -1 ? " · losing record" : ""}

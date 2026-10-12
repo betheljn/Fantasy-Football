@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { NavGroup, NavRow } from "../../components/ui";
-import { useDynasty } from "../../league/LeagueProvider";
+import { useDynasty, useLeague } from "../../league/LeagueProvider";
+import { coachLevel, openSlots, ownerStanding, upgradePoints } from "@dynasty/sim";
 import { useTheme } from "../../theme";
 
 export default function OfficeTab() {
@@ -32,6 +33,8 @@ export default function OfficeTab() {
         </NavGroup>
       ) : null}
 
+      <YouGroup />
+
       <NavGroup title="The dynasty">
         <NavRow icon="trophy-outline" title="Trophy room" detail="Titles, division crowns, awards and rivalries" onPress={() => router.push("/trophies")} />
         <NavRow icon="sparkles-outline" title="Moments" detail={moments ? `${moments} collected` : "Big plays and records, collected as they happen"} onPress={() => router.push("/moments")} />
@@ -42,6 +45,31 @@ export default function OfficeTab() {
 
       <SavesZone />
     </ScrollView>
+  );
+}
+
+/** You (the owner, solo or online) and your coaches. */
+function YouGroup() {
+  const d = useDynasty();
+  const router = useRouter();
+  const { userTeam, results, playoffs, league } = useLeague();
+  const progress = d.save?.dynasty.owners?.[userTeam];
+  const now = ownerStanding(progress, userTeam, { results, playoffs });
+  const points = upgradePoints(progress, now.seasonXp);
+  const staff = league.teams[userTeam]?.staff;
+  const open = staff ? openSlots(staff.hc) + openSlots(staff.oc) + openSlots(staff.dc) : 0;
+  return (
+    <NavGroup title="You">
+      <NavRow icon="trending-up-outline" title="Your level" detail={`Level ${now.level} · ${points ? `${points} point${points === 1 ? "" : "s"} to spend` : "upgrades"}`} badge={points ? String(points) : undefined} onPress={() => router.push("/level")} />
+      <NavRow
+        icon="people-outline"
+        title="Your coaches"
+        detail={staff ? `Levels ${coachLevel(staff.hc.xp).level}/${coachLevel(staff.oc.xp).level}/${coachLevel(staff.dc.xp).level} · abilities and fit` : "Abilities and fit"}
+        badge={open && d.abilityWindow ? String(open) : undefined}
+        onPress={() => router.push("/coaches")}
+        last
+      />
+    </NavGroup>
   );
 }
 

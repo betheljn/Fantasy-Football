@@ -14,6 +14,7 @@ import {
   OFFENSE_CONCEPTS,
   OFFENSE_CONCEPT_INFO,
   revealCall,
+  filmStudy,
   type DefenseConcept,
   type OffenseConcept,
   formatClock,
@@ -195,6 +196,7 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
           </View>
         ) : p ? (
           <>
+            <FilmLines prompt={p} home={home} away={away} theme={t} />
             <CallBar key={`${p.sofar.plays.length}:${game.calls.length}`} prompt={p} onAnswer={answer} theme={t} />
             <View style={s.handoff}>
               <Small label="Coaches: this drive" onPress={() => hand("drive")} theme={t} />
@@ -217,6 +219,36 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
         )}
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * Film study (the owner's analytics upgrade): one line with the best read
+ * (this game's film once there is some, else their playbook); tap for all of it.
+ */
+function FilmLines({ prompt: p, home, away, theme: t }: { prompt: GamePrompt; home: Team; away: Team; theme: Theme }) {
+  const [open, setOpen] = useState(false);
+  if ((p.kind !== "offense" && p.kind !== "defense") || !duelOn(p)) return null;
+  const you = p.team === home.abbr ? home : away;
+  const them = p.team === home.abbr ? away : home;
+  const look = p.kind === "offense" ? { personnel: p.formation.personnel, set: p.formation.set } : p.offense;
+  const f = filmStudy(you.upgrades?.analytics ?? 0, you, them, p.kind, p.situation, look, p.sofar.plays);
+  if (!f) return null;
+  const line = (xs: ReadonlyArray<{ label: string; share: number }>) => xs.slice(0, 3).map((x) => `${x.label} ${Math.round(x.share * 100)}%`).join(", ");
+  const lines = [
+    `Their playbook: ${line(f.playbook)}`,
+    ...(f.film ? [f.film.snaps ? `This game (${f.film.snaps}): ${line(f.film.calls)}` : "This game: nothing on film here yet"] : []),
+    ...(f.self?.snaps ? [`You, as they see you: ${line(f.self.calls)}`] : []),
+  ];
+  const best = f.film?.snaps ? lines[1]! : lines[0]!;
+  return (
+    <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityLabel={`Film study, ${f.situation}`} accessibilityHint={open ? "Show less" : "Show all of the film"} style={{ paddingVertical: 2 }}>
+      <Text style={{ color: t.text, fontSize: 12 }} numberOfLines={open ? undefined : 1}>
+        <Text style={{ color: t.accent, fontWeight: "800" }}>{`Film · ${f.situation}: `}</Text>
+        {open ? lines.join("\n") : best}
+        {!open && lines.length > 1 ? <Text style={{ color: t.muted }}> ▸</Text> : null}
+      </Text>
+    </Pressable>
   );
 }
 

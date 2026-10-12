@@ -395,7 +395,7 @@ drawn up, so a coach who doesn't fit your philosophy costs you.
        under way; the week plays it, the coaches calling anything left
    5c. App: the duel screen (your call, waiting on your friend, the reveal)
 
-### Milestone 23: owner and coach progression
+### Milestone 23: owner and coach progression (done)
 Decided: you are the owner, and the owner is who levels up; coaches level
 too; both have upgrades that improve player growth and games.
 1. Owner XP and levels (wins, calls won, development, titles)
