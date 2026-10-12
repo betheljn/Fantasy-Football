@@ -37,6 +37,8 @@ export interface Player {
   readonly holdout?: { weeks: number };
   /** Home state, where he grew up (absent for players from before regional talent: then it comes from his id). */
   readonly home?: string;
+  /** The program he leaned to as a recruit, when it's the one that drafted him (he chose it). */
+  readonly recruitedBy?: string;
 }
 
 export interface PlayerInit {

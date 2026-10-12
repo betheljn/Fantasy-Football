@@ -79,3 +79,31 @@ describe("a season of recruiting", () => {
     expect(Object.keys(s.interest!).length).toBe(50);
   });
 });
+
+import { allLeanings, allTeams, playerMorale, runDraft, scoutSeason } from "../src/index.ts";
+
+describe("recruits in the draft", () => {
+  const scouting = scoutSeason(league, cls);
+  const order = allTeams(league).map((t) => t.abbr);
+  const leanings = allLeanings(scouting);
+  const draft = runDraft(league, cls, scouting, order);
+  const { interest: _i, ...plain } = scouting;
+  const without = runDraft(league, cls, plain, order);
+
+  it("fall toward the programs they lean to", () => {
+    const landed = (d: typeof draft) => d.picks.filter((p) => leanings.get(p.player.id)?.team === p.team).length;
+    expect(landed(draft)).toBeGreaterThan(3 * Math.max(1, landed(without)));
+  });
+
+  it("a recruit who lands with his program is marked, and is happier there", () => {
+    const pick = draft.picks.find((p) => p.recruit)!;
+    expect(pick.player.recruitedBy).toBe(pick.team);
+    expect(draft.picks.filter((p) => !p.recruit).every((p) => p.player.recruitedBy === undefined)).toBe(true);
+    const team = draft.league.teams[pick.team]!;
+    const player = team.roster.find((p) => p.id === pick.player.id)!;
+    const m = playerMorale(player, team, [], league.season, 300_000);
+    const { recruitedBy: _r, ...unrecruited } = player;
+    expect(m.value).toBeGreaterThan(playerMorale(unrecruited, team, [], league.season, 300_000).value);
+    expect(m.reasons).toContain("chose this program");
+  });
+});
