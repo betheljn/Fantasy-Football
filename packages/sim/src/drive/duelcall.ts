@@ -129,11 +129,18 @@ function normalize(w: number[]): number[] {
 const offenseScheme = (team: Team) => (team.staff ? OFF_SCHEME[playCallers(team.staff).oc.scheme] : NO_SCHEME_OFF);
 const defenseScheme = (team: Team) => (team.staff ? DEF_SCHEME[playCallers(team.staff).dc.scheme] : NO_SCHEME_DEF);
 
-/** How well a side's play caller reads and exploits tendencies: 0 for an average one (and for no staff). */
-export function callerSkill(team: Team, side: "offense" | "defense"): number {
+/**
+ * How well a side's play caller reads and exploits tendencies: 0 for an
+ * average one (and for no staff). A film-junkie head coach adds to it; a
+ * halftime adjuster adds more after the break.
+ */
+export function callerSkill(team: Team, side: "offense" | "defense", s?: Situation): number {
   if (!team.staff) return 0;
   const c = playCallers(team.staff);
-  return staffEdge(side === "offense" ? c.oc.playCalling : c.dc.playCalling);
+  const hc = team.staff.hc.abilities ?? [];
+  const film = hc.includes("film_junkie") ? 0.5 : 0;
+  const halftime = hc.includes("halftime_adjuster") && s && s.quarter >= 3 ? 0.75 : 0;
+  return staffEdge(side === "offense" ? c.oc.playCalling : c.dc.playCalling) + film + halftime;
 }
 
 /** What the offense likes to call here for a run or a pass (its playbook, before any reading of the defense), in concept order. */
@@ -180,12 +187,12 @@ export function defensePlaybook(team: Team, s: Situation, personnel: Personnel |
  * with what it has called in this game in this kind of situation. A sharper
  * caller trusts the film sooner.
  */
-function expect(prior: number[], seen: number[] | undefined, skill: number): number[] {
+function expect(prior: number[], seen: number[] | undefined, skill: number, disguised = false): number[] {
   let n = 0;
   if (seen) for (const x of seen) n += x;
   if (!n) return prior;
-  // How many snaps of film count as much as the scouting report.
-  const trust = clamp(6 - 2 * skill, 2, 10);
+  // How many snaps of film count as much as the scouting report (a disguised defense takes more).
+  const trust = clamp(6 - 2 * skill, 2, 10) + (disguised ? 4 : 0);
   return prior.map((p, i) => (p * trust + seen![i]!) / (trust + n));
 }
 
@@ -204,8 +211,9 @@ export interface OffenseRead {
  * snap always reads the same.
  */
 export function chooseOffenseConcepts(rng: Rng, offense: Team, defense: Team, s: Situation, book: DuelBook | undefined, set: OffenseSet, personnel: Personnel, prevent: boolean): OffenseRead {
-  const skill = callerSkill(offense, "offense");
-  const expected = expect(defensePlaybook(defense, s, personnel, prevent), book?.defense[defense.abbr]?.[duelBucket(s)], skill);
+  const skill = callerSkill(offense, "offense", s);
+  const disguised = defense.staff?.dc.abilities?.includes("disguise") ?? false;
+  const expected = expect(defensePlaybook(defense, s, personnel, prevent), book?.defense[defense.abbr]?.[duelBucket(s)], skill, disguised);
   const k = lean(skill);
   // How each concept fares against what the defense is expected to call.
   const pull = EDGE_TABLE.map((row) => {
@@ -223,7 +231,7 @@ export function chooseDefenseConcept(rng: Rng, defense: Team, offense: Team, s: 
   const play = defensePlaybook(defense, s, personnel, prevent);
   const u = rng.next();
   if (prevent) return byDraw(DEFENSE_CONCEPTS, play, u);
-  const skill = callerSkill(defense, "defense");
+  const skill = callerSkill(defense, "defense", s);
   // Scouting: the offense's playbook here, split by how often it throws from this look.
   const runs = offensePlaybook(offense, s, "run", set);
   const passes = offensePlaybook(offense, s, "pass", set);

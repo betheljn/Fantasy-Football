@@ -89,7 +89,10 @@ describe("a season's XP", () => {
     const { owners: _owners, ...unowned } = d;
     const plain = finishSeason(unowned, played).dynasty;
     expect(plain.owners).toBeUndefined();
-    expect(plain.league).toEqual(after.league);
+    // The season played the same (afterwards owners' coaches wait for their owner's ability picks,
+    // where AI coaches pick their own, so the offseason can differ from there on).
+    const sum = (h: Dynasty["history"][number]) => ({ champion: h.champion, runnerUp: h.runnerUp, top25: h.top25, awards: h.awards, divisionWinners: h.divisionWinners });
+    expect(sum(plain.history.at(-1)!)).toEqual(sum(after.history.at(-1)!));
   });
 });
 

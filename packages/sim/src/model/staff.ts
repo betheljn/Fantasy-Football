@@ -1,6 +1,7 @@
 // Team staff: head coach, coordinators, general manager, scouting director.
 // Ratings are 0-99 (50 = an average hire); tendencies are 0-99 dials.
 
+import type { CoachAbility } from "../dynasty/coaches.ts";
 export type StaffRole = "HC" | "OC" | "DC" | "GM" | "SCOUT";
 
 export const STAFF_ROLE_NAMES: Record<StaffRole, string> = {
@@ -47,6 +48,10 @@ interface StaffBase {
   readonly tenure: number;
   /** Current deal (absent when unemployed or outside the budget system). */
   readonly contract?: StaffContract;
+  /** Career XP (head coaches and coordinators level up; see dynasty/coaches.ts). */
+  readonly xp?: number;
+  /** Abilities earned (one slot at levels 3, 6 and 9). */
+  readonly abilities?: readonly CoachAbility[];
 }
 
 /** A staff deal: a flat yearly salary ($K) from `signed` through `through`. */

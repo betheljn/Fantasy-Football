@@ -122,6 +122,8 @@ function asHeadCoach(rng: Rng, m: StaffMember): HeadCoach {
     age: m.age,
     experience: 0,
     tenure: 0,
+    // His XP comes with him; his coordinator abilities don't (a head coach's slots fill with head coach abilities).
+    ...(m.xp ? { xp: m.xp } : {}),
     role: "HC",
     gameManagement: clampRating(calling + rng.normal(0, 6)),
     discipline: clampRating(rng.normal(56, 9)),

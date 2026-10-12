@@ -15,7 +15,7 @@ import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
-import { DEFENSE_CONCEPTS, OFFENSE_CONCEPTS, SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type CoachCall, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { COACH_ABILITY_KEYS, DEFENSE_CONCEPTS, OFFENSE_CONCEPTS, SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type CoachCall, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -483,6 +483,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           { type: "object", required: ["kind", "player"], properties: { kind: { enum: ["ir", "sign"] }, player: idSchema } },
           { type: "object", required: ["kind", "proposal"], properties: { kind: { const: "trade" }, proposal: proposalSchema } },
           { type: "object", required: ["kind", "track"], properties: { kind: { const: "upgrade" }, track: { enum: ["facilities", "recruiting", "analytics", "clinic"] } } },
+          { type: "object", required: ["kind", "ability"], properties: { kind: { const: "ability" }, ability: { enum: [...COACH_ABILITY_KEYS] } } },
           {
             type: "object",
             required: ["kind", "game", "calls"],

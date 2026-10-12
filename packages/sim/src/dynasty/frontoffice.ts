@@ -105,7 +105,7 @@ export interface DevelopmentFactor {
 /** The head coach's effect on how his players develop. */
 export function developmentFactor(team: Team | undefined): DevelopmentFactor {
   // The owner's facilities add to growth on top of the head coach.
-  const facilities = 1 + FACILITIES_PER_TIER * (team?.upgrades?.facilities ?? 0);
+  const facilities = (1 + FACILITIES_PER_TIER * (team?.upgrades?.facilities ?? 0)) * (team?.staff?.hc.abilities?.includes("developer") ? 1.05 : 1);
   const hc = team?.staff?.hc;
   if (!hc) return { growth: facilities, decline: 1 };
   const e = staffEdge(hc.development);

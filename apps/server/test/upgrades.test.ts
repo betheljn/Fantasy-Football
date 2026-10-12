@@ -17,3 +17,17 @@ describe("owner upgrades online", () => {
     expect(r.state!.dynasty.owners!.TX!.upgrades).toBeUndefined();
   });
 });
+
+describe("coach abilities online", () => {
+  it("are picked before the season starts, with an open slot", () => {
+    const s = openSeason({ ...newLeagueState("ability-online"), humans: { OH: "m1" } });
+    expect(applyMove(s, "OH", { kind: "ability", ability: "shot_caller" }).problems[0]).toContain("no open ability slot");
+    const league = s.dynasty.league;
+    const oh = league.teams.OH!;
+    const leveled = { ...s, dynasty: { ...s.dynasty, league: { ...league, teams: { ...league.teams, OH: { ...oh, staff: { ...oh.staff!, oc: { ...oh.staff!.oc, xp: 99_999 } } } } } } };
+    const r = applyMove(leveled, "OH", { kind: "ability", ability: "shot_caller" });
+    expect(r.problems).toEqual([]);
+    expect(r.state!.dynasty.league.teams.OH!.staff!.oc.abilities).toEqual(["shot_caller"]);
+    expect(applyMove({ ...leveled, weeksPlayed: 1 }, "OH", { kind: "ability", ability: "shot_caller" }).problems[0]).toContain("before the season starts");
+  });
+});

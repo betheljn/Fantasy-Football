@@ -3,6 +3,9 @@
 // the same sim rules (and the same functions, with the same arguments) as in
 // the app, so a move made on a phone lands exactly the same here.
 import {
+  abilityProblem,
+  chooseAbility,
+  type CoachAbility,
   buyUpgrade,
   seasonXp,
   totalXp,
@@ -44,7 +47,9 @@ export type Move =
   /** Your calls so far in your game this week (empty: leave it all to your coaches). */
   | { kind: "coach"; game: string; calls: Array<CoachCall | null> }
   /** The next tier of an owner upgrade (any time: upgrades never touch a play). */
-  | { kind: "upgrade"; track: UpgradeTrack };
+  | { kind: "upgrade"; track: UpgradeTrack }
+  /** A new ability for one of your coaches (before the season's first week: abilities never change mid-season). */
+  | { kind: "ability"; ability: CoachAbility };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
 export const MAX_CALLS = 600;
@@ -103,6 +108,13 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
     if (problem) return refuse(problem);
     return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
+
+  if (move.kind === "ability") {
+    if (s.weeksPlayed > 0 || s.offseason) return refuse("Coaches pick up new abilities before the season starts.");
+    const problem = abilityProblem(league.teams[team], move.ability);
+    if (problem) return refuse(problem);
+    return { state: withLeague(s, chooseAbility(league, team, move.ability)), problems: [] };
   }
 
   if (move.kind === "trade") {

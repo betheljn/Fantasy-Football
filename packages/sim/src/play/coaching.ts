@@ -120,6 +120,7 @@ export function disciplineFactor(team: Team | undefined): number {
 /** Chance a head coach misses the right moment for a timeout (0 for average or better). */
 export function clockMistakeChance(team: Team | undefined): number {
   const hc = team?.staff?.hc;
+  if (hc?.abilities?.includes("clock_manager")) return 0;
   return hc ? Math.max(0, Math.min(0.3, (STAFF_AVERAGE - hc.gameManagement) / 100)) : 0;
 }
 

@@ -2,6 +2,7 @@
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
 import { bankOwners, syncUpgrades, type OwnerProgress } from "./progression.ts";
+import { bankCoaches } from "./coaches.ts";
 import { teamChoices, type PerTeam } from "../choices.ts";
 import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
@@ -364,14 +365,16 @@ export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, d
 
 export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoices: StaffChoices = {}): OffseasonState {
   // Injured reserve rejoins the roster, everyone hurt heals, and last season's free agents leave.
-  const league = healAll(endSeasonMoves(dynasty.league));
+  const healed = healAll(endSeasonMoves(dynasty.league));
   const { season, stats, playoffs } = played;
+  const awards = computeAwards(healed, stats, season.results);
+  // Coaches bank the season's XP before anyone is fired or hired (people pick their own coaches' new abilities).
+  const league = bankCoaches(healed, { results: season.results, playoffs, awards }, new Set(Object.keys(dynasty.owners ?? {})));
 
   // The class entering next season was scouted while this season was played.
   const draftClass = generateDraftClass(league);
   const scouting = played.scouting ? finishScouting(played.scouting, league, draftClass) : scoutSeason(league, draftClass);
 
-  const awards = computeAwards(league, stats, season.results);
   const standings = divisionStandings(league, season.results);
 
   // Careers: fold this season in.

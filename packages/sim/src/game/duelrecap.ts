@@ -41,8 +41,8 @@ export function revealCall(e: PlayEvent): CallReveal | null {
 }
 
 /** Calls each team won and lost in a game, for its summary (nothing for a game without calls). */
-export function callTally(game: GameResult): { calls?: Record<string, [number, number]> } {
-  const t: Record<string, [number, number]> = { [game.home]: [0, 0], [game.away]: [0, 0] };
+export function callTally(game: GameResult): { calls?: Record<string, [number, number, number?]> } {
+  const t: Record<string, [number, number, number]> = { [game.home]: [0, 0, 0], [game.away]: [0, 0, 0] };
   let any = false;
   for (const p of game.plays) {
     const e = p.event;
@@ -55,6 +55,7 @@ export function callTally(game: GameResult): { calls?: Record<string, [number, n
     const loser = winner === e.offense ? e.defense : e.offense;
     t[winner]![0]++;
     t[loser]![1]++;
+    if (winner === e.offense) t[winner]![2]++;
   }
   return any ? { calls: t } : {};
 }
