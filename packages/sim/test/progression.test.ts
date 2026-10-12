@@ -77,7 +77,9 @@ describe("a season's XP", () => {
     const after = finishSeason(d, played).dynasty;
     const season = after.owners![champ]!.seasons[0]!;
     const sources = season.lines.map((l) => l.source);
-    expect(sources).toEqual(expect.arrayContaining(["win", "calls", "division_title", "playoff_berth", "playoff_win", "championship", "development"]));
+    expect(sources).toEqual(expect.arrayContaining(["win", "calls", "playoff_berth", "playoff_win", "championship", "development"]));
+    // A division title only if it won its title game (a champion can come in at-large).
+    expect(sources.includes("division_title")).toBe(played.playoffs.titleGames!.some((t) => t.summary.winner === champ));
     expect(season.lines.find((l) => l.source === "playoff_win")!.count).toBe(4);
     expect(after.owners![champ]!.xp).toBe(totalXp(season.lines));
     // Awards go to the owners whose players won them.

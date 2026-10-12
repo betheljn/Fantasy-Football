@@ -12,9 +12,11 @@ import type { League } from "./league.ts";
 import type { ScheduledGame } from "./schedule.ts";
 import { gameDayTeam } from "../game/injuries.ts";
 import { gameSeed } from "./season.ts";
+import { kickoffAbilities } from "../dynasty/coaches.ts";
 
 /** The duel as the week will play it: home coached, away its rival, picked up from the calls so far. */
 export function duelScheduledGame(league: League, game: ScheduledGame, calls: ReadonlyArray<CoachCall | null> = []): CoachedGame {
+  if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
   return startCoachedGame(home.team, away.team, gameSeed(league, game), game.home, { rival: game.away }, calls);

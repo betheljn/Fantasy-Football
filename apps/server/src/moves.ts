@@ -112,6 +112,8 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
 
   if (move.kind === "ability") {
     if (s.weeksPlayed > 0 || s.offseason) return refuse("Coaches pick up new abilities before the season starts.");
+    // Your week-1 game is already being called with the coaches' own picks.
+    if (s.coaching?.[team] || duelUnderWay(s, team)) return refuse("Your week-1 game is under way: your coaches made their own picks for it.");
     const problem = abilityProblem(league.teams[team], move.ability);
     if (problem) return refuse(problem);
     return { state: withLeague(s, chooseAbility(league, team, move.ability)), problems: [] };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFENSE_CONCEPT_INFO,
   OFFENSE_CONCEPT_INFO,
+  RULES_VERSION,
   Rng,
   conceptMatchup,
   checkAnswer,
@@ -44,7 +45,7 @@ function coach(home: Team, away: Team, seed: string, team: string, pick: (p: Gam
 describe("the play duel's AI callers (rules 4)", () => {
   it("both sides call a concept on every run and pass, matching the play", () => {
     const g = simulateGame(A, B, "duel-1");
-    expect(g.rules).toBe(4);
+    expect(g.rules).toBe(RULES_VERSION);
     const plays = scrimmage(g);
     expect(plays.length).toBeGreaterThan(80);
     for (const e of plays) {

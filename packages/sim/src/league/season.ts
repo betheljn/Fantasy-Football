@@ -1,4 +1,5 @@
 // Playing a season: simulate each scheduled game and keep a compact summary.
+import { kickoffAbilities } from "../dynasty/coaches.ts";
 import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
 import { simulateGame, startCoachedGame, type CoachedGame, type GameResult } from "../game/game.ts";
@@ -32,6 +33,8 @@ export function gameSeed(league: League, game: ScheduledGame): string {
  * played with their calls (any calls not made are the coaches').
  */
 export function playGame(league: League, game: ScheduledGame, coached?: CoachedCalls): { summary: GameSummary; result: GameResult } {
+  // Week 1: coaches' open ability slots fill as it kicks off.
+  if (game.week === 1) league = kickoffAbilities(league);
   const seed = gameSeed(league, game);
   // Injured players sit.
   const home = gameDayTeam(league.teams[game.home]!);
@@ -60,6 +63,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
 
 /** Coach `team` in a scheduled game: the same teams and seed the week will play it with (picked up from `calls` so far). */
 export function coachScheduledGame(league: League, game: ScheduledGame, team: string, calls: CoachedCalls["calls"] = []): CoachedGame {
+  if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
   return startCoachedGame(home.team, away.team, gameSeed(league, game), team, {}, calls);
@@ -78,6 +82,7 @@ export function playWeek(
   /** Games people coached this week (by game id), played with their calls. */
   coached?: ({ game: string } & CoachedCalls) | ReadonlyArray<{ game: string } & CoachedCalls>,
 ): { league: League; games: Array<{ summary: GameSummary; result: GameResult }> } {
+  if (week === 1) league = kickoffAbilities(league);
   const byGame = new Map((coached === undefined ? [] : Array.isArray(coached) ? coached : [coached as { game: string } & CoachedCalls]).map((c) => [c.game, c]));
   const games = schedule.games.filter((g) => g.week === week).map((g) => {
     const played = playGame(league, g, byGame.get(g.id));

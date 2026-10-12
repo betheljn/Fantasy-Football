@@ -31,3 +31,17 @@ describe("coach abilities online", () => {
     expect(applyMove({ ...leveled, weeksPlayed: 1 }, "OH", { kind: "ability", ability: "shot_caller" }).problems[0]).toContain("before the season starts");
   });
 });
+
+describe("week 1 kicks off with every slot filled", () => {
+  it("open slots are the coaches' own picks once week 1 is played", { timeout: 120_000 }, async () => {
+    const { advance } = await import("../src/season.ts");
+    const s = openSeason({ ...newLeagueState("kickoff-online"), humans: { OH: "m1" } });
+    const league = s.dynasty.league;
+    const oh = league.teams.OH!;
+    const leveled = { ...s, dynasty: { ...s.dynasty, league: { ...league, teams: { ...league.teams, OH: { ...oh, staff: { ...oh.staff!, oc: { ...oh.staff!.oc, scheme: "Air Raid" as const, xp: 99_999 } } } } } } };
+    // Coaching week 1 started: too late to pick.
+    expect(applyMove({ ...leveled, coaching: { OH: { game: "x", calls: [null] } } }, "OH", { kind: "ability", ability: "run_game_guru" }).problems[0]).toContain("under way");
+    const after = advance(leveled, new Set(["OH"])).state;
+    expect(after.dynasty.league.teams.OH!.staff!.oc.abilities).toEqual(["shot_caller", "quick_game_architect", "red_zone_wizard"]);
+  });
+});

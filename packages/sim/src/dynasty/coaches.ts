@@ -7,7 +7,9 @@
 // coaches fill theirs as the offseason begins; a person picks for their own
 // coaches before the next season starts (abilities never change mid-season,
 // so every game played replays the same).
-import type { HeadCoach, DefensiveCoordinator, OffensiveCoordinator, TeamStaff } from "../model/staff.ts";
+import type { HeadCoach, DefensiveCoordinator, DefensiveScheme, OffensiveCoordinator, OffensiveScheme, TeamStaff } from "../model/staff.ts";
+import { playCallers } from "../play/coaching.ts";
+import { RULES_VERSION } from "../play/common.ts";
 import type { Team } from "../model/team.ts";
 import type { League } from "../league/league.ts";
 import type { OffenseConcept, DefenseConcept } from "../play/concepts.ts";
@@ -168,6 +170,22 @@ export function bankCoaches(league: League, input: SeasonXpInput, people: Readon
   return { ...league, teams };
 }
 
+/**
+ * The league as week 1 kicks off: any slot still open (a person didn't pick)
+ * gets the coach's own pick. Deterministic, so the phone and the server work
+ * out the same week-1 games; playing week 1 keeps it.
+ */
+export function kickoffAbilities(league: League): League {
+  let teams: Record<string, Team> | null = null;
+  for (const [abbr, t] of Object.entries(league.teams)) {
+    const s = t.staff;
+    if (!s || (openSlots(s.hc) <= 0 && openSlots(s.oc) <= 0 && openSlots(s.dc) <= 0)) continue;
+    teams ??= { ...league.teams };
+    teams[abbr] = { ...t, staff: { ...s, hc: fill(s.hc), oc: fill(s.oc), dc: fill(s.dc) } };
+  }
+  return teams ? { ...league, teams } : league;
+}
+
 /** Why `ability` can't be given to this team's coach now, or null. */
 export function abilityProblem(team: Team | undefined, ability: CoachAbility): string | null {
   const info = COACH_ABILITIES[ability];
@@ -211,13 +229,49 @@ const DEF_DESIGN: Partial<Record<CoachAbility, readonly DefenseConcept[]>> = {
   coverage_scholar: ["cover_2", "cover_3", "cover_4"],
 };
 
+// --- philosophy fit (rules 5): a scheme is a playbook; its core calls are drawn up well, the ones it doesn't believe in poorly ---
+
+/** How far a scheme's play design moves a call's edge, either way (in edge points). */
+export const SCHEME_FIT_EDGE = 0.25;
+
+/** Each offensive scheme's calls: +1 drawn up well, -1 poorly (anything left out is ordinary). */
+export const OFFENSE_SCHEME_FIT: Record<OffensiveScheme, Partial<Record<OffenseConcept, 1 | -1>>> = {
+  "West Coast": { quick: 1, screen: 1, intermediate: 1, deep_shot: -1, inside_run: -1 },
+  "Air Raid": { deep_shot: 1, intermediate: 1, quick: 1, inside_run: -1, play_action: -1, draw: -1 },
+  "Power Run": { inside_run: 1, play_action: 1, outside_run: 1, screen: -1, quick: -1, intermediate: -1 },
+  "Spread Option": { outside_run: 1, draw: 1, screen: 1, inside_run: -1, deep_shot: -1 },
+  "Pro Style": {},
+};
+
+export const DEFENSE_SCHEME_FIT: Record<DefensiveScheme, Partial<Record<DefenseConcept, 1 | -1>>> = {
+  "Blitz Heavy": { run_blitz: 1, pass_blitz: 1, man_press: 1, cover_2: -1, cover_4: -1 },
+  "Man Press": { man_press: 1, pass_blitz: 1, cover_3: -1, cover_4: -1 },
+  "Two-High Zone": { cover_2: 1, cover_4: 1, run_blitz: -1, pass_blitz: -1, man_press: -1 },
+  "Cover 3 Zone": { cover_3: 1, base: 1, man_press: -1, cover_4: -1, pass_blitz: -1 },
+  Multiple: {},
+};
+
+/** The schemes the play callers run (the head coach's, if he calls that side). */
+export function callerSchemes(team: Team | undefined): { offense: OffensiveScheme | null; defense: DefensiveScheme | null } {
+  if (!team?.staff) return { offense: null, defense: null };
+  const c = playCallers(team.staff);
+  return { offense: c.oc.scheme, defense: c.dc.scheme };
+}
+
 /**
  * How much the coordinators' play design moves a call's matchup edge (the
  * offense's point of view): his own calls drawn up better, the other side's
- * drawn up better against him.
+ * drawn up better against him; from rules 5, each side's scheme too (calls
+ * outside the playbook it believes in come out worse).
  */
-export function playDesignEdge(offense: Team, defense: Team, off: OffenseConcept, def: DefenseConcept, redZone: boolean): number {
+export function playDesignEdge(offense: Team, defense: Team, off: OffenseConcept, def: DefenseConcept, redZone: boolean, rules = RULES_VERSION): number {
   let e = 0;
+  if (rules >= 5) {
+    const os = callerSchemes(offense).offense;
+    const ds = callerSchemes(defense).defense;
+    e += SCHEME_FIT_EDGE * ((os ? OFFENSE_SCHEME_FIT[os][off] : 0) ?? 0);
+    e -= SCHEME_FIT_EDGE * ((ds ? DEFENSE_SCHEME_FIT[ds][def] : 0) ?? 0);
+  }
   const oc = offense.staff?.oc.abilities ?? [];
   const dc = defense.staff?.dc.abilities ?? [];
   for (const a of oc) if (OFF_DESIGN[a]?.includes(off) || (a === "red_zone_wizard" && redZone)) e += PLAY_DESIGN_EDGE;
@@ -225,4 +279,74 @@ export function playDesignEdge(offense: Team, defense: Team, off: OffenseConcept
   // Run fits: the base front and the run blitz stop runs better.
   if (dc.includes("run_fits") && (def === "base" || def === "run_blitz") && (off === "inside_run" || off === "outside_run" || off === "draw")) e -= DEFENSE_DESIGN_EDGE;
   return e;
+}
+
+/** How you call plays: the concepts you picked yourself in games you coached (counts). */
+export interface CallingStyle {
+  offense: Partial<Record<OffenseConcept, number>>;
+  defense: Partial<Record<DefenseConcept, number>>;
+  offenseCalls: number;
+  defenseCalls: number;
+}
+
+/**
+ * Your calling style from the season's games you coached (only the concepts
+ * you chose; anything left to the coaches isn't yours). Duels are left out:
+ * their calls are both coaches' together.
+ */
+export function callingStyle(results: ReadonlyArray<{ coached?: { team: string; calls: ReadonlyArray<unknown>; rival?: string } }>, team: string): CallingStyle {
+  const style: CallingStyle = { offense: {}, defense: {}, offenseCalls: 0, defenseCalls: 0 };
+  for (const g of results) {
+    if (!g.coached || g.coached.team !== team || g.coached.rival) continue;
+    for (const c of g.coached.calls as ReadonlyArray<{ call?: string; concept?: string } | null>) {
+      if (!c?.concept) continue;
+      if ("call" in c) {
+        const k = c.concept as OffenseConcept;
+        style.offense[k] = (style.offense[k] ?? 0) + 1;
+        style.offenseCalls++;
+      } else {
+        const k = c.concept as DefenseConcept;
+        style.defense[k] = (style.defense[k] ?? 0) + 1;
+        style.defenseCalls++;
+      }
+    }
+  }
+  return style;
+}
+
+export interface SchemeFit {
+  /** Share of your calls the scheme draws up well, and poorly. */
+  well: number;
+  poorly: number;
+  /** Average edge its play design gives your calls (edge points; + helps you). */
+  edge: number;
+  /** "Great fit", "Good fit", "Neutral", "Poor fit", "Bad fit". */
+  grade: string;
+}
+
+const grade = (edge: number) => (edge >= 0.12 ? "Great fit" : edge >= 0.04 ? "Good fit" : edge > -0.04 ? "Neutral" : edge > -0.12 ? "Poor fit" : "Bad fit");
+
+function fitOf<K extends string>(fit: Partial<Record<K, 1 | -1>>, calls: Partial<Record<K, number>>, total: number): SchemeFit | null {
+  if (total <= 0) return null;
+  let well = 0;
+  let poorly = 0;
+  for (const [k, n] of Object.entries(calls) as Array<[K, number]>) {
+    if (fit[k] === 1) well += n;
+    if (fit[k] === -1) poorly += n;
+  }
+  const edge = (SCHEME_FIT_EDGE * (well - poorly)) / total;
+  return { well: well / total, poorly: poorly / total, edge, grade: grade(edge) };
+}
+
+/** How an offensive scheme fits the way you call plays (null until you've called some yourself). */
+export const offenseSchemeFit = (scheme: OffensiveScheme, style: CallingStyle) => fitOf(OFFENSE_SCHEME_FIT[scheme], style.offense, style.offenseCalls);
+/** How a defensive scheme fits the way you call defenses. */
+export const defenseSchemeFit = (scheme: DefensiveScheme, style: CallingStyle) => fitOf(DEFENSE_SCHEME_FIT[scheme], style.defense, style.defenseCalls);
+
+/** How your play callers' schemes fit the way you call (each side null until you've called it). */
+export function philosophyFit(team: Team, style: CallingStyle): { offense: (SchemeFit & { scheme: OffensiveScheme }) | null; defense: (SchemeFit & { scheme: DefensiveScheme }) | null } {
+  const s = callerSchemes(team);
+  const o = s.offense ? offenseSchemeFit(s.offense, style) : null;
+  const d = s.defense ? defenseSchemeFit(s.defense, style) : null;
+  return { offense: o && s.offense ? { ...o, scheme: s.offense } : null, defense: d && s.defense ? { ...d, scheme: s.defense } : null };
 }

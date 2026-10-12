@@ -12,9 +12,11 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * exactly after the sim is retuned: 1 = the original run game; 2 = a real
  * fullback in two-back sets and tougher goal-line runs; 3 = blocked field
  * goals can be scooped and returned; 4 = the play duel: both sides call a
- * concept before each snap, and the matchup of the calls shapes the play.
+ * concept before each snap, and the matchup of the calls shapes the play;
+ * 5 = philosophy fit: each side's scheme draws its core calls up better and
+ * the calls it doesn't believe in worse.
  */
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
 
 export interface PlayContext {
   offense: Team;
@@ -34,7 +36,7 @@ export interface PlayContext {
 export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null {
   if (!ctx.concepts || (ctx.rules ?? RULES_VERSION) < 4) return null;
   // The matchup, plus how well each side's coordinator draws his call up.
-  const design = playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90);
+  const design = playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90, ctx.rules ?? RULES_VERSION);
   return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design };
 }
 

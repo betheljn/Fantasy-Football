@@ -115,3 +115,48 @@ describe("abilities on the field and off it", () => {
     expect(callerSkill(film, "offense", { ...first, quarter: 3 }) - callerSkill(OH, "offense", first)).toBeCloseTo(1.25);
   });
 });
+
+import { SCHEME_FIT_EDGE, callingStyle, defenseSchemeFit, kickoffAbilities, offenseSchemeFit, philosophyFit } from "../src/index.ts";
+
+describe("philosophy fit (rules 5)", () => {
+  const air = withCoach(OH, "oc", { scheme: "Air Raid", abilities: [] });
+  const air5 = { ...air, staff: { ...air.staff!, hc: (({ calls: _c, ...hc }) => hc)(air.staff!.hc) } } as Team;
+  const plainDef = withCoach(TX, "dc", { scheme: "Multiple", abilities: [] });
+
+  it("the scheme draws its calls up better or worse, from rules 5 on", () => {
+    expect(playDesignEdge(air5, plainDef, "deep_shot", "base", false, 5)).toBe(SCHEME_FIT_EDGE);
+    expect(playDesignEdge(air5, plainDef, "inside_run", "base", false, 5)).toBe(-SCHEME_FIT_EDGE);
+    expect(playDesignEdge(air5, plainDef, "screen", "base", false, 5)).toBe(0);
+    // Under rules 4 (games already played), nothing.
+    expect(playDesignEdge(air5, plainDef, "deep_shot", "base", false, 4)).toBe(0);
+    const blitz = withCoach(TX, "dc", { scheme: "Blitz Heavy", abilities: [] });
+    const blitz5 = { ...blitz, staff: { ...blitz.staff!, hc: (({ calls: _c, ...hc }) => hc)(blitz.staff!.hc) } } as Team;
+    expect(playDesignEdge(OH, blitz5, "screen", "pass_blitz", false, 5)).toBe(-SCHEME_FIT_EDGE + (playDesignEdge(OH, plainDef, "screen", "pass_blitz", false, 5)));
+  });
+
+  it("reads your style from the calls you made yourself, and grades schemes by it", () => {
+    const results = [
+      { coached: { team: "OH", calls: [{ call: "run", concept: "inside_run" }, { call: "run" }, null, { concept: "cover_2" }, { call: "pass", concept: "play_action" }] } },
+      // Someone else's game, and a duel: not counted.
+      { coached: { team: "TX", calls: [{ call: "pass", concept: "deep_shot" }] } },
+      { coached: { team: "OH", rival: "TX", calls: [{ call: "pass", concept: "deep_shot" }] } },
+    ];
+    const style = callingStyle(results, "OH");
+    expect(style).toEqual({ offense: { inside_run: 1, play_action: 1 }, defense: { cover_2: 1 }, offenseCalls: 2, defenseCalls: 1 });
+    expect(offenseSchemeFit("Power Run", style)!.grade).toBe("Great fit");
+    expect(offenseSchemeFit("Air Raid", style)!.grade).toBe("Bad fit");
+    expect(offenseSchemeFit("Pro Style", style)!.grade).toBe("Neutral");
+    expect(defenseSchemeFit("Two-High Zone", style)!.well).toBe(1);
+    expect(defenseSchemeFit("Blitz Heavy", { ...style, defense: {}, defenseCalls: 0 })).toBeNull();
+    expect(philosophyFit(air5, style).offense).toMatchObject({ scheme: "Air Raid", grade: "Bad fit" });
+  });
+});
+
+describe("week 1 kicks off with every slot filled", () => {
+  it("open slots get the coach's own picks; filled ones stay", () => {
+    const leveled = withCoach(OH, "oc", { scheme: "Power Run", xp: toLevel(6), abilities: ["shot_caller"] });
+    const league = kickoffAbilities({ ...base.league, teams: { ...base.league.teams, OH: leveled } });
+    expect(league.teams.OH!.staff!.oc.abilities).toEqual(["shot_caller", "run_game_guru"]);
+    expect(kickoffAbilities(league)).toBe(league);
+  });
+});
