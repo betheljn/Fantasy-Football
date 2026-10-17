@@ -127,7 +127,8 @@ export type OnlineMove =
   /** Your calls so far in your game this week (empty: leave it to your coaches). */
   | { kind: "coach"; game: string; calls: Array<CoachCall | null> }
   | { kind: "upgrade"; track: UpgradeTrack }
-  | { kind: "ability"; ability: CoachAbility };
+  | { kind: "ability"; ability: CoachAbility }
+  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> };
 
 /** Your call for the offseason stage that's open (send it again to change it). */
 export type OffseasonChoice =

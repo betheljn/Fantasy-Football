@@ -410,7 +410,7 @@ too; both have upgrades that improve player growth and games.
    2c. Coach-philosophy fit
 3. App: owner profile, upgrade tree, coach abilities
 
-### Milestone 24: recruiting
+### Milestone 24: recruiting (done)
 Local and outside talent: recruiting points from your coach and upgrades;
 local prospects cost less; you can recruit anywhere.
 Decided: the draft stays the only way in; recruiting builds a prospect's

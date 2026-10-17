@@ -9,6 +9,11 @@
 // and free-agent signings, as for every AI team).
 import {
   withOwners,
+  advanceScoutingWeek,
+  createScouting,
+  generateDraftClass,
+  seasonWeeks,
+  type ScoutingState,
   addGameToSeason,
   aiInSeasonMoves,
   aiTradeWeek,
@@ -60,6 +65,8 @@ export interface SeasonProgress {
   covered: Array<{ week: number; teams: string[] }>;
   /** Rosters through the season, so every game replays exactly. */
   lineups: LineupLog;
+  /** Next year's draft class as every team has scouted and recruited it so far (absent: from before weekly scouting online). */
+  scouting?: ScoutingState;
 }
 
 /**
@@ -102,7 +109,9 @@ const tradedIds = (trades: readonly TradeRecord[]) => new Set(trades.flatMap((t)
 
 /** A season opens: fresh progress and the AI's first round of trade talks (before week 1). */
 export function openSeason(s: LeagueState): LeagueState {
-  s = { ...s, dynasty: withOwners(s.dynasty, humanTeams(s)) };
+  // Last year's recruiting plans were for last year's class.
+  const { recruiting: _plans, ...fresh } = s;
+  s = { ...fresh, dynasty: withOwners(s.dynasty, humanTeams(s)) };
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
@@ -135,6 +144,11 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     .map(([team, c]) => ({ game: c.game, team, calls: c.calls }) as { game: string; team: string; calls: typeof c.calls; rival?: string })
     // Games between friends: both coaches' calls.
     .concat(weekDuels(s, week));
+  // Scouting and recruiting for the week (friends recruit with their standing plans; everyone else on their own).
+  const cls = generateDraftClass(league0);
+  const scoutingNow = p.scouting ?? createScouting(league0, cls);
+  const recruiting = Object.fromEntries(Object.entries(s.recruiting ?? {}).filter(([team, plan]) => s.humans[team] && plan.length > 0));
+  const scouting = scoutingNow.week < seasonWeeks(scoutingNow) ? advanceScoutingWeek(scoutingNow, league0, cls, {}, recruiting) : scoutingNow;
   const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g), coached);
   const collection = collectWeek(structuredClone(p.collection), league0, sched.season, played.games);
   const hurt = injuryNews(league0, played.games.flatMap((g) => g.result.injuries), week);
@@ -159,6 +173,7 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     moves: [...p.moves, ...ai.moves],
     covered: covered.length ? [...p.covered, { week, teams: covered }] : p.covered,
     lineups,
+    scouting,
   };
   return {
     state: { ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
@@ -189,7 +204,7 @@ function playPlayoffs(s: LeagueState) {
 /** The season as played, for the offseason (the same every stage, so it always works out the same). */
 export function playedSeason(s: LeagueState): PlayedSeason {
   const p = s.progress;
-  return { season: seasonResult(s), stats: p.stats, playoffs: p.playoffs!, trades: p.trades, collection: p.collection };
+  return { season: seasonResult(s), stats: p.stats, playoffs: p.playoffs!, trades: p.trades, collection: p.collection, ...(p.scouting ? { scouting: p.scouting } : {}) };
 }
 
 /** Draft week ends (the AI's last trades) and the offseason opens: friends' staff calls are due first. */

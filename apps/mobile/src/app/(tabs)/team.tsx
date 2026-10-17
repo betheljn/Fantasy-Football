@@ -50,9 +50,9 @@ export default function TeamTab() {
         {!solo ? <NavRow icon="mail-outline" title="Trade offers" detail="Offers between friends" badge={waiting ? String(waiting) : undefined} onPress={() => router.push("/offers")} last /> : null}
       </NavGroup>
 
-      {solo && d.scouting ? (
+      {(solo && d.scouting) || (!solo && d.canMakeMoves) ? (
         <NavGroup title="Next year's draft">
-          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} />
+          {solo ? <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} /> : null}
           <NavRow
             icon="megaphone-outline"
             title="Recruiting"

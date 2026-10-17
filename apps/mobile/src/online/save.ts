@@ -1,7 +1,7 @@
 // An online league's save, as the server sends it, turned into the app's own
 // save state so every league screen (standings, teams, box scores, replays)
 // works on it unchanged. Read-only: nothing here is ever saved on the phone.
-import { fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord, postseasonStages } from "@dynasty/sim";
+import { fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord, postseasonStages, type ScoutingState } from "@dynasty/sim";
 import { SAVE_VERSION, type SaveState } from "../dynasty/save";
 
 /** The server's league state (apps/server/src/state.ts and season.ts). */
@@ -13,7 +13,11 @@ interface ServerState {
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
   /** Your calls in your game this week (the server sends only yours). */
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
+  /** Your standing recruiting plan (the server sends only yours). */
+  recruiting?: Record<string, Array<{ prospect: string; points: number }>>;
   progress: {
+    /** Next year's class as every team has scouted and recruited it so far. */
+    scouting?: ScoutingState;
     results: GameSummary[];
     stats: SeasonStats;
     trades: TradeRecord[];
@@ -43,8 +47,9 @@ export function saveFromServer(text: string, userTeam: string): { save: SaveStat
     // The server shows the whole bracket at once.
     playoffRoundsShown: p.playoffs ? postseasonStages(s.dynasty.league).length : 0,
     report: null,
-    scouting: null,
+    scouting: p.scouting ?? null,
     scoutPlan: [],
+    recruitPlan: s.recruiting?.[userTeam] ?? [],
     trades: p.trades,
     playoffs: p.playoffs,
     ...(p.lineups ? { lineups: p.lineups } : {}),

@@ -3,6 +3,8 @@
 // the same sim rules (and the same functions, with the same arguments) as in
 // the app, so a move made on a phone lands exactly the same here.
 import {
+  generateDraftClass,
+  recruitingPoints,
   abilityProblem,
   chooseAbility,
   type CoachAbility,
@@ -49,7 +51,9 @@ export type Move =
   /** The next tier of an owner upgrade (any time: upgrades never touch a play). */
   | { kind: "upgrade"; track: UpgradeTrack }
   /** A new ability for one of your coaches (before the season's first week: abilities never change mid-season). */
-  | { kind: "ability"; ability: CoachAbility };
+  | { kind: "ability"; ability: CoachAbility }
+  /** Your standing recruiting plan: points a week per prospect in next year's class (empty: your staff recruits). */
+  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
 export const MAX_CALLS = 600;
@@ -108,6 +112,18 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
     if (problem) return refuse(problem);
     return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
+
+  if (move.kind === "recruit") {
+    if (!seasonOn) return refuse("Recruiting runs during the regular season.");
+    const ids = new Set(generateDraftClass(league).prospects.map((x) => x.player.id));
+    if (move.plan.some((a) => !ids.has(a.prospect) || !Number.isInteger(a.points) || a.points <= 0)) return refuse("That plan doesn't match next year's class.");
+    if (new Set(move.plan.map((a) => a.prospect)).size !== move.plan.length) return refuse("One entry per prospect.");
+    const max = recruitingPoints(league.teams[team]);
+    const used = move.plan.reduce((n, a) => n + a.points, 0);
+    if (used > max) return refuse(`That's ${used} points a week; you have ${max}.`);
+    const { [team]: _old, ...others } = s.recruiting ?? {};
+    return { state: { ...s, recruiting: move.plan.length ? { ...others, [team]: move.plan } : others }, problems: [] };
   }
 
   if (move.kind === "ability") {

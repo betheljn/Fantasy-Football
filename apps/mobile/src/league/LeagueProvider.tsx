@@ -1214,7 +1214,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = plan.find((a) => a.prospect === prospect)?.points ?? 0;
       const points = Math.max(0, Math.min(current + delta, current + (max - used)));
       const rest = plan.filter((a) => a.prospect !== prospect);
-      persist({ ...state, recruitPlan: points > 0 ? [...rest, { prospect, points }] : rest });
+      const next = points > 0 ? [...rest, { prospect, points }] : rest;
+      persist({ ...state, recruitPlan: next });
+      // Online, the plan lives on the server (private to you; it stands until you change it).
+      if (online) sendMove({ kind: "recruit", plan: next });
     },
     draftTurn,
     draftPick: (prospect) => stepDraft(prospect),
