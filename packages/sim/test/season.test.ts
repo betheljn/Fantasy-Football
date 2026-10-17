@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  replayOptions,
   GAMES_PER_TEAM,
   computeRecords,
   conferenceTable,
@@ -41,7 +42,7 @@ describe("simulateSeason", () => {
   it("every game can be replayed exactly from its seed", () => {
     for (const g of SEASON.results.slice(0, 20)) {
       // (With the weather and crowd it was played in.)
-      const replay = simulateGame(LEAGUE.teams[g.home]!, LEAGUE.teams[g.away]!, g.seed, g.conditions ? { conditions: g.conditions } : {});
+      const replay = simulateGame(LEAGUE.teams[g.home]!, LEAGUE.teams[g.away]!, g.seed, replayOptions(g));
       expect([replay.score[g.home], replay.score[g.away]]).toEqual([g.homeScore, g.awayScore]);
       expect(g.seed).toBe(gameSeed(LEAGUE, SEASON.schedule.games.find((s) => s.id === g.id)!));
     }

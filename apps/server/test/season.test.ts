@@ -1,6 +1,6 @@
 import { leagueFormat } from "@dynasty/sim";
 import { describe, expect, it } from "vitest";
-import { replayTeams, simulateGame } from "@dynasty/sim";
+import { replayOptions, replayTeams, simulateGame } from "@dynasty/sim";
 import { stagedOffseason } from "@dynasty/sim";
 import { forMember, recordChoice } from "../src/offseason.ts";
 import { advance, nextStep, openSeason, playedSeason, scheduleOf } from "../src/season.ts";
@@ -81,7 +81,7 @@ describe("online season", () => {
     for (const g of [before.progress.results[0]!, before.progress.results[300]!, before.progress.results.at(-1)!]) {
       const teams = replayTeams(before.progress.lineups, before.dynasty.league, g)!;
       expect(teams).not.toBeNull();
-      const again = simulateGame(teams.home, teams.away, g.seed, g.conditions ? { conditions: g.conditions } : {});
+      const again = simulateGame(teams.home, teams.away, g.seed, replayOptions(g));
       expect([again.score[g.home], again.score[g.away]]).toEqual([g.homeScore, g.awayScore]);
     }
   });

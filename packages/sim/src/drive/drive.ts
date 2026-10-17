@@ -1,4 +1,5 @@
 import type { Injury, InjuryTracker } from "../game/injuries.ts";
+import type { PracticePlan } from "../game/practice.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import { RULES_VERSION, weather, type PlayContext } from "../play/common.ts";
@@ -88,6 +89,8 @@ export interface DriveInput {
   book?: DuelBook;
   /** The weather and crowd (rules 6). */
   conditions?: GameConditions;
+  /** Both teams' practice for the game. */
+  practice?: Readonly<Record<string, PracticePlan>>;
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -490,6 +493,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       homeField,
       ...(input.rules !== undefined ? { rules: input.rules } : {}),
       ...(input.conditions ? { conditions: input.conditions } : {}),
+      ...(input.practice ? { practice: input.practice } : {}),
       ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
       ...(offenseConcept && defenseConcept ? { concepts: { offense: offenseConcept, defense: defenseConcept } } : {}),
     };

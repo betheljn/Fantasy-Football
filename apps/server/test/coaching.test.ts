@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coachScheduledGame, simulateGame, withOut, type CoachCall } from "@dynasty/sim";
+import { coachScheduledGame, replayOptions, simulateGame, withOut, type CoachCall } from "@dynasty/sim";
 import { applyMove } from "../src/moves.ts";
 import { forMember } from "../src/offseason.ts";
 import { advance, openSeason, scheduleOf } from "../src/season.ts";
@@ -41,7 +41,7 @@ describe("coaching online", () => {
     // And it replays exactly from the summary.
     const league = opened.dynasty.league;
     const sat = (abbr: string) => withOut(league.teams[abbr]!, new Set(summary.out?.[abbr] ?? []));
-    const replay = simulateGame(sat(g.home), sat(g.away), summary.seed, { coach: "OH", calls, rules: summary.rules ?? 1, ...(summary.conditions ? { conditions: summary.conditions } : {}) });
+    const replay = simulateGame(sat(g.home), sat(g.away), summary.seed, { coach: "OH", calls, ...replayOptions(summary) });
     expect(replay.score).toEqual({ [g.home]: summary.homeScore, [g.away]: summary.awayScore });
   });
 

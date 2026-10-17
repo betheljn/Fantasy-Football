@@ -1,4 +1,5 @@
 // Standings and tiebreakers, computed purely from game results.
+import type { PracticePlan } from "../game/practice.ts";
 import type { GameConditions } from "../game/conditions.ts";
 import type { PlayerId } from "../model/player.ts";
 import { hashString } from "../rng.ts";
@@ -36,6 +37,8 @@ export interface GameSummary {
   coached?: CoachedCalls;
   /** The weather and crowd it was played in (rules 6; replay with simulateGame's conditions option). */
   conditions?: GameConditions;
+  /** Both teams' practice for it (replay with simulateGame's practice option). */
+  practice?: Record<string, PracticePlan>;
   /** The play duel (rules 4): calls each team won and lost, as [won, lost, won on offense]. */
   calls?: Record<string, [number, number, number?]>;
 }

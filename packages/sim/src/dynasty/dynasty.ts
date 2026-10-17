@@ -545,7 +545,13 @@ export function completeOffseason(
   const capCuts = contractMoves.filter((m) => m.kind === "cap cut").map((m) => m.player);
   const rostered = new Set(allTeams(settled.league).flatMap((t) => t.roster.map((p) => p.id)));
   const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
-  const nextLeague: League = { ...settled.league, season: next, freeAgents };
+  // (Last season's practice log has done its work in development.)
+  const nextLeague: League = {
+    ...settled.league,
+    season: next,
+    freeAgents,
+    teams: Object.fromEntries(Object.entries(settled.league.teams).map(([abbr, t]) => [abbr, t.practiceLog ? (({ practiceLog: _done, ...rest }) => rest)(t) : t])),
+  };
 
   // Close the books: every team's season finances, cash and fans.
   // Your team (any team making its own cuts and offers) runs its own business.

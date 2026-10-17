@@ -1,4 +1,5 @@
 import type { Player } from "../model/player.ts";
+import { practiceEdge, type PracticePlan } from "../game/practice.ts";
 import { conditionEffects, type ConditionEffects, type GameConditions } from "../game/conditions.ts";
 import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
@@ -34,6 +35,8 @@ export interface PlayContext {
   concepts?: PlayConcepts;
   /** The weather and crowd (played from rules 6). */
   conditions?: GameConditions;
+  /** Both teams' practice for this game (installs, intensity), by team. */
+  practice?: Readonly<Record<string, PracticePlan>>;
 }
 
 /** What the conditions do to this play (neutral before rules 6, or without conditions). */
@@ -45,7 +48,10 @@ export function weather(ctx: Pick<PlayContext, "conditions" | "rules">): Conditi
 export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null {
   if (!ctx.concepts || (ctx.rules ?? RULES_VERSION) < 4) return null;
   // The matchup, plus how well each side's coordinator draws his call up.
-  const design = playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90, ctx.rules ?? RULES_VERSION);
+  const design =
+    playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90, ctx.rules ?? RULES_VERSION) +
+    // The week's practice: installed plays, and tired legs late after a hard week.
+    practiceEdge(ctx.practice, ctx.offense.abbr, ctx.defense.abbr, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.quarter);
   return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design };
 }
 

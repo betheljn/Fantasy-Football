@@ -1,5 +1,6 @@
 // Playing a season: simulate each scheduled game and keep a compact summary.
-import { gameConditions } from "../game/conditions.ts";
+import { practiceFor, practiceWeek, type PracticePlan } from "../game/practice.ts";
+import { gameConditions, type GameConditions } from "../game/conditions.ts";
 import { kickoffAbilities } from "../dynasty/coaches.ts";
 import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
@@ -41,7 +42,8 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
   const conditions = gameConditions(league, game);
-  const result = simulateGame(home.team, away.team, seed, { conditions, ...(coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {}) });
+  const practice = practiceFor(league, game);
+  const result = simulateGame(home.team, away.team, seed, { conditions, practice, ...(coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {}) });
   const out = home.out.length + away.out.length > 0 ? { out: { [game.home]: home.out, [game.away]: away.out } } : {};
   const summary: GameSummary = {
     id: game.id,
@@ -56,6 +58,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     seed,
     rules: result.rules ?? 1,
     conditions,
+    practice,
     ...out,
     ...callTally(result),
     // The calls as played (any that no longer fit became the coaches').
@@ -64,12 +67,17 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
   return { summary, result };
 }
 
+/** How to replay a played game exactly: its rules, and the weather, crowd and practice it was played with. */
+export function replayOptions(s: Pick<GameSummary, "rules" | "conditions" | "practice">): { rules: number; conditions?: GameConditions; practice?: Record<string, PracticePlan> } {
+  return { rules: s.rules ?? 1, ...(s.conditions ? { conditions: s.conditions } : {}), ...(s.practice ? { practice: s.practice } : {}) };
+}
+
 /** Coach `team` in a scheduled game: the same teams and seed the week will play it with (picked up from `calls` so far). */
 export function coachScheduledGame(league: League, game: ScheduledGame, team: string, calls: CoachedCalls["calls"] = []): CoachedGame {
   if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, { conditions: gameConditions(league, game) }, calls);
+  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, { conditions: gameConditions(league, game), practice: practiceFor(league, game) }, calls);
 }
 
 /**
@@ -92,7 +100,10 @@ export function playWeek(
     onGame?.(played.result, g);
     return played;
   });
-  return { league: advanceInjuries(league, games.flatMap((g) => g.result.injuries)), games };
+  // Then the week's practice for the next games: logs for growth, and the odd practice injury.
+  const plans = Object.assign({}, ...games.map((g) => g.summary.practice ?? {})) as Record<string, PracticePlan>;
+  const practiced = practiceWeek(league, week, plans);
+  return { league: advanceInjuries(practiced.league, [...games.flatMap((g) => g.result.injuries), ...practiced.injuries]), games };
 }
 
 export function simulateSeason(league: League, opts: SeasonOptions = {}): SeasonResult {

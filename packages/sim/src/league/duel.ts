@@ -4,6 +4,7 @@
 // before making their own, so each is shown the calls up to the last play,
 // never the other's answers since; with the seed and teams that's enough to
 // replay the game so far, and the call waiting on them comes separately.
+import { practiceFor } from "../game/practice.ts";
 import { gameConditions } from "../game/conditions.ts";
 import type { CoachCall, SnapPrompt } from "../drive/drive.ts";
 import { checkAnswer } from "../drive/drive.ts";
@@ -20,7 +21,7 @@ export function duelScheduledGame(league: League, game: ScheduledGame, calls: Re
   if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  return startCoachedGame(home.team, away.team, gameSeed(league, game), game.home, { rival: game.away, conditions: gameConditions(league, game) }, calls);
+  return startCoachedGame(home.team, away.team, gameSeed(league, game), game.home, { rival: game.away, conditions: gameConditions(league, game), practice: practiceFor(league, game) }, calls);
 }
 
 /** A call waiting in a duel, without the game so far (replay the visible calls for that). */

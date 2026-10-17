@@ -1,4 +1,5 @@
 import { InjuryTracker, type Injury } from "./injuries.ts";
+import type { PracticePlan } from "./practice.ts";
 import type { GameConditions } from "./conditions.ts";
 import type { Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
@@ -51,6 +52,8 @@ export interface GameResult {
   rules?: number;
   /** The weather and crowd it was played in (from rules 6). */
   conditions?: GameConditions;
+  /** Both teams' practice for it, by team. */
+  practice?: Record<string, PracticePlan>;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
   coached?: { team: string; calls: Array<CoachCall | null>; rival?: string };
 }
@@ -70,6 +73,8 @@ export interface GameOptions {
   rules?: number;
   /** The weather and crowd (gameConditions); replays pass the game's own. */
   conditions?: GameConditions;
+  /** Both teams' practice (practiceFor); replays pass the game's own. */
+  practice?: Record<string, PracticePlan>;
 }
 
 /**
@@ -326,6 +331,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       ...(options.rules !== undefined ? { rules: options.rules } : {}),
       ...(book ? { book } : {}),
       ...(options.conditions ? { conditions: options.conditions } : {}),
+      ...(options.practice ? { practice: options.practice } : {}),
     });
     let step = steps.next();
     while (!step.done) {
@@ -362,6 +368,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     injuries: injuries.all,
     rules: options.rules ?? RULES_VERSION,
     ...(options.conditions ? { conditions: options.conditions } : {}),
+    ...(options.practice ? { practice: options.practice } : {}),
     ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival } : {}) } } : {}),
   };
 }

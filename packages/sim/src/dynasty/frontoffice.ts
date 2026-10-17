@@ -1,6 +1,7 @@
 // How the front office and the head coach shape rosters over time. Every
 // effect is neutral for an average staff (and for a team without one), so the
 // league's overall talent stays stable while teams diverge.
+import { practiceGrowth } from "../game/practice.ts";
 import type { Team } from "../model/team.ts";
 import type { GmPhilosophy } from "../model/staff.ts";
 import { Rng } from "../rng.ts";
@@ -105,7 +106,8 @@ export interface DevelopmentFactor {
 /** The head coach's effect on how his players develop. */
 export function developmentFactor(team: Team | undefined): DevelopmentFactor {
   // The owner's facilities add to growth on top of the head coach.
-  const facilities = (1 + FACILITIES_PER_TIER * (team?.upgrades?.facilities ?? 0)) * (team?.staff?.hc.abilities?.includes("developer") ? 1.05 : 1);
+  // ...and so does the season's practice (hard weeks a little more, light ones a little less).
+  const facilities = (1 + FACILITIES_PER_TIER * (team?.upgrades?.facilities ?? 0)) * (team?.staff?.hc.abilities?.includes("developer") ? 1.05 : 1) * practiceGrowth(team?.practiceLog);
   const hc = team?.staff?.hc;
   if (!hc) return { growth: facilities, decline: 1 };
   const e = staffEdge(hc.development);

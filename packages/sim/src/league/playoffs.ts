@@ -4,6 +4,7 @@
 // a neutral site. In format 2 leagues championship week comes first: each
 // division's top two meet for the title (the winner is its champion and gets
 // the automatic bid), and the ranking is redone with those games in it.
+import { practiceFor } from "../game/practice.ts";
 import { gameConditions } from "../game/conditions.ts";
 import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
@@ -156,7 +157,8 @@ export function playChampionshipWeek(league: League, season: SeasonResult, opts:
     const h = gameDayTeam(league.teams[first]!);
     const v = gameDayTeam(league.teams[second]!);
     const conditions = gameConditions(league, { id, week: titleWeek(season), home: first });
-    const result = simulateGame(h.team, v.team, seed, { playoff: true, conditions });
+    const practice = practiceFor(league, { home: first, away: second });
+    const result = simulateGame(h.team, v.team, seed, { playoff: true, conditions, practice });
     if (!result.winner) throw new Error(`Title game ${id} ended in a tie`);
     injuries.push(...result.injuries);
     opts.onGame?.(result);
@@ -177,6 +179,7 @@ export function playChampionshipWeek(league: League, season: SeasonResult, opts:
         seed,
         rules: result.rules ?? 1,
         conditions,
+        practice,
         ...(h.out.length + v.out.length > 0 ? { out: { [first]: h.out, [second]: v.out } } : {}),
         ...callTally(result),
       },
@@ -207,7 +210,8 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
     const v = gameDayTeam(current.teams[away.team]!);
     // A neutral site has no home crowd (the weather is where the higher seed plays).
     const conditions = gameConditions(league, { id, week: playoffWeek(league, season, round), home: home.team }, neutralSite);
-    const result = simulateGame(h.team, v.team, seed, { playoff: true, neutralSite, conditions });
+    const practice = practiceFor(league, { home: home.team, away: away.team });
+    const result = simulateGame(h.team, v.team, seed, { playoff: true, neutralSite, conditions, practice });
     hurt.push(...result.injuries);
     opts.onGame?.(result, round);
     if (!result.winner) throw new Error(`Playoff game ${id} ended in a tie`);
@@ -229,6 +233,7 @@ export function simulatePlayoffs(league: League, season: SeasonResult, opts: Pla
         seed,
         rules: result.rules ?? 1,
         conditions,
+        practice,
         ...(h.out.length + v.out.length > 0 ? { out: { [home.team]: h.out, [away.team]: v.out } } : {}),
         ...callTally(result),
       },

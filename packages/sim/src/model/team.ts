@@ -1,4 +1,5 @@
 import { BASE_STARTERS, POSITIONS, type Position } from "./positions.ts";
+import type { PracticeLog, PracticePlan } from "../game/practice.ts";
 import { playerOverall, type Player, type PlayerId } from "./player.ts";
 import type { TeamStaff } from "./staff.ts";
 
@@ -39,6 +40,10 @@ export interface Team {
   upgrades?: Partial<Record<UpgradeTrack, number>>;
   /** The home stadium as games see it: under a dome or not, and how loud its crowd gets (0-1). Synced from the business. */
   venue?: { dome: boolean; noise: number };
+  /** The week's practice a person set (standing until changed; absent: the AI's plan for each opponent). */
+  practice?: PracticePlan;
+  /** This season's practice so far (hard and light weeks), for growth in the offseason. */
+  practiceLog?: PracticeLog;
 }
 
 /** Owner upgrade tracks (see dynasty/progression.ts). */
