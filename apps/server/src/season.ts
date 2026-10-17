@@ -9,6 +9,7 @@
 // and free-agent signings, as for every AI team).
 import {
   withOwners,
+  syncVenues,
   advanceScoutingWeek,
   createScouting,
   generateDraftClass,
@@ -111,7 +112,7 @@ const tradedIds = (trades: readonly TradeRecord[]) => new Set(trades.flatMap((t)
 export function openSeason(s: LeagueState): LeagueState {
   // Last year's recruiting plans were for last year's class.
   const { recruiting: _plans, ...fresh } = s;
-  s = { ...fresh, dynasty: withOwners(s.dynasty, humanTeams(s)) };
+  s = { ...fresh, dynasty: syncVenues(withOwners(s.dynasty, humanTeams(s))) };
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);

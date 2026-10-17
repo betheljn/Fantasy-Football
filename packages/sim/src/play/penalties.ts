@@ -7,7 +7,7 @@
 import type { Player } from "../model/player.ts";
 import { passBlocking, passRushing, runBlocking } from "../model/ratings.ts";
 import type { Rng } from "../rng.ts";
-import { avg, clamp, edge, weightedPick, type PlayContext } from "./common.ts";
+import { avg, clamp, edge, weightedPick, type PlayContext, weather, RULES_VERSION } from "./common.ts";
 import type { Penalty, PenaltyEvent, PenaltyResult, PenaltyType, ScrimmagePlayEvent, Situation } from "./events.ts";
 import { formationsFor, receivers } from "./formation.ts";
 import { disciplineFactor } from "./coaching.ts";
@@ -93,7 +93,9 @@ export function rollPreSnapPenalty(rng: Rng, ctx: PlayContext): PenaltyEvent | n
   const offDiscipline = disciplineFactor(ctx.offense);
   const defDiscipline = disciplineFactor(ctx.defense);
   const home = ctx.homeField ?? 0;
-  const crowd = home > 0 ? FALSE_START_CROWD.home : home < 0 ? FALSE_START_CROWD.away : 1;
+  // From rules 6 the crowd's own noise rattles the visitors (a sleepy crowd hardly at all).
+  const wx = weather(ctx);
+  const crowd = home > 0 ? FALSE_START_CROWD.home : home < 0 ? (ctx.conditions && (ctx.rules ?? RULES_VERSION) >= 6 ? wx.visitorFalseStart : FALSE_START_CROWD.away) : 1;
   const disciplineO = clamp(1 - 0.3 * edge(avg(o.ol, (p) => p.ratings.awareness)), 0.6, 1.5);
   const disciplineD = clamp(1 - 0.3 * edge(avg(d.dl, (p) => p.ratings.awareness)), 0.6, 1.5);
 

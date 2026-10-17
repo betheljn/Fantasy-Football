@@ -71,7 +71,7 @@ describe("between games", () => {
       }
       const home = withOut(FOUR.league.teams[g.summary.home]!, new Set(g.summary.out?.[g.summary.home] ?? []));
       const away = withOut(FOUR.league.teams[g.summary.away]!, new Set(g.summary.out?.[g.summary.away] ?? []));
-      expect(simulateGame(home, away, g.summary.seed).score).toEqual(g.result.score);
+      expect(simulateGame(home, away, g.summary.seed, g.summary.conditions ? { conditions: g.summary.conditions } : {}).score).toEqual(g.result.score);
     }
   });
 

@@ -1,4 +1,5 @@
 import { InjuryTracker, type Injury } from "./injuries.ts";
+import type { GameConditions } from "./conditions.ts";
 import type { Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
@@ -48,6 +49,8 @@ export interface GameResult {
   injuries: Injury[];
   /** The rules it was played under. */
   rules?: number;
+  /** The weather and crowd it was played in (from rules 6). */
+  conditions?: GameConditions;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
   coached?: { team: string; calls: Array<CoachCall | null>; rival?: string };
 }
@@ -65,6 +68,8 @@ export interface GameOptions {
   calls?: ReadonlyArray<CoachCall | null>;
   /** The rules to play under (default: the current ones); replays pass the game's own. */
   rules?: number;
+  /** The weather and crowd (gameConditions); replays pass the game's own. */
+  conditions?: GameConditions;
 }
 
 /**
@@ -283,7 +288,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
           answers.push(answer ?? null);
           two = tryAnswer(answer);
         }
-        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules);
+        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules, options.conditions);
         record(conv, quarter, clock);
         pending = { kind: "kickoff", kickingTeam: receiving.abbr };
         if (quarter >= 5) otPossessed.add(receiving.abbr); // a return TD counts as a possession
@@ -320,6 +325,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       ...(options.coach && options.rival ? { rival: options.rival } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),
       ...(book ? { book } : {}),
+      ...(options.conditions ? { conditions: options.conditions } : {}),
     });
     let step = steps.next();
     while (!step.done) {
@@ -355,6 +361,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     final: { quarter, clock },
     injuries: injuries.all,
     rules: options.rules ?? RULES_VERSION,
+    ...(options.conditions ? { conditions: options.conditions } : {}),
     ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival } : {}) } } : {}),
   };
 }

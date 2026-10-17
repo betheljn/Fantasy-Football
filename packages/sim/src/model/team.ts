@@ -37,6 +37,8 @@ export interface Team {
   staffDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number; readonly name: string }>;
   /** The owner's upgrades (a team people play): tiers bought in each track. Off the field only: never in a play. */
   upgrades?: Partial<Record<UpgradeTrack, number>>;
+  /** The home stadium as games see it: under a dome or not, and how loud its crowd gets (0-1). Synced from the business. */
+  venue?: { dome: boolean; noise: number };
 }
 
 /** Owner upgrade tracks (see dynasty/progression.ts). */

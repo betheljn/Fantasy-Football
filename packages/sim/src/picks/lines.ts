@@ -3,6 +3,7 @@
 // one, with the teams exactly as they'll take the field. The middle result of
 // those runs sets each line, so lines need no hand-tuning and the real game
 // is as likely to go over as under. Every line ends in .5: no pushes.
+import { gameConditions } from "../game/conditions.ts";
 import type { PlayerId } from "../model/player.ts";
 import type { Position } from "../model/positions.ts";
 import type { Team } from "../model/team.ts";
@@ -106,12 +107,14 @@ function* gameLinesSteps(league: League, game: ScheduledGame, sims: number): Gen
   const home = gameDayTeam(league.teams[game.home]!).team;
   const away = gameDayTeam(league.teams[game.away]!).team;
   const seed = gameSeed(league, game);
+  const conditions = gameConditions(league, game);
   const players = [...propPlayers(home).map((p) => ({ ...p, team: home })), ...propPlayers(away).map((p) => ({ ...p, team: away }))];
   const totals: number[] = [];
   const margins: number[] = [];
   const yards = new Map<string, number[]>(players.map((p) => [p.id, []]));
   for (let k = 0; k < sims; k++) {
-    const r = simulateGame(home, away, `${seed}:line:${k}`);
+    // In the game's own weather and crowd (the bookmaker reads the forecast).
+    const r = simulateGame(home, away, `${seed}:line:${k}`, { conditions });
     const h = r.score[game.home]!;
     const a = r.score[game.away]!;
     totals.push(h + a);

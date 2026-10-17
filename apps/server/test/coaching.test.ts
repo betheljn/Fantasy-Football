@@ -41,7 +41,7 @@ describe("coaching online", () => {
     // And it replays exactly from the summary.
     const league = opened.dynasty.league;
     const sat = (abbr: string) => withOut(league.teams[abbr]!, new Set(summary.out?.[abbr] ?? []));
-    const replay = simulateGame(sat(g.home), sat(g.away), summary.seed, { coach: "OH", calls, rules: summary.rules ?? 1 });
+    const replay = simulateGame(sat(g.home), sat(g.away), summary.seed, { coach: "OH", calls, rules: summary.rules ?? 1, ...(summary.conditions ? { conditions: summary.conditions } : {}) });
     expect(replay.score).toEqual({ [g.home]: summary.homeScore, [g.away]: summary.awayScore });
   });
 

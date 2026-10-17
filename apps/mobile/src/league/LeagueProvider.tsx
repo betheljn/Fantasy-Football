@@ -85,6 +85,7 @@ import {
   seasonReview,
   startFrontOffice,
   withOwners,
+  syncVenues,
   recruitingPoints,
   newOwner,
   syncUpgrades,
@@ -537,7 +538,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         // Saves from before owners: you own the team.
         if (ready?.userTeam && !ready.office) ready = { ...ready, office: startFrontOffice("owner") };
         // Saves from before owner progress: you start earning XP now.
-        if (ready?.userTeam) ready = { ...ready, dynasty: withOwners(ready.dynasty, [ready.userTeam]) };
+        if (ready?.userTeam) ready = { ...ready, dynasty: syncVenues(withOwners(ready.dynasty, [ready.userTeam])) };
         setState(ready);
         checkpointRef.current = p;
         setRestoring(p);
@@ -1046,7 +1047,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const { setup: _done, ...rest } = state;
       const base = startingDynasty(state.dynasty, setup);
       const dynasty = drafted ? { ...base, league: drafted } : base;
-      persist(openSeason({ ...rest, dynasty: withOwners(dynasty, [setup.team]), userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
+      persist(openSeason({ ...rest, dynasty: syncVenues(withOwners(dynasty, [setup.team])), userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
     },
     press: pressNow(state),
     takeJob: (abbr) => {

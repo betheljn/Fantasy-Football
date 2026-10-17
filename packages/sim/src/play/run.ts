@@ -15,6 +15,7 @@ import {
   weightedPick,
   RULES_VERSION,
   duel,
+  weather,
   type PlayContext,
 } from "./common.ts";
 import type { RunPlayEvent } from "./events.ts";
@@ -105,7 +106,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const tackler = spot.touchdown ? null : pickTackler(rng, d, spot.yardsGained);
   const outOfBounds = !spot.touchdown && direction !== "middle" && spot.yardsGained > 2 && rng.chance(0.18);
 
-  const fumble = spot.touchdown || spot.safety ? null : rollFumble(rng, rusher, tackler, d, 0.011);
+  const fumble = spot.touchdown || spot.safety ? null : rollFumble(rng, rusher, tackler, d, 0.011 * weather(ctx).fumble);
   const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
 
   return {

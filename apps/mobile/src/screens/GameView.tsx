@@ -49,7 +49,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
 
   // A game you coached: how your calls went (worked out when the recap opens).
   const report = useMemo(
-    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, reportTeam(game, context?.mine), game.coached.calls, { ...(game.rules !== undefined ? { rules: game.rules } : {}), ...rivalOf(game, context?.mine) }) : null),
+    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, reportTeam(game, context?.mine), game.coached.calls, { ...(game.rules !== undefined ? { rules: game.rules } : {}), ...(game.conditions ? { conditions: game.conditions } : {}), ...rivalOf(game, context?.mine) }) : null),
     [tab, game, home, away],
   );
 

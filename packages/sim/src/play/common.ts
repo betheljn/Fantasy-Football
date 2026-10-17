@@ -1,4 +1,5 @@
 import type { Player } from "../model/player.ts";
+import { conditionEffects, type ConditionEffects, type GameConditions } from "../game/conditions.ts";
 import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { Direction, Fumble, Situation, StopReason, Turnover } from "./events.ts";
@@ -14,9 +15,10 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * goals can be scooped and returned; 4 = the play duel: both sides call a
  * concept before each snap, and the matchup of the calls shapes the play;
  * 5 = philosophy fit: each side's scheme draws its core calls up better and
- * the calls it doesn't believe in worse.
+ * the calls it doesn't believe in worse; 6 = game-day conditions: weather
+ * (wind, rain, snow, cold) and the home crowd's noise.
  */
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 
 export interface PlayContext {
   offense: Team;
@@ -30,6 +32,13 @@ export interface PlayContext {
   rules?: number;
   /** The play duel's calls (used from rules 4): the offense's concept and the defense's. */
   concepts?: PlayConcepts;
+  /** The weather and crowd (played from rules 6). */
+  conditions?: GameConditions;
+}
+
+/** What the conditions do to this play (neutral before rules 6, or without conditions). */
+export function weather(ctx: Pick<PlayContext, "conditions" | "rules">): ConditionEffects {
+  return conditionEffects((ctx.rules ?? RULES_VERSION) >= 6 ? ctx.conditions : undefined);
 }
 
 /** The calls on this play, if the duel is on (rules 4 and later), with the offense's edge from the matchup. */

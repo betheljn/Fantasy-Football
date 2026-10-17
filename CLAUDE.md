@@ -434,6 +434,22 @@ friends recruit head to head for the same prospects.
 Weekly practice plan (focus, intensity, injury risk, installing plays for
 the next opponent), training camp position battles, weather by region and
 week, crowd noise; shown on the field and in the feed.
+Decided: practice is installing plays for the next opponent (drawn up
+better in that game) and an intensity (harder grows players a little more,
+risks practice injuries and tired legs on game day); AI teams practice too.
+Weather and crowd noise change how games play (a new rules version, so past
+games replay unchanged); games record their conditions and practice.
+1. Sim: game-day conditions: weather by region and week (cold, rain, snow,
+   wind; none under a dome) and the home crowd's noise (from its fans and
+   attendance); their effects on passing, kicking, fumbles and the visitors'
+   false starts; recorded on each game for replays
+2. Sim: the weekly practice plan: installs, intensity, practice injuries,
+   game-day fatigue, growth over the season; AI teams' plans
+3. Sim: training camp position battles (close spots on the depth chart
+   settled in camp, a standout's small bump, camp news)
+4. App: the practice screen, conditions on the pregame, field and feed,
+   camp battles in the preseason
+5. Online: friends' weekly practice plans
 
 ### Milestone 26: arenas
 Design and grow your stadium (capacity, roof, surface, video board, name),

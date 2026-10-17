@@ -43,19 +43,19 @@ export default function GameRoute() {
       // Replayed under the rules it was played with (older games, the older rules).
       // (A duel between friends has both coaches' calls.)
       const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls, ...(summary.coached.rival ? { rival: summary.coached.rival } : {}) } : {};
-      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1 }) };
+      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1, ...(summary.conditions ? { conditions: summary.conditions } : {}) }) };
     }
     // Championship week (format 2): a division title game.
     const tg = playoffs?.titleGames?.find((x) => x.summary.id === id);
     if (tg) {
       const teams = teamsFor(log, league, tg.summary);
-      const game = simulateGame(teams.home, teams.away, tg.summary.seed, { playoff: true, rules: tg.summary.rules ?? 1 });
+      const game = simulateGame(teams.home, teams.away, tg.summary.seed, { playoff: true, rules: tg.summary.rules ?? 1, ...(tg.summary.conditions ? { conditions: tg.summary.conditions } : {}) });
       return { ...teams, title: `${tg.division} title game`, week: 98, game };
     }
     const p = playoffs?.games.find((x) => x.summary.id === id);
     if (p) {
       const teams = teamsFor(log, league, p.summary);
-      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite, rules: p.summary.rules ?? 1 });
+      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite, rules: p.summary.rules ?? 1, ...(p.summary.conditions ? { conditions: p.summary.conditions } : {}) });
       return { ...teams, title: ROUND_NAMES[p.round], week: 99, game, neutralSite: p.neutralSite };
     }
     return null;

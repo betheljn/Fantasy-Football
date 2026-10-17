@@ -384,3 +384,27 @@ function aiBusinessMoves(b: TeamBusiness, f: SeasonFinances, team: Team, leagueS
   }
   return out;
 }
+
+/** How loud a stadium gets, 0-1: its die-hards' share of the fan base and how many it holds (domes trap the sound). */
+export function crowdNoise(b: TeamBusiness): number {
+  const total = b.fans.casual + b.fans.dieHard;
+  const dieHard = total > 0 ? b.fans.dieHard / total : 0.38;
+  const size = (b.stadium.capacity - 45_000) / 35_000;
+  // A typical crowd (about 38% die-hards) is 0.5.
+  return Math.round(Math.max(0.1, Math.min(1, 0.5 + (dieHard - 0.38) + 0.15 * size + (b.stadium.dome ? 0.1 : 0))) * 100) / 100;
+}
+
+/** Put every team's stadium (dome, crowd noise) on the team, where games see it. */
+export function syncVenues<D extends { league: League; business?: Record<string, TeamBusiness> }>(dynasty: D): D {
+  const business = dynasty.business ?? startLeagueBusiness(dynasty.league);
+  let teams: Record<string, Team> | null = null;
+  for (const [abbr, t] of Object.entries(dynasty.league.teams)) {
+    const b = business[abbr];
+    if (!b) continue;
+    const venue = { dome: b.stadium.dome, noise: crowdNoise(b) };
+    if (t.venue && t.venue.dome === venue.dome && t.venue.noise === venue.noise) continue;
+    teams ??= { ...dynasty.league.teams };
+    teams[abbr] = { ...t, venue };
+  }
+  return teams ? { ...dynasty, league: { ...dynasty.league, teams } } : dynasty;
+}

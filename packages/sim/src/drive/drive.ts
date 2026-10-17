@@ -1,7 +1,8 @@
 import type { Injury, InjuryTracker } from "../game/injuries.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
-import { RULES_VERSION, type PlayContext } from "../play/common.ts";
+import { RULES_VERSION, weather, type PlayContext } from "../play/common.ts";
+import type { GameConditions } from "../game/conditions.ts";
 import { DEFENSE_CONCEPT_INFO, DEFENSE_CONCEPTS, OFFENSE_CONCEPT_INFO, OFFENSE_CONCEPTS, type DefenseConcept, type OffenseConcept } from "../play/concepts.ts";
 import { chooseDefenseConcept, chooseOffenseConcepts, conceptForFormation, recordCalls, type DuelBook, type OffenseRead } from "./duelcall.ts";
 import { assessLiveBallPenalty, isNullified, rollPreSnapPenalty } from "../play/penalties.ts";
@@ -85,6 +86,8 @@ export interface DriveInput {
   rules?: number;
   /** The play duel's film on both teams so far this game (rules 4): read before each call, added to after each snap. */
   book?: DuelBook;
+  /** The weather and crowd (rules 6). */
+  conditions?: GameConditions;
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -345,6 +348,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
 
   const margin = () => input.score[off]! + points[off]! - (input.score[def]! + points[def]!);
   const callContext = (): CallContext => ({
+    ...(input.conditions && (input.rules ?? RULES_VERSION) >= 6 ? { conditions: input.conditions } : {}),
     offense,
     situation: { quarter, clock, down, distance, yardline },
     margin: margin(),
@@ -394,7 +398,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
     const marginAfterTd =
       input.score[team.abbr]! + points[team.abbr]! - (input.score[other.abbr]! + points[other.abbr]!);
     const two = coached(team.abbr) ? tryAnswer(yield tryPrompt(team, other.abbr, quarter, clock, marginAfterTd, timeouts)) : undefined;
-    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two, input.rules), clock);
+    record(simulateConversion(rng, team, other, quarter, clock, marginAfterTd, two, input.rules, input.conditions), clock);
   };
 
   for (;;) {
@@ -485,6 +489,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       situation: cc.situation,
       homeField,
       ...(input.rules !== undefined ? { rules: input.rules } : {}),
+      ...(input.conditions ? { conditions: input.conditions } : {}),
       ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
       ...(offenseConcept && defenseConcept ? { concepts: { offense: offenseConcept, defense: defenseConcept } } : {}),
     };
@@ -672,11 +677,12 @@ export function simulateConversion(
   /** A coach's call; otherwise the head coach goes by the chart. */
   twoPoint?: boolean,
   rules?: number,
+  conditions?: GameConditions,
 ): ConversionEvent {
   const base = { kind: "conversion" as const, offense: team.abbr, defense: other.abbr, team: team.abbr, duration: 0 };
   if (twoPoint ?? goForTwo(quarter, marginAfterTd, team.staff?.hc.aggressiveness)) {
     const start: Situation = { quarter, clock, down: 1, distance: 2, yardline: 98 };
-    const ctx: PlayContext = { offense: team, defense: other, situation: start, ...(rules !== undefined ? { rules } : {}) };
+    const ctx: PlayContext = { offense: team, defense: other, situation: start, ...(rules !== undefined ? { rules } : {}), ...(conditions ? { conditions } : {}) };
     const play = rng.chance(0.6) ? simulatePass(rng, ctx) : simulateRun(rng, ctx);
     // A turnover returned the length of the field scores two for the defense. With the
     // offense bunched at the goal line, the field ahead of the defender is often open.
@@ -689,6 +695,6 @@ export function simulateConversion(
   const units = specialUnits(team, other, "extra_point");
   const blocked = rng.chance(blockChance("extra_point", team, other, units));
   const blockedBy = blocked ? pickBlocker(rng, other, units).id : null;
-  const success = !blocked && rng.chance(fieldGoalProbability(kicker, 33));
+  const success = !blocked && rng.chance(fieldGoalProbability(kicker, 33, weather({ ...(rules !== undefined ? { rules } : {}), ...(conditions ? { conditions } : {}) })));
   return { ...base, start, method: "kick", success, kicker: kicker.id, play: null, defensiveReturn: false, blocked, blockedBy, units };
 }

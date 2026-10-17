@@ -8,6 +8,7 @@ import {
   clamp,
   duel,
   edge,
+  weather,
   exponential,
   pickDirection,
   pickTackler,
@@ -121,6 +122,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const home = ctx.homeField ?? 0;
   // The duel: the offense's concept sets the depth (and play action, a quick release); the matchup gives an edge.
   const call = duel(ctx);
+  const wx = weather(ctx);
   const concept = call && OFFENSE_CONCEPT_INFO[call.offense].kind === "pass" ? OFFENSE_CONCEPT_INFO[call.offense] : null;
   const callEdge = concept ? call!.edge : 0;
   // Play action from under center on early downs freezes the second level (a play-action call sells it from anywhere).
@@ -138,7 +140,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
     // Unblocked blitzers get home more often than their pass-rush rating suggests.
     const sacker = weightedPick(rng, d.rushers, (p) => passRushing(p.ratings) * (p.position === "DL" ? 1 : 1.3));
     const spot = spotBall(sit, -Math.max(1, Math.round(rng.normal(6.5, 2.2))));
-    const fumble = spot.safety ? null : rollFumble(rng, qb, sacker, d, 0.12);
+    const fumble = spot.safety ? null : rollFumble(rng, qb, sacker, d, 0.12 * weather(ctx).fumble);
     const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
     return {
       ...base,
@@ -208,7 +210,10 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
       paBoost +
       CONCEPT_EFFECT.completion * callEdge +
       HOME_FIELD.completion * home +
-      coachingEdges(ctx.offense, ctx.defense).completion,
+      coachingEdges(ctx.offense, ctx.defense).completion +
+      // The weather: everything a little harder in wind, rain and snow, deep balls most.
+      wx.completion +
+      (band === "deep" ? wx.deepCompletion : band === "intermediate" ? wx.deepCompletion / 3 : 0),
     0.1,
     0.93,
   );
@@ -292,7 +297,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const tackler = spot.touchdown ? null : rng.chance(0.6) ? nearest : pickTackler(rng, d, spot.yardsGained);
   const outOfBounds =
     !spot.touchdown && direction !== "middle" && r.receiver.position === "WR" && rng.chance(0.22);
-  const fumble = spot.touchdown ? null : rollFumble(rng, r.receiver, tackler, d, 0.006);
+  const fumble = spot.touchdown ? null : rollFumble(rng, r.receiver, tackler, d, 0.006 * wx.fumble);
   const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
 
   return {

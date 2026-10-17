@@ -1,4 +1,5 @@
 // Playing a season: simulate each scheduled game and keep a compact summary.
+import { gameConditions } from "../game/conditions.ts";
 import { kickoffAbilities } from "../dynasty/coaches.ts";
 import { callTally } from "../game/duelrecap.ts";
 import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
@@ -39,7 +40,8 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
   // Injured players sit.
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  const result = simulateGame(home.team, away.team, seed, coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {});
+  const conditions = gameConditions(league, game);
+  const result = simulateGame(home.team, away.team, seed, { conditions, ...(coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {}) });
   const out = home.out.length + away.out.length > 0 ? { out: { [game.home]: home.out, [game.away]: away.out } } : {};
   const summary: GameSummary = {
     id: game.id,
@@ -53,6 +55,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     winner: result.winner,
     seed,
     rules: result.rules ?? 1,
+    conditions,
     ...out,
     ...callTally(result),
     // The calls as played (any that no longer fit became the coaches').
@@ -66,7 +69,7 @@ export function coachScheduledGame(league: League, game: ScheduledGame, team: st
   if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, {}, calls);
+  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, { conditions: gameConditions(league, game) }, calls);
 }
 
 /**
