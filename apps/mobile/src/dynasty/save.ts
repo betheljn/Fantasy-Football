@@ -31,6 +31,8 @@ export interface SaveState {
   scouting: ScoutingState | null;
   /** Your scouting points for the coming week (empty = your scouts choose). */
   scoutPlan: ScoutAssignment[];
+  /** Your recruiting: points a week on each prospect, standing until you change it (empty: your staff recruits). */
+  recruitPlan?: ScoutAssignment[];
   /** Trades made this season (yours and the AI's), oldest first. */
   trades: TradeRecord[];
   /** The playoffs, decided when the regular season ends (null before). */

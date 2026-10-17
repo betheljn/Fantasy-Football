@@ -85,6 +85,7 @@ import {
   seasonReview,
   startFrontOffice,
   withOwners,
+  recruitingPoints,
   newOwner,
   syncUpgrades,
   buyUpgrade,
@@ -245,6 +246,10 @@ export interface DynastyControls {
   /** Your points for the coming week, and changing them (+/- points on a prospect). */
   scoutPlan: SaveState["scoutPlan"];
   assignScouting: (prospect: string, delta: number) => void;
+  /** Your standing recruiting plan (points a week per prospect; empty: your staff recruits), and the week's points. */
+  recruitPlan: SaveState["scoutPlan"];
+  recruitPoints: number;
+  assignRecruiting: (prospect: string, delta: number) => void;
   /** Your pick on the clock during the draft. */
   draftTurn: DraftTurn | null;
   draftPick: (prospect: string) => void;
@@ -773,7 +778,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = scouting ?? createScouting(league, draftClass);
       // Your points if you assigned any; otherwise your scouts pick (as they do for every other team).
       const choices = s.scoutPlan.length > 0 ? { [s.userTeam]: s.scoutPlan } : {};
-      scouting = current.week < seasonWeeks(current) ? advanceScoutingWeek(current, league, draftClass, choices) : current;
+      // Your recruiting plan stands week to week (none: your staff recruits for you).
+      const recruiting = s.recruitPlan?.length ? { [s.userTeam]: s.recruitPlan } : {};
+      scouting = current.week < seasonWeeks(current) ? advanceScoutingWeek(current, league, draftClass, choices, recruiting) : current;
     }
     const dynasty = { ...s.dynasty, league };
     const allResults = [...s.results, ...played];
@@ -852,7 +859,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, titleBoxes: undefined, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], recruitPlan: [], trades: [], playoffs: null, titleBoxes: undefined, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -1196,6 +1203,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const points = Math.max(0, Math.min(current + delta, current + (SCOUT_POINTS - used)));
       const rest = state.scoutPlan.filter((a) => a.prospect !== prospect);
       persist({ ...state, scoutPlan: points > 0 ? [...rest, { prospect, points }] : rest });
+    },
+    recruitPlan: state?.recruitPlan ?? [],
+    recruitPoints: state?.userTeam ? recruitingPoints(state.dynasty.league.teams[state.userTeam]) : 0,
+    assignRecruiting: (prospect, delta) => {
+      if (!state?.userTeam) return;
+      const plan = state.recruitPlan ?? [];
+      const max = recruitingPoints(state.dynasty.league.teams[state.userTeam]);
+      const used = plan.reduce((n, a) => n + a.points, 0);
+      const current = plan.find((a) => a.prospect === prospect)?.points ?? 0;
+      const points = Math.max(0, Math.min(current + delta, current + (max - used)));
+      const rest = plan.filter((a) => a.prospect !== prospect);
+      persist({ ...state, recruitPlan: points > 0 ? [...rest, { prospect, points }] : rest });
     },
     draftTurn,
     draftPick: (prospect) => stepDraft(prospect),

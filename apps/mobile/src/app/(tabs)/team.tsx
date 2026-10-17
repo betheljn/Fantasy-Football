@@ -52,7 +52,14 @@ export default function TeamTab() {
 
       {solo && d.scouting ? (
         <NavGroup title="Next year's draft">
-          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} last />
+          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} />
+          <NavRow
+            icon="megaphone-outline"
+            title="Recruiting"
+            detail={d.recruitPlan.length ? `${d.recruitPlan.length} recruit${d.recruitPlan.length === 1 ? "" : "s"} · ${d.recruitPoints} points a week` : "Build prospects' interest in your program"}
+            onPress={() => router.push("/recruiting")}
+            last
+          />
         </NavGroup>
       ) : null}
     </ScrollView>

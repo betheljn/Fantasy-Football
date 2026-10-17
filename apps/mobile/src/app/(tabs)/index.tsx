@@ -25,6 +25,7 @@ import {
   mood,
   teamAppeal,
   winPct,
+  allLeanings,
 } from "@dynasty/sim";
 import { Card, Icon, LinkRow, LogoBadge, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
 import { designedColors, teamColors, teamShort } from "../../field/colors";
@@ -84,7 +85,7 @@ export default function Home() {
     case "draft":
       return d.draftTurn && data ? (
         <Stepped step="draft" note={`round ${d.draftTurn.round}, pick ${d.draftTurn.overall}`}>
-          <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} />
+          <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} leanings={d.scouting ? allLeanings(d.scouting) : undefined} />
         </Stepped>
       ) : null;
     case "freeagency":

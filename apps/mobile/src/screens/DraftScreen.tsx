@@ -3,13 +3,13 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { DRAFT_ROUNDS, type DraftTurn } from "@dynasty/sim";
+import { DRAFT_ROUNDS, type DraftTurn, type Leaning } from "@dynasty/sim";
 import { ProspectBoard } from "../components/ProspectBoard";
 import { Card, SectionTitle } from "../components/ui";
 import { useTheme } from "../theme";
 import { teamShort } from "../field/colors";
 
-export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTurn; userTeam: string; onPick: (id: string) => void; onAuto: () => void }) {
+export function DraftScreen({ turn, userTeam, onPick, onAuto, leanings }: { turn: DraftTurn; userTeam: string; onPick: (id: string) => void; onAuto: () => void; leanings?: ReadonlyMap<string, Leaning | null> }) {
   const t = useTheme();
   const router = useRouter();
   const [armed, setArmed] = useState<string | null>(null);
@@ -19,6 +19,12 @@ export function DraftScreen({ turn, userTeam, onPick, onAuto }: { turn: DraftTur
   return (
     <ProspectBoard
       board={turn.board}
+      // Recruiting: who leans where (other teams shy off a player leaning elsewhere).
+      note={(e) => {
+        const l = leanings?.get(e.prospect.player.id);
+        if (!l) return null;
+        return <Text style={{ color: l.team === userTeam ? "#2e9d57" : t.muted, fontSize: 12, fontWeight: "700" }}>{l.team === userTeam ? "Your recruit: leans to you" : `Leans to ${teamShort(l.team)}`}</Text>;
+      }}
       onOpen={(e) => router.push(`/prospect/${e.prospect.player.id}`)}
       header={
         <View style={{ padding: 16, gap: 12 }}>

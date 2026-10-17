@@ -11,9 +11,11 @@ interface Props {
   action?: (e: BoardEntry) => ReactNode;
   onOpen?: (e: BoardEntry) => void;
   header?: ReactNode;
+  /** An extra line under a row (recruiting interest, where he leans). */
+  note?: (e: BoardEntry) => ReactNode;
 }
 
-export function ProspectBoard({ board, action, onOpen, header }: Props) {
+export function ProspectBoard({ board, action, onOpen, header, note }: Props) {
   const t = useTheme();
   const [pos, setPos] = useState<Position | "ALL">("ALL");
   const rows = useMemo(() => (pos === "ALL" ? board : board.filter((e) => e.prospect.player.position === pos)), [board, pos]);
@@ -33,12 +35,12 @@ export function ProspectBoard({ board, action, onOpen, header }: Props) {
           </ScrollView>
         </View>
       }
-      renderItem={({ item: e }) => <Row entry={e} action={action?.(e)} onOpen={onOpen ? () => onOpen(e) : undefined} theme={t} />}
+      renderItem={({ item: e }) => <Row entry={e} action={action?.(e)} note={note?.(e)} onOpen={onOpen ? () => onOpen(e) : undefined} theme={t} />}
     />
   );
 }
 
-function Row({ entry: e, action, onOpen, theme: t }: { entry: BoardEntry; action: ReactNode; onOpen: (() => void) | undefined; theme: Theme }) {
+function Row({ entry: e, action, note, onOpen, theme: t }: { entry: BoardEntry; action: ReactNode; note?: ReactNode; onOpen: (() => void) | undefined; theme: Theme }) {
   const p = e.prospect.player;
   const known = Math.round(e.knowledge * 100);
   return (
@@ -64,6 +66,7 @@ function Row({ entry: e, action, onOpen, theme: t }: { entry: BoardEntry; action
           </View>
           <Text style={{ color: t.muted, fontSize: 12 }}>{known}% known</Text>
         </View>
+        {note ? <View style={{ marginTop: 4, marginLeft: 36 }}>{note}</View> : null}
       </Pressable>
       {action}
     </View>
