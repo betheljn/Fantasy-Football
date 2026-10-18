@@ -277,13 +277,29 @@ export function closeSeasonBooks(
     const b = business[t.abbr] ?? startBusiness(t, league.seed);
     const f = seasonFinances(league, t, b, season, results, records.get(t.abbr), lastWinPct.get(t.abbr) ?? 0.5, check);
     finances[t.abbr] = f;
-    const after = openProjects({ ...b, fans: f.fans, cash: Math.round(b.cash + f.profit), stadium: { ...b.stadium, debt: Math.round(b.stadium.debt * (1 - BOND.principal)) } }, season);
+    const after = openProjects({ ...indexPrices(b, league.seed, season), fans: f.fans, cash: Math.round(b.cash + f.profit), stadium: { ...b.stadium, debt: Math.round(b.stadium.debt * (1 - BOND.principal)) } }, season);
     // AI teams' fans feel the way the season went (yours: what you've said and done).
     const r = records.get(t.abbr);
     const pct = r ? (r.wins + 0.5 * r.ties) / Math.max(1, r.wins + r.losses + r.ties) : 0.5;
     next[t.abbr] = humans.has(t.abbr) ? after : { ...aiBusinessMoves(after, f, t, league.seed, season + 1), mood: Math.round(40 + 40 * pct) };
   }
   return { business: next, finances };
+}
+
+/**
+ * Prices carried into next season at the same real value: everything else in
+ * the books (payroll, TV, merch, sponsors) grows with the economy, so a price
+ * set once keeps pace (you can still change it).
+ */
+function indexPrices(b: TeamBusiness, leagueSeed: string, season: number): TeamBusiness {
+  const grow = economy(leagueSeed, season + 1) / economy(leagueSeed, season);
+  return { ...b, ticketPrice: Math.round(b.ticketPrice * grow), concessionPrice: Math.round(b.concessionPrice * grow) };
+}
+
+/** What a person may charge (dollars per fan), growing with the economy. */
+export function priceLimits(leagueSeed: string, season: number): { ticket: [number, number]; concessions: [number, number] } {
+  const econ = economy(leagueSeed, season);
+  return { ticket: [Math.round(20 * econ), Math.round(400 * econ)], concessions: [Math.round(5 * econ), Math.round(100 * econ)] };
 }
 
 /** Bonds: interest and the share of the debt paid down each season. */
@@ -417,7 +433,8 @@ function aiBusinessMoves(b: TeamBusiness, f: SeasonFinances, team: Team, leagueS
   let out = b;
   const full = f.attendance / (BUSINESS_RULES.homeGames * b.stadium.capacity);
   const price = full >= 0.98 ? b.ticketPrice * 1.06 : full < 0.7 ? b.ticketPrice * 0.95 : b.ticketPrice;
-  out = { ...out, ticketPrice: Math.round(Math.max(60, Math.min(180, price))) };
+  const econ = economy(leagueSeed, next);
+  out = { ...out, ticketPrice: Math.round(Math.max(60 * econ, Math.min(180 * econ, price))) };
   if (full >= 0.98 && projectProblems(out, "expand", team.abbr, "cash").length === 0 && out.cash > projectCost("expand", team.abbr) * 2) out = startProject(out, "expand", team.abbr, "cash", next - 1);
   if (out.stadium.quality < 50 && projectProblems(out, "videoBoard", team.abbr, "cash").length === 0 && out.cash > 60_000) out = startProject(out, "videoBoard", team.abbr, "cash", next - 1);
   // Rich teams where the weather turns bad put a roof on it (rarely: it's a big job).

@@ -24,8 +24,8 @@ export const RECRUITING = {
   basePoints: 10,
   /** ...plus or minus this much for the head coach (an average one: 0)... */
   coachSwing: 4,
-  /** ...plus this much per tier of the owner's recruiting upgrade. */
-  perUpgradeTier: 2,
+  /** ...plus this much per tier of the owner's recruiting upgrade (a long balance check found 2 a tier snowballed: tiers compound over drafts). */
+  perUpgradeTier: 1,
   /** Interest per point spent, before diminishing returns. */
   gain: 1,
   /** A prospect from your region warms to you this much faster. */

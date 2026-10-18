@@ -80,6 +80,7 @@ import {
   afterReview,
   answerPress,
   closeSeasonBooks,
+  priceLimits,
   jobOffers,
   pressConference,
   seasonReview,
@@ -1418,7 +1419,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const all = s.dynasty.business ?? startLeagueBusiness(league);
       const b = all[s.userTeam]!;
       if (homeGates(league.teams[s.userTeam]!, b, s.results, 0.5).length > 0) return ["Prices are set for the season once the first home game is played. Change them in the offseason."];
-      if (ticket < 20 || ticket > 400 || concessions < 5 || concessions > 100) return ["That price is out of bounds."];
+      const lim = priceLimits(league.seed, league.season);
+      if (ticket < lim.ticket[0] || ticket > lim.ticket[1] || concessions < lim.concessions[0] || concessions > lim.concessions[1]) return ["That price is out of bounds."];
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, ticketPrice: ticket, concessionPrice: concessions } } } }, true);
       return [];
     },

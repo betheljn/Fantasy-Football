@@ -9,7 +9,7 @@ import { teamChoices, type PerTeam } from "../choices.ts";
 import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
 import { closeSeasonBooks, startLeagueBusiness, type SeasonFinances, type TeamBusiness } from "../business/business.ts";
-import { hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
+import { HOF_RULES, hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
 import { rivalries, rivalryGames, type RivalryGame } from "../collect/rivalries.ts";
 import { collectSeason, collectWeek, startCollection, type Collection, type Moment, type RecordBook } from "../collect/moments.ts";
 import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
@@ -226,6 +226,21 @@ export function talentSnapshot(league: League): TalentSnapshot {
 }
 
 const fullName = (p: Player) => `${p.firstName} ${p.lastName}`;
+
+/** Career games that keep a short career on record after a player is gone. */
+export const CAREER_KEEP_GAMES = 30;
+
+/**
+ * The careers worth keeping once players are gone: anyone still in the league
+ * (on a roster, on injured reserve or a free agent), and anyone who played long
+ * enough to matter later (a Hall of Fame look, an all-time list). A short
+ * career that's over is dropped, so saves don't grow with every backup who
+ * ever played.
+ */
+export function keptCareers(careers: ReadonlyMap<PlayerId, CareerLine>, league: League): Map<PlayerId, CareerLine> {
+  const here = new Set<PlayerId>([...allTeams(league).flatMap((t) => [...t.roster, ...(t.reserve ?? [])].map((p) => p.id)), ...(league.freeAgents ?? []).map((p) => p.id)]);
+  return new Map([...careers].filter(([id, c]) => here.has(id) || c.seasons >= HOF_RULES.minSeasons || c.games >= CAREER_KEEP_GAMES));
+}
 
 /** Play one season and its offseason. Returns the dynasty ready for the next season. */
 export function advanceSeason(dynasty: Dynasty): Dynasty {
@@ -604,7 +619,7 @@ export function completeOffseason(
     dynasty: syncVenues(syncUpgrades({
       league: nextLeague,
       history: [...dynasty.history, record],
-      careers,
+      careers: keptCareers(careers, nextLeague),
       slotOrder: Object.fromEntries(standings.map((d) => [d.division, d.teams.map((t) => t.team)])),
       staffPool: staff.pool,
       staffCareers: staff.careers,

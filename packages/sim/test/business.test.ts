@@ -92,3 +92,28 @@ describe("your levers", () => {
     }
   }, 30_000);
 });
+
+import { CAREER_KEEP_GAMES, HOF_RULES, closeSeasonBooks, computeRecords, economy, keptCareers, priceLimits, type CareerLine } from "../src/index.ts";
+
+describe("over many seasons", () => {
+  it("prices carry into next season at the same real value (everything else grows with the economy)", () => {
+    const league = DYNASTY.league;
+    const all = startLeagueBusiness(league);
+    const mine = { ...all.CA!, ticketPrice: 120, concessionPrice: 40 };
+    const { business } = closeSeasonBooks(league, { ...all, CA: mine }, league.season, [], computeRecords(league, []), new Map(), new Set(["CA"]));
+    const grow = economy(league.seed, league.season + 1) / economy(league.seed, league.season);
+    expect(grow).toBeGreaterThan(1);
+    expect(business.CA!.ticketPrice).toBe(Math.round(120 * grow));
+    expect(business.CA!.concessionPrice).toBe(Math.round(40 * grow));
+    // What you may charge grows the same way.
+    const later = priceLimits(league.seed, league.season + 10);
+    expect(later.ticket[1]).toBeGreaterThan(priceLimits(league.seed, league.season).ticket[1]);
+  });
+
+  it("keeps the careers still in the league or long enough to matter; drops short ones that are over", () => {
+    const line = (id: string, seasons: number, games: number) => [id, { id, name: id, position: "WR", teams: [], seasons, games, stats: {} } as unknown as CareerLine] as const;
+    const someone = DYNASTY.league.teams.CA!.roster[0]!.id;
+    const careers = new Map([line(someone, 1, 2), line("gone-short", 2, CAREER_KEEP_GAMES - 1), line("gone-long", HOF_RULES.minSeasons, 10), line("gone-busy", 3, CAREER_KEEP_GAMES)]);
+    expect([...keptCareers(careers, DYNASTY.league).keys()].sort()).toEqual([someone, "gone-busy", "gone-long"].sort());
+  });
+});
