@@ -2,7 +2,7 @@
 // program starts there; make it yours (name, short name, logo, colors, your
 // role), build your head coach, then the fantasy draft (or keep the roster).
 // The sim checks and makes each choice; the draft is saved as you go.
-import { StadiumBuilderScreen } from "./StadiumBuilderScreen";
+import { StadiumBuilderScreen, stadiumFor } from "./StadiumBuilderScreen";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
@@ -21,7 +21,7 @@ import {
   type SkillGroup,
   type Team,
   type CoachBuild,
-  type TeamIdentityChoice, startLeagueBusiness, type StadiumDesign } from "@dynasty/sim";
+  type TeamIdentityChoice, startLeagueBusiness, customizeTeam, type StadiumDesign } from "@dynasty/sim";
 import { CoachBuilderScreen } from "./CoachBuilderScreen";
 import { RegionScreen, SkillGroupsScreen } from "./ProgramSetupScreen";
 import { startingDynasty } from "../dynasty/setup";
@@ -99,7 +99,7 @@ export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
       {program && team && look ? (
         <View style={{ flex: 1, display: stadium ? "none" : "flex" }}>
           <StadiumBuilderScreen
-            stadium={(program.dynasty.business ?? startLeagueBusiness(program.dynasty.league))[team.abbr]!.stadium}
+            stadium={stadiumFor((program.dynasty.business ?? startLeagueBusiness(program.dynasty.league))[team.abbr]!.stadium, team.nickname, customizeTeam(program.dynasty.league, team.abbr, look.identity).teams[team.abbr]!.nickname)}
             colors={look.identity.colors ?? designedColors(team.abbr)}
             onBack={() => setLook(null)}
             onDone={setStadium}
@@ -156,7 +156,7 @@ export type FriendTeams = Record<string, { identity: TeamIdentityChoice; owner: 
  * `friends` are the other friends' teams: their names and logos are off
  * limits, and there's no role to pick.
  */
-export function MakeItYours({ league, team, onBack, onDone, initial, friends, backLabel = "All states", nextLabel = "Next: your head coach", pickRole = !friends }: { league: League; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void; initial?: TeamIdentityChoice; friends?: FriendTeams; backLabel?: string; nextLabel?: string; pickRole?: boolean }) {
+export function MakeItYours({ league, team, onBack, onDone, initial, friends, backLabel = "All states", nextLabel = "Next: your stadium", pickRole = !friends }: { league: League; team: Team; onBack: () => void; onDone: (abbr: string, role: Role, identity: TeamIdentityChoice) => void; initial?: TeamIdentityChoice; friends?: FriendTeams; backLabel?: string; nextLabel?: string; pickRole?: boolean }) {
   const t = useTheme();
   const designed = designedColors(team.abbr);
   const [city, setCity] = useState(initial?.city ?? "");

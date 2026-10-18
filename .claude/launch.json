@@ -55,6 +55,20 @@
         "8083"
       ],
       "port": 8083
+    },
+    {
+      "name": "mobile-ios",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--port",
+        "8085"
+      ],
+      "port": 8085
     }
   ]
 }

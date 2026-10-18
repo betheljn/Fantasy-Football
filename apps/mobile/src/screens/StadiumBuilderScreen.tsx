@@ -23,6 +23,11 @@ import { Button, Card, Chips, Field, SectionTitle, StickyFooter } from "../compo
 import { StadiumView } from "../field/StadiumView";
 import { useTheme } from "../theme";
 
+/** The stadium as the team it replaced named it ("Stonecutters Field"), renamed for your nickname ("Harriers Field"). */
+export function stadiumFor(stadium: Stadium, from: string, to: string): Stadium {
+  return from && to && stadium.name.startsWith(`${from} `) ? { ...stadium, name: `${to}${stadium.name.slice(from.length)}` } : stadium;
+}
+
 export function StadiumBuilderScreen({ stadium, colors, initial, onBack, onDone, nextLabel = "Next: your head coach" }: { stadium: Stadium; colors: { primary: string; trim: string }; initial?: StadiumDesign; onBack: () => void; onDone: (d: StadiumDesign) => void; nextLabel?: string }) {
   const t = useTheme();
   const { width } = useWindowDimensions();

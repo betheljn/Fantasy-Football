@@ -6,6 +6,7 @@
 import { Canvas, Group, Line, Oval, Rect, RoundedRect, vec } from "@shopify/react-native-skia";
 import { StyleSheet, Text, View } from "react-native";
 import { roofOf, standsOf, surfaceOf, videoBoardOf, type Stadium } from "@dynasty/sim";
+import { useTheme } from "../theme";
 
 interface Props {
   stadium: Stadium;
@@ -21,6 +22,7 @@ const TURF = "#2c8a44";
 const CONCRETE = "#3b3f46";
 
 export function StadiumView({ stadium, colors, width, closed }: Props) {
+  const t = useTheme();
   const height = Math.round(width * 0.66);
   const roof = roofOf(stadium);
   const steep = standsOf(stadium) === "steep";
@@ -45,7 +47,7 @@ export function StadiumView({ stadium, colors, width, closed }: Props) {
   };
   const stripes = Array.from({ length: 10 }, (_, i) => i);
   return (
-    <View style={{ width, height }} accessibilityRole="image" accessibilityLabel={`${stadium.name} from the air`}>
+    <View style={{ width, height: height + 18 }} accessibilityRole="image" accessibilityLabel={`${stadium.name} from the air`}>
       <Canvas style={{ width, height }}>
         {/* The concourse and the stands, tier by tier (darker toward the field). */}
         <Oval x={cx - outer.w / 2 - 4} y={cy - outer.h / 2 - 4} width={outer.w + 8} height={outer.h + 8} color={CONCRETE} />
@@ -85,9 +87,12 @@ export function StadiumView({ stadium, colors, width, closed }: Props) {
         {roof === "dome" ? (
           <Group>
             <Oval x={cx - outer.w / 2} y={cy - outer.h / 2} width={outer.w} height={outer.h} color="rgba(235,240,245,0.78)" />
-            {[0.25, 0.5, 0.75].map((f) => (
-              <Line key={f} p1={vec(cx - outer.w / 2 + outer.w * f, cy - outer.h / 2 + 6)} p2={vec(cx - outer.w / 2 + outer.w * f, cy + outer.h / 2 - 6)} color="rgba(120,130,140,0.6)" strokeWidth={1.5} />
-            ))}
+            {[0.25, 0.5, 0.75].map((f) => {
+              // Each rib runs edge to edge of the dome (shorter away from the middle).
+              const dx = outer.w * (f - 0.5);
+              const half = (outer.h / 2) * Math.sqrt(1 - (dx / (outer.w / 2)) ** 2) - 6;
+              return <Line key={f} p1={vec(cx + dx, cy - half)} p2={vec(cx + dx, cy + half)} color="rgba(120,130,140,0.6)" strokeWidth={1.5} />;
+            })}
             <Line p1={vec(cx - outer.w / 2 + 6, cy)} p2={vec(cx + outer.w / 2 - 6, cy)} color="rgba(120,130,140,0.6)" strokeWidth={1.5} />
           </Group>
         ) : roof === "retractable" ? (
@@ -104,7 +109,7 @@ export function StadiumView({ stadium, colors, width, closed }: Props) {
           })
         ) : null}
       </Canvas>
-      <Text style={[styles.name, { color: colors.trim === "#ffffff" ? "#ffffff" : "#f5f5f5" }]} numberOfLines={1}>
+      <Text style={[styles.name, { color: t.text }]} numberOfLines={1}>
         {stadium.name.toUpperCase()}
       </Text>
     </View>
@@ -112,5 +117,6 @@ export function StadiumView({ stadium, colors, width, closed }: Props) {
 }
 
 const styles = StyleSheet.create({
-  name: { position: "absolute", bottom: 2, left: 0, right: 0, textAlign: "center", fontWeight: "900", fontSize: 11, letterSpacing: 2, textShadowColor: "rgba(0,0,0,0.7)", textShadowRadius: 3 },
+  // The name under the bowl.
+  name: { height: 18, lineHeight: 18, textAlign: "center", fontWeight: "900", fontSize: 11, letterSpacing: 2 },
 });

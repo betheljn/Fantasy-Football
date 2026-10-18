@@ -4,9 +4,9 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { fromSaveJson, startLeagueBusiness, teamLogo, type CoachBuild, type Dynasty, type StadiumDesign, type TeamIdentityChoice } from "@dynasty/sim";
+import { customizeTeam, fromSaveJson, startLeagueBusiness, teamLogo, type CoachBuild, type Dynasty, type StadiumDesign, type TeamIdentityChoice } from "@dynasty/sim";
 import { designedColors } from "../../../field/colors";
-import { StadiumBuilderScreen } from "../../../screens/StadiumBuilderScreen";
+import { StadiumBuilderScreen, stadiumFor } from "../../../screens/StadiumBuilderScreen";
 import { Button } from "../../../components/ui";
 import { api, type OnlineLeague, type OnlineSetup } from "../../../online/api";
 import { myLeagues, type MyLeague } from "../../../online/store";
@@ -116,7 +116,7 @@ export default function OnlineTeamSetupScreen() {
       {identity ? (
         <View style={{ flex: 1, display: stadium ? "none" : "flex" }}>
           <StadiumBuilderScreen
-            stadium={(loaded.dynasty.business ?? startLeagueBusiness(loaded.dynasty.league))[team.abbr]!.stadium}
+            stadium={stadiumFor((loaded.dynasty.business ?? startLeagueBusiness(loaded.dynasty.league))[team.abbr]!.stadium, team.nickname, customizeTeam(loaded.dynasty.league, team.abbr, identity).teams[team.abbr]!.nickname)}
             colors={identity.colors ?? designedColors(team.abbr)}
             {...(loaded.mine?.stadium ? { initial: loaded.mine.stadium } : {})}
             onBack={() => setIdentity(null)}
