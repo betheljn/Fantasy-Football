@@ -1,7 +1,7 @@
 // Talking to the online-leagues server (apps/server). The server runs the sim
 // for online leagues; the app only asks it for things and shows the answers.
 import Constants from "expo-constants";
-import type { CoachAbility, UpgradeTrack, DuelView, CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
+import type { PracticePlan, CoachAbility, UpgradeTrack, DuelView, CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
 import { Platform } from "react-native";
 
 /**
@@ -128,7 +128,8 @@ export type OnlineMove =
   | { kind: "coach"; game: string; calls: Array<CoachCall | null> }
   | { kind: "upgrade"; track: UpgradeTrack }
   | { kind: "ability"; ability: CoachAbility }
-  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> };
+  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> }
+  | { kind: "practice"; plan: PracticePlan | null };
 
 /** Your call for the offseason stage that's open (send it again to change it). */
 export type OffseasonChoice =

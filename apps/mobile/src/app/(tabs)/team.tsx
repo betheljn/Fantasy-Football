@@ -33,6 +33,9 @@ export default function TeamTab() {
       <NavGroup title="Roster">
         <NavRow icon="people-outline" title="Roster and schedule" detail="Players, staff, payroll and every game" onPress={() => router.push(`/team/${userTeam}`)} />
         <NavRow icon="git-network-outline" title="Depth chart" detail={d.canEditDepthChart ? "Set your starters" : "Locked until the regular season"} onPress={() => router.push("/depth")} />
+        {d.canMakeMoves ? (
+          <NavRow icon="barbell-outline" title="Practice" detail={d.practice ? `${d.practice.installs.length} installed · ${d.practice.intensity} week` : "Your staff is running it"} onPress={() => router.push("/practice")} />
+        ) : null}
         <NavRow icon="medkit-outline" title="Injuries" detail={hurt ? `${hurt} hurt or on injured reserve` : "Everyone's healthy"} badge={hurt ? String(hurt) : undefined} onPress={() => router.push("/injuries")} last={!d.canMakeMoves} />
         {d.canMakeMoves ? (
           <NavRow icon="person-add-outline" title="Free agents" detail={`${(league.freeAgents ?? []).length} available to sign`} onPress={() => router.push("/freeagents")} last />

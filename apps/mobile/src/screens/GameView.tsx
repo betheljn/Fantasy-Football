@@ -156,6 +156,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               midfield={{ abbr: home.abbr, color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim }}
               colorsOf={teamColors}
+              weather={game.conditions && !game.conditions.dome ? game.conditions : null}
             />
           )}
         </View>

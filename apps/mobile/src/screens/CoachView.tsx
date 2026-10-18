@@ -162,6 +162,7 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               midfield={{ abbr: home.abbr, color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim }}
               colorsOf={teamColors}
+              weather={sofar.conditions && !sofar.conditions.dome ? sofar.conditions : null}
             />
           )
         ) : (

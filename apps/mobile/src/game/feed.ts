@@ -2,6 +2,7 @@
 // the screen only renders it.
 import {
   describeGamePlay,
+  describeConditions,
   formatClock,
   formatDownDistance,
   formatSpot,
@@ -29,6 +30,8 @@ export function buildFeed(game: GameResult, who: PlayerLookup): FeedRow[] {
   const driveAt = new Map(game.drives.map((d) => [d.plays.from, d]));
   const driveEnd = new Map(game.drives.map((d) => [d.plays.to, d]));
   let quarter = 0;
+  // The conditions at kickoff, first thing in the feed.
+  if (game.conditions) rows.push({ kind: "drive", key: "wx", index: 0, team: game.home, text: `Kickoff: ${describeConditions(game.conditions)}` });
   game.plays.forEach((p, i) => {
     if (p.quarter !== quarter) {
       quarter = p.quarter;

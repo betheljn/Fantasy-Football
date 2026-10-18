@@ -86,6 +86,10 @@ import {
   startFrontOffice,
   withOwners,
   syncVenues,
+  campStories,
+  teamName,
+  practiceProblem,
+  type PracticePlan,
   recruitingPoints,
   newOwner,
   syncUpgrades,
@@ -271,6 +275,10 @@ export interface DynastyControls {
   /** Your depth chart is locked: you have picks on your own players this week. */
   depthLocked: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
+  /** Your week's practice (null: your staff plans it), whether it can change now, and setting it (null, or why not). */
+  practice: PracticePlan | null;
+  practiceLocked: boolean;
+  setPractice: (plan: PracticePlan | null) => string | null;
   /** Buy the next tier of an owner upgrade (null, or why not). */
   buyUpgrade: (track: UpgradeTrack) => string | null;
   /** Your coaches can pick up new abilities now (before week 1, until your week-1 game is being coached). */
@@ -354,6 +362,11 @@ const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, boar
  * championship week once the regular season is over (format 2, before it's
  * played); null when there's nothing left to pick.
  */
+/** Your game this week is being coached: the week's practice is set (it's part of that game). */
+function practiceLocked(s: SaveState | null): boolean {
+  return !!(s?.coaching && s.coaching.calls.length > 0 && s.coaching.season === s.dynasty.league.season);
+}
+
 /** Before week 1, while your week-1 game isn't being coached: your coaches can pick up abilities. */
 function abilityWindow(s: SaveState | null, offseason: unknown): boolean {
   return !!s?.userTeam && !offseason && !s.report && s.weeksPlayed === 0 && !(s.coaching && s.coaching.calls.length > 0);
@@ -733,7 +746,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const office: OfficeState = s.office ?? startFrontOffice("owner");
     const startRating = ranked[idx]?.ovr ?? 60;
     const nextOffice: OfficeState = { ...office, ...(office.startRating !== undefined ? { lastStartRating: office.startRating } : {}), startRating, expectedWins: Math.round((5 + 10 * (1 - idx / Math.max(1, ranked.length - 1))) * 10) / 10 };
-    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups, office: nextOffice };
+    // Training camp settled the close spots before the season: its stories open the season's news.
+    const camp = s.dynasty.camp ? campStories(s.dynasty.camp, before.season, (abbr) => teamName(before.teams[abbr]!), s.userTeam) : [];
+    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups, office: nextOffice, ...(camp.length ? { news: [...(s.news ?? []), ...camp] } : {}) };
   };
 
   const playOneWeek = (s: SaveState, sched: Schedule): SaveState => {
@@ -1251,6 +1266,24 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
     canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
     depthLocked,
+    practice: (state?.userTeam && state.dynasty.league.teams[state.userTeam]?.practice) || null,
+    practiceLocked: practiceLocked(state),
+    setPractice: (plan) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      if (practiceLocked(s)) return "Your game this week is under way: practice is set until it's played.";
+      if (plan) {
+        const problem = practiceProblem(plan);
+        if (problem) return problem;
+      }
+      const league = s.dynasty.league;
+      const team = league.teams[s.userTeam]!;
+      const { practice: _old, ...rest } = team;
+      const updated = plan ? { ...rest, practice: plan } : rest;
+      persist({ ...s, dynasty: { ...s.dynasty, league: { ...league, teams: { ...league.teams, [s.userTeam]: updated } } } }, true);
+      if (online) sendMove({ kind: "practice", plan });
+      return null;
+    },
     buyUpgrade: (track) => {
       const s = stateRef.current;
       if (!s?.userTeam) return "No team";

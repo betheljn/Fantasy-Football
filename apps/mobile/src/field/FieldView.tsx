@@ -40,6 +40,8 @@ interface Props {
   midfield: { abbr: string; color: string; trim: string };
   /** Each team's colors, for the play's banner and confetti. */
   colorsOf: (abbr: string) => { primary: string; trim: string; onPrimary: string };
+  /** Rain or snow falling over the field (wind slants the rain). */
+  weather?: { precip: "none" | "rain" | "snow"; wind: number } | null;
 }
 
 const GRASS = "#2f7d3b";
@@ -52,7 +54,7 @@ const GOALPOST = "#f5d90a";
 /** Yards of sideline shown beyond each edge of the field. */
 const MARGIN = 2.5;
 
-export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf }: Props) {
+export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf, weather }: Props) {
   const scale = width / (FIELD_WIDTH + MARGIN * 2); // px per yard
   const halfView = height / 2 / scale;
   const ball = play.ball;
@@ -144,6 +146,7 @@ export function FieldView({ play, time, width, height, offense, defense, endZone
           ))}
           <Ball play={play} time={time} scale={scale} />
         </Group>
+        {weather && weather.precip !== "none" ? <Precipitation kind={weather.precip} wind={weather.wind} time={time} width={width} height={height} /> : null}
       </Canvas>
       <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, overlayStyle]}>
         {numbers}
@@ -326,3 +329,32 @@ const styles = StyleSheet.create({
   bannerTeam: { fontWeight: "800", fontSize: 12, opacity: 0.85 },
   bannerText: { fontWeight: "900", letterSpacing: 1 },
 });
+
+/** Rain streaks (slanted by the wind) or snowflakes falling over the field, moving with the play clock. */
+function Precipitation({ kind, wind, time, width, height }: { kind: "rain" | "snow"; wind: number; time: SharedValue<number>; width: number; height: number }) {
+  // The same flakes every time (a fixed scatter), drawn twice so the fall wraps around.
+  const drops = useMemo(() => {
+    const out: Array<{ x: number; y: number; s: number }> = [];
+    let h = 0x9e3779b9;
+    const next = () => ((h = (Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) | 0) >>> 0) / 4294967296;
+    for (let i = 0; i < (kind === "snow" ? 70 : 90); i++) out.push({ x: next() * width, y: next() * height, s: 0.6 + next() * 0.8 });
+    return out;
+  }, [kind, width, height]);
+  const speed = kind === "snow" ? 40 : 260;
+  const slant = kind === "rain" ? Math.min(0.6, wind / 40) : 0;
+  const fall = useDerivedValue(() => [{ translateY: (time.value * speed) % height }, { translateX: ((time.value * speed * slant) % width) }]);
+  const shapes = (dy: number) =>
+    drops.map((d, i) =>
+      kind === "snow" ? (
+        <Circle key={`${dy}-${i}`} cx={d.x} cy={d.y + dy} r={1.6 * d.s} color="rgba(255,255,255,0.75)" />
+      ) : (
+        <Line key={`${dy}-${i}`} p1={vec(d.x, d.y + dy)} p2={vec(d.x - 6 * slant * d.s, d.y + dy + 9 * d.s)} color="rgba(200,220,255,0.45)" strokeWidth={1} />
+      ),
+    );
+  return (
+    <Group transform={fall}>
+      {shapes(0)}
+      {shapes(-height)}
+    </Group>
+  );
+}

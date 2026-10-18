@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { describeConditions, teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
 import { teamColors, teamShort } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
@@ -64,8 +64,10 @@ export function WinBar({ game, home }: { game: GameResult; home: number }) {
         <View style={{ width: 2, backgroundColor: t.bg }} />
         <View style={{ flex: Math.max(1, pct), backgroundColor: teamColors(game.home).primary }} />
       </View>
-      <Text style={{ color: t.muted, fontSize: 11, marginTop: 3, textAlign: "center" }}>
+      <Text style={{ color: t.muted, fontSize: 11, marginTop: 3, textAlign: "center" }} numberOfLines={1}>
         Win chance: {lead} {Math.max(pct, 100 - pct)}%
+        {/* The weather and crowd, on the same line. */}
+        {game.conditions ? ` · ${describeConditions(game.conditions)}` : ""}
       </Text>
     </View>
   );
