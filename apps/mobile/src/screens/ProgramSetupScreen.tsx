@@ -10,7 +10,7 @@ import { useTheme } from "../theme";
 const STATE_NAME = new Map(STATES.map(([name, abbr]) => [abbr, name]));
 
 /** Rank three skill groups: tap to add in order, tap again to take it out. */
-export function SkillGroupsScreen({ initial, onDone, randomRegion }: { initial?: SkillGroup[]; onDone: (groups: SkillGroup[]) => void; randomRegion?: boolean }) {
+export function SkillGroupsScreen({ initial, onDone, randomRegion, onBack }: { initial?: SkillGroup[]; onDone: (groups: SkillGroup[]) => void; randomRegion?: boolean; /** Back out of setup (to your saves). */ onBack?: () => void }) {
   const t = useTheme();
   const [picked, setPicked] = useState<SkillGroup[]>(initial ?? []);
   const toggle = (g: SkillGroup) => setPicked((p) => (p.includes(g) ? p.filter((x) => x !== g) : p.length < 3 ? [...p, g] : p));
@@ -19,6 +19,7 @@ export function SkillGroupsScreen({ initial, onDone, randomRegion }: { initial?:
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        {onBack ? <Text onPress={onBack} accessibilityRole="button" style={{ color: t.accent, fontWeight: "700" }}>‹ Your saves</Text> : null}
         <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Build your program</Text>
         <Text style={{ color: t.muted }}>
           {randomRegion

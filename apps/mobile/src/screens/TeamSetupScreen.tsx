@@ -77,7 +77,7 @@ export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, display: groups ? "none" : "flex" }}>
-        <SkillGroupsScreen initial={program?.groups} onDone={setGroups} randomRegion />
+        <SkillGroupsScreen initial={program?.groups} onDone={setGroups} randomRegion onBack={d.closeDynasty} />
       </View>
       {groups ? (
         <View style={{ flex: 1, display: program ? "none" : "flex" }}>
