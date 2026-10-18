@@ -539,13 +539,49 @@ interface FreeAgencyContext {
 }
 
 /** An AI team's bid for a free agent, or null if it doesn't want him or can't afford him. */
+/**
+ * What a team's bids keep asking, worked out once per team: free agency asks
+ * every team about every free agent, and a team only changes (a new object)
+ * when it signs someone. Values depend on the GM, not the roster.
+ */
+interface BidMemo {
+  room: Map<string, number>;
+  values: Map<Player, number>;
+  atPos: Map<string, Player[]>;
+}
+const bidMemos = new WeakMap<Team, BidMemo>();
+
+function bidMemo(t: Team): BidMemo {
+  let m = bidMemos.get(t);
+  if (!m) bidMemos.set(t, (m = { room: new Map(), values: new Map(), atPos: new Map() }));
+  return m;
+}
+
+function memoValue(t: Team, m: BidMemo, p: Player): number {
+  let v = m.values.get(p);
+  if (v === undefined) m.values.set(p, (v = teamValue(t, p)));
+  return v;
+}
+
+/** wanted() for the team with him added, from the memo (the same answer). */
+function wantedWith(t: Team, m: BidMemo, rivals: readonly Player[], p: Player): boolean {
+  const v = memoValue(t, m, p);
+  let better = 0;
+  for (const q of rivals) if (q.id !== p.id && memoValue(t, m, q) > v) better++;
+  return better < ROSTER_TEMPLATE[p.position] && playerOverall(p) >= 50;
+}
+
 function aiBid(ctx: FreeAgencyContext, t: Team, p: Player, ask: number, years: number): Contract | null {
-  const atPos = t.roster.filter((q) => q.position === p.position);
+  const m = bidMemo(t);
+  let atPos = m.atPos.get(p.position);
+  if (!atPos) m.atPos.set(p.position, (atPos = t.roster.filter((q) => q.position === p.position)));
   if (atPos.length >= ROSTER_TEMPLATE[p.position] + 2) return null;
   // Short at his position (below the roster minimum): any capable player will do.
   const need = atPos.length < ROSTER_MIN[p.position] && playerOverall(p) >= 45;
-  if (!need && !wanted({ ...t, roster: [...t.roster, p] }, p)) return null;
-  const room = signingRoom(t, ctx.capNext, ctx.next);
+  if (!need && !wantedWith(t, m, atPos, p)) return null;
+  const roomKey = `${ctx.capNext}:${ctx.next}`;
+  let room = m.room.get(roomKey);
+  if (room === undefined) m.room.set(roomKey, (room = signingRoom(t, ctx.capNext, ctx.next)));
   const noise = new Rng(`${ctx.seed}:${ctx.next}:fa:${p.id}:${t.abbr}`).normal(0, 0.05);
   const eagerness = 1 + (wouldStart(t, p) ? 0.12 : 0) + noise;
   let annual = ask * eagerness * (1 - hometownDiscount(p, t));
