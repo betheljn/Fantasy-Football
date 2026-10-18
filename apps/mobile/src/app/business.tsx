@@ -135,7 +135,7 @@ export default function BusinessScreen() {
 
         {last ? <Books f={last} theme={t} /> : <Text style={{ color: t.muted }}>Your first books close at the end of this season.</Text>}
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          Every team gets the same national TV money ({Math.round(BUSINESS_RULES.nationalMedia * 100)}% of the salary cap) and {Math.round(BUSINESS_RULES.sharing * 100)}% of local revenue is shared evenly. The salary cap is the same for every team.
+          Every team gets the same national TV money ({Math.round(BUSINESS_RULES.nationalMedia * 100)}% of the salary cap) and {Math.round(BUSINESS_RULES.sharing * 100)}% of local revenue is pooled and shared, with bigger checks to small markets ({BUSINESS_RULES.sharingWeight.small}x an even share) and smaller ones to large markets ({BUSINESS_RULES.sharingWeight.large}x). The salary cap is the same for every team.
         </Text>
       </ScrollView>
     </>

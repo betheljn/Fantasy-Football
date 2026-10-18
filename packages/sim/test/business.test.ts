@@ -117,3 +117,23 @@ describe("over many seasons", () => {
     expect([...keptCareers(careers, DYNASTY.league).keys()].sort()).toEqual([someone, "gone-busy", "gone-long"].sort());
   });
 });
+
+import { BUSINESS_RULES, sharingChecks } from "../src/index.ts";
+
+describe("revenue sharing", () => {
+  it("splits the pooled money with more to small markets and less to large ones, the pool unchanged", () => {
+    const league = DYNASTY.league;
+    const business = startLeagueBusiness(league);
+    const checks = sharingChecks(league, business, league.season, [], computeRecords(league, []), new Map());
+    expect(checks.get("WY")! / checks.get("CA")!).toBeCloseTo(BUSINESS_RULES.sharingWeight.small / BUSINESS_RULES.sharingWeight.large);
+    const even = { ...BUSINESS_RULES.sharingWeight };
+    try {
+      BUSINESS_RULES.sharingWeight = { small: 1, mid: 1, large: 1 };
+      const flat = sharingChecks(league, business, league.season, [], computeRecords(league, []), new Map());
+      const sum = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+      expect(sum(checks)).toBeCloseTo(sum(flat));
+    } finally {
+      BUSINESS_RULES.sharingWeight = even;
+    }
+  });
+});

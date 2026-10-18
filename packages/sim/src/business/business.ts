@@ -32,8 +32,15 @@ export const BUSINESS_RULES = {
   homeGames: 10,
   /** National TV deal, the same for every team: this share of the season's salary cap (it grows as the league does). */
   nationalMedia: 0.9,
-  /** Share of local revenue pooled and split evenly. */
+  /** Share of local revenue pooled and split among the teams... */
   sharing: 0.4,
+  /**
+   * ...by market: a small market's check is this much bigger than an even
+   * split, a large market's smaller (the pool stays the same). Without it, a
+   * 25-season check had half the small markets losing money every year (they
+   * pay the same cap floor on far less local revenue).
+   */
+  sharingWeight: { small: 1.5, mid: 1, large: 0.5 } as Record<MarketSize, number>,
   /** Ticket and concession prices most teams charge ($ per fan). */
   baseTicket: 95,
   baseConcessions: 30,
@@ -243,7 +250,7 @@ export function nextFans(f: Fans, abbr: string, winPct: number): Fans {
 }
 
 /** Each team's revenue-sharing check: an even split of the pooled local revenue. */
-export function sharingChecks(league: League, business: Record<string, TeamBusiness>, season: number, results: readonly GameSummary[], records: ReadonlyMap<string, TeamRecord>, lastWinPct: ReadonlyMap<string, number>): number {
+export function sharingChecks(league: League, business: Record<string, TeamBusiness>, season: number, results: readonly GameSummary[], records: ReadonlyMap<string, TeamRecord>, lastWinPct: ReadonlyMap<string, number>): Map<string, number> {
   let pool = 0;
   const teams = Object.values(league.teams);
   for (const t of teams) {
@@ -253,7 +260,10 @@ export function sharingChecks(league: League, business: Record<string, TeamBusin
     const local = (f.revenue.tickets + f.revenue.concessions + f.revenue.merch + f.revenue.sponsors + f.revenue.localMedia + f.revenue.suites) / (1 - BUSINESS_RULES.sharing);
     pool += local * BUSINESS_RULES.sharing;
   }
-  return pool / teams.length;
+  // Split by market weight (an even split when the weights are all 1).
+  const weight = (abbr: string) => BUSINESS_RULES.sharingWeight[marketSize(abbr)];
+  const total = teams.reduce((n, t) => n + weight(t.abbr), 0);
+  return new Map(teams.map((t) => [t.abbr, (pool * weight(t.abbr)) / total]));
 }
 
 /**
@@ -275,7 +285,7 @@ export function closeSeasonBooks(
   const finances: Record<string, SeasonFinances> = {};
   for (const t of Object.values(league.teams)) {
     const b = business[t.abbr] ?? startBusiness(t, league.seed);
-    const f = seasonFinances(league, t, b, season, results, records.get(t.abbr), lastWinPct.get(t.abbr) ?? 0.5, check);
+    const f = seasonFinances(league, t, b, season, results, records.get(t.abbr), lastWinPct.get(t.abbr) ?? 0.5, check.get(t.abbr) ?? 0);
     finances[t.abbr] = f;
     const after = openProjects({ ...indexPrices(b, league.seed, season), fans: f.fans, cash: Math.round(b.cash + f.profit), stadium: { ...b.stadium, debt: Math.round(b.stadium.debt * (1 - BOND.principal)) } }, season);
     // AI teams' fans feel the way the season went (yours: what you've said and done).
