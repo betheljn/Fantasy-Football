@@ -134,7 +134,9 @@ export type OnlineMove =
   | { kind: "practice"; plan: PracticePlan | null }
   | { kind: "scout"; plan: Array<{ prospect: string; points: number }> }
   | { kind: "build"; project: ProjectKind; financing: "cash" | "bonds" }
-  | { kind: "rename"; name: string };
+  | { kind: "rename"; name: string }
+  /** A slate on the coming week's board: prop ids and sides (the league's board sets the lines). */
+  | { kind: "slate"; picks: Array<{ prop: string; side: "over" | "under"; via?: { host: string; fade: boolean } }>; stake: number };
 
 /** Your call for the offseason stage that's open (send it again to change it). */
 export type OffseasonChoice =

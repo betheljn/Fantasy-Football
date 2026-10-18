@@ -1340,12 +1340,14 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     picks: state?.picks ?? newPicks(),
     board: boardFor(state, schedule),
     boardNeedsOwn: needsOwnLines(state, schedule),
-    boardWeek: boardWeek(state, schedule),
+    // Online, the league posts a board for regular-season weeks only (the playoffs are played all at once).
+    boardWeek: online && schedule && state && state.weeksPlayed >= schedule.weeks ? null : boardWeek(state, schedule),
     boardProgress,
     loadBoard: () => {
       const s = stateRef.current;
       const week = boardWeek(s, schedule);
-      if (!s || !schedule || week === null || !s.userTeam || boardJob.current) return;
+      // Online, the league works the board out (it comes with the save).
+      if (!s || !schedule || week === null || !s.userTeam || boardJob.current || online) return;
       const existing = boardFor(s, schedule);
       const own = needsOwnLines(s, schedule);
       if (existing && !own) return;
@@ -1400,6 +1402,12 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const problems = slateProblems(picks, stake, p.balance, s.userTeam, ownGames);
       if (problems.length > 0) return problems;
       const slate: Slate = { id: `${schedule.season}-${week}-${p.history.length + p.open.length + 1}`, season: schedule.season, week, picks, stake };
+      if (online) {
+        // Online, the league places it (checked again against its board); shown here meanwhile.
+        setState({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } });
+        sendMove({ kind: "slate", picks: picks.map((x) => ({ prop: x.prop.id, side: x.side, ...(x.via ? { via: x.via } : {}) })), stake });
+        return [];
+      }
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
       return [];
     },

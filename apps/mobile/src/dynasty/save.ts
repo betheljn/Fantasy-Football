@@ -63,6 +63,8 @@ export interface SaveState {
   coaching?: { season: number; game: string; calls: Array<CoachCall | null> };
   /** A new dynasty being set up (until its first season opens): your team, its look and coach, and the fantasy draft so far. */
   setup?: TeamSetup;
+  /** Online: every friend's points and settled slates (the picks leaderboard). */
+  friendsPicks?: Array<{ team: string; balance: number; history: SettledSlate[] }>;
 }
 
 export interface TeamSetup {

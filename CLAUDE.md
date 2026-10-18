@@ -469,7 +469,7 @@ as an aerial view in Skia, on a stadium screen and around the field.
    the stadium around the field on game day
 4. Online: friends build their stadiums
 
-### Milestone 27: online radio and picks
+### Milestone 27: online radio and picks (done)
 Picks and the radio show in leagues with friends (until now solo only).
 Decided: the league works the board out once a week on the server (everyone
 sees the same board and the same show); the featured games are AI against AI

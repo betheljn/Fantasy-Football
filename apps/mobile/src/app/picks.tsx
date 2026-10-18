@@ -4,11 +4,12 @@
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SLATE_PAYOUT, SLATE_RULES, bookmaker, radioCast, houseGreeting, houseOnResult, houseOnSlate, houseRecord, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
+import { SLATE_PAYOUT, SLATE_RULES, picksLeaderboard, bookmaker, radioCast, houseGreeting, houseOnResult, houseOnSlate, houseRecord, propLabel, sideLabel, slatePayout, slateProblems, type GameLines, type PickSide, type Prop, type SettledSlate, type SlatePick } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
 import { teamShort } from "../field/colors";
+import { api } from "../online/api";
 
 export default function PicksScreen() {
   const t = useTheme();
@@ -52,6 +53,7 @@ export default function PicksScreen() {
       <Stack.Screen options={{ title: "Picks" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <HouseCard theme={t} />
+        {d.online ? <FriendsBoard theme={t} /> : null}
 
         <Card>
           <View style={{ flexDirection: "row", alignItems: "baseline" }}>
@@ -107,7 +109,8 @@ export default function PicksScreen() {
         ) : null}
 
         {!open ? <Text style={{ color: t.muted }}>The board is closed for the season. Picks are back next season.</Text> : null}
-        {open && !d.board ? (
+        {open && !d.board && d.online ? <Text style={{ color: t.muted }}>The league posts the board once the week before it is played.</Text> : null}
+        {open && !d.board && !d.online ? (
           <Card>
             <SectionTitle>{week > schedule.weeks ? "Championship week board" : `Week ${week} board`}</SectionTitle>
             <Text style={{ color: t.muted }}>Setting the lines: simulating this week's featured games…</Text>
@@ -129,6 +132,42 @@ export default function PicksScreen() {
         ) : null}
       </ScrollView>
     </>
+  );
+}
+
+/** Online: the friends' picks leaderboard (everyone's points, and their season against the house). */
+function FriendsBoard({ theme: t }: { theme: Theme }) {
+  const d = useDynasty();
+  const { schedule, userTeam } = useLeague();
+  const [names, setNames] = useState<Record<string, string>>({});
+  const o = d.online;
+  useEffect(() => {
+    if (!o) return;
+    let live = true;
+    api.league(o.id, o.token).then((l) => live && setNames(Object.fromEntries(l.members.filter((m) => m.team).map((m) => [m.team!, m.displayName]))), () => {});
+    return () => {
+      live = false;
+    };
+  }, [o?.id, o?.token]);
+  const rows = picksLeaderboard(
+    (d.save?.friendsPicks ?? []).map((f) => ({ ...f, member: names[f.team] ?? teamShort(f.team) })),
+    schedule.season,
+  );
+  if (rows.length === 0) return null;
+  return (
+    <Card>
+      <SectionTitle>Friends</SectionTitle>
+      {rows.map((r, i) => (
+        <View key={r.team} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
+          <Text style={{ width: 18, color: t.muted, fontWeight: "700" }}>{i + 1}</Text>
+          <Swatch abbr={r.team} size={20} />
+          <Text style={{ flex: 1, color: t.text, fontWeight: r.team === userTeam ? "800" : "500" }}>{r.member}</Text>
+          <Text style={{ color: t.muted, fontSize: 12 }}>{`${r.won}-${r.lost}, ${r.net >= 0 ? "+" : ""}${r.net.toLocaleString()}`}</Text>
+          <Text style={{ width: 70, textAlign: "right", color: t.text, fontWeight: "700" }}>{r.balance.toLocaleString()}</Text>
+        </View>
+      ))}
+      <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>Points now, and each friend's slates won and lost this season. Open slates stay private until the week is played.</Text>
+    </Card>
   );
 }
 
