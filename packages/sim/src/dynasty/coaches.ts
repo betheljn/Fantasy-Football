@@ -291,14 +291,20 @@ export interface CallingStyle {
 
 /**
  * Your calling style from the season's games you coached (only the concepts
- * you chose; anything left to the coaches isn't yours). Duels are left out:
- * their calls are both coaches' together.
+ * you chose; anything left to the coaches isn't yours). In a duel both
+ * coaches' calls are in one list, with whose each was ("c" the home coach,
+ * "r" the rival): only yours count (duels from before that was kept are left out).
  */
-export function callingStyle(results: ReadonlyArray<{ coached?: { team: string; calls: ReadonlyArray<unknown>; rival?: string } }>, team: string): CallingStyle {
+export function callingStyle(results: ReadonlyArray<{ coached?: { team: string; calls: ReadonlyArray<unknown>; rival?: string; by?: string } }>, team: string): CallingStyle {
   const style: CallingStyle = { offense: {}, defense: {}, offenseCalls: 0, defenseCalls: 0 };
   for (const g of results) {
-    if (!g.coached || g.coached.team !== team || g.coached.rival) continue;
-    for (const c of g.coached.calls as ReadonlyArray<{ call?: string; concept?: string } | null>) {
+    const c0 = g.coached;
+    if (!c0) continue;
+    // Which of the game's calls are this team's: all of them, only "c" or only "r" in a duel, or none.
+    const side = c0.rival === undefined ? (c0.team === team ? "all" : null) : c0.by === undefined ? null : c0.team === team ? "c" : c0.rival === team ? "r" : null;
+    if (side === null) continue;
+    for (const [i, c] of (c0.calls as ReadonlyArray<{ call?: string; concept?: string } | null>).entries()) {
+      if (side !== "all" && c0.by![i] !== side) continue;
       if (!c?.concept) continue;
       if ("call" in c) {
         const k = c.concept as OffenseConcept;

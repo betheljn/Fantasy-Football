@@ -62,7 +62,7 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     ...out,
     ...callTally(result),
     // The calls as played (any that no longer fit became the coaches').
-    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)], ...(coached.rival ? { rival: coached.rival } : {}) } } : {}),
+    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)], ...(coached.rival ? { rival: coached.rival, ...(result.coached?.by ? { by: result.coached.by } : {}) } : {}) } } : {}),
   };
   return { summary, result };
 }

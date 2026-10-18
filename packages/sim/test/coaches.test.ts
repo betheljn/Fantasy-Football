@@ -137,7 +137,7 @@ describe("philosophy fit (rules 5)", () => {
   it("reads your style from the calls you made yourself, and grades schemes by it", () => {
     const results = [
       { coached: { team: "OH", calls: [{ call: "run", concept: "inside_run" }, { call: "run" }, null, { concept: "cover_2" }, { call: "pass", concept: "play_action" }] } },
-      // Someone else's game, and a duel: not counted.
+      // Someone else's game, and a duel from before whose calls were kept: not counted.
       { coached: { team: "TX", calls: [{ call: "pass", concept: "deep_shot" }] } },
       { coached: { team: "OH", rival: "TX", calls: [{ call: "pass", concept: "deep_shot" }] } },
     ];
@@ -149,6 +149,13 @@ describe("philosophy fit (rules 5)", () => {
     expect(defenseSchemeFit("Two-High Zone", style)!.well).toBe(1);
     expect(defenseSchemeFit("Blitz Heavy", { ...style, defense: {}, defenseCalls: 0 })).toBeNull();
     expect(philosophyFit(air5, style).offense).toMatchObject({ scheme: "Air Raid", grade: "Bad fit" });
+  });
+
+  it("counts each coach's own calls in a duel (home or away)", () => {
+    const duel = { coached: { team: "OH", rival: "TX", by: "crrc", calls: [{ call: "pass", concept: "deep_shot" }, { concept: "cover_4" }, { call: "run", concept: "draw" }, null] } };
+    expect(callingStyle([duel], "OH")).toEqual({ offense: { deep_shot: 1 }, defense: {}, offenseCalls: 1, defenseCalls: 0 });
+    expect(callingStyle([duel], "TX")).toEqual({ offense: { draw: 1 }, defense: { cover_4: 1 }, offenseCalls: 1, defenseCalls: 1 });
+    expect(callingStyle([duel], "MI")).toEqual({ offense: {}, defense: {}, offenseCalls: 0, defenseCalls: 0 });
   });
 });
 

@@ -55,7 +55,7 @@ export interface GameResult {
   /** Both teams' practice for it, by team. */
   practice?: Record<string, PracticePlan>;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
-  coached?: { team: string; calls: Array<CoachCall | null>; rival?: string };
+  coached?: { team: string; calls: Array<CoachCall | null>; rival?: string; by?: string };
 }
 
 export interface GameOptions {
@@ -173,6 +173,8 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
 
   const rng = new Rng(seed);
   const answers: Array<CoachCall | null> = [];
+  /** In a duel, whose each call was: "c" the coached team, "r" its rival (one letter per answer). */
+  let by = "";
   // From rules 7 the field changes how often players get hurt.
   const rules = options.rules ?? RULES_VERSION;
   const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away }, conditionEffects(rules >= 6 ? options.conditions : undefined, rules >= 7).injury);
@@ -295,6 +297,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
         if (options.coach === receiving.abbr || (options.rival !== undefined && options.rival === receiving.abbr)) {
           const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length, sofar: snapshot() };
           answers.push(answer ?? null);
+          by += receiving.abbr === options.coach ? "c" : "r";
           two = tryAnswer(answer);
         }
         const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules, options.conditions);
@@ -341,6 +344,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     while (!step.done) {
       const answer = yield { ...step.value, drive: drives.length, sofar: snapshot(live) };
       answers.push(answer ?? null);
+      by += step.value.team === options.coach ? "c" : "r";
       step = steps.next(answer);
     }
     const drive = step.value;
@@ -373,6 +377,6 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     rules: options.rules ?? RULES_VERSION,
     ...(options.conditions ? { conditions: options.conditions } : {}),
     ...(options.practice ? { practice: options.practice } : {}),
-    ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival } : {}) } } : {}),
+    ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival, by } : {}) } } : {}),
   };
 }

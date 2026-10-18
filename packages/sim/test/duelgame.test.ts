@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Rng, coachingReport, generateTeams, simulateGame, startCoachedGame, type CoachCall, type GamePrompt, type Team } from "../src/index.ts";
+import { Rng, callingStyle, coachingReport, generateTeams, simulateGame, startCoachedGame, type CoachCall, type GamePrompt, type Team } from "../src/index.ts";
 
 const [A, B] = generateTeams(new Rng("duelgame-test"), 2) as [Team, Team];
 
@@ -32,6 +32,21 @@ describe("a duel between two coaches", () => {
       expect(kinds.get(t)!.has("defense")).toBe(true);
     }
     expect(game.result!.coached).toMatchObject({ team: A.abbr, rival: B.abbr });
+  });
+
+  it("keeps whose each call was, so each coach's calling style counts only their own", () => {
+    const game = startCoachedGame(A, B, "duel-g3", A.abbr, { rival: B.abbr });
+    while (game.prompt) game.answer(echo(game.prompt));
+    const coached = game.result!.coached!;
+    expect(coached.by).toHaveLength(coached.calls.length);
+    const styleA = callingStyle([{ coached }], A.abbr);
+    const styleB = callingStyle([{ coached }], B.abbr);
+    const all = callingStyle([{ coached: { team: A.abbr, calls: coached.calls } }], A.abbr);
+    // Between them, the two coaches made every call.
+    expect(styleA.offenseCalls + styleB.offenseCalls).toBe(all.offenseCalls);
+    expect(styleA.defenseCalls + styleB.defenseCalls).toBe(all.defenseCalls);
+    expect(styleA.offenseCalls).toBeGreaterThan(0);
+    expect(styleB.defenseCalls).toBeGreaterThan(0);
   });
 
   it("leaving every call to the coaches is the same game as nobody coaching", () => {
