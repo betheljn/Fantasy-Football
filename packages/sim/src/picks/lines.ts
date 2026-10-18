@@ -100,7 +100,7 @@ export function gameLines(league: League, game: ScheduledGame, sims = PICKS_RULE
 }
 
 /** Simulations done between yields (keeps an app responsive at phone speed). */
-const CHUNK = 10;
+const CHUNK = 2;
 
 /** gameLines a few simulations at a time: yields how many are done. */
 function* gameLinesSteps(league: League, game: ScheduledGame, sims: number): Generator<number, GameLines, void> {

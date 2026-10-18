@@ -7,6 +7,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p .",
+    "bench": "node scripts/bench.ts",
+    "bench:phone": "tsc -p tsconfig.bench.json && node --jitless .bench/scripts/bench.js",
     "demo:step1": "node scripts/step1-data-model.ts",
     "demo:step2": "node scripts/step2-generate-teams.ts",
     "demo:step3": "node scripts/step3-single-plays.ts",

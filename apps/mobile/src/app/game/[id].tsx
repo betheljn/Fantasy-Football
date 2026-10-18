@@ -79,7 +79,7 @@ export default function GameRoute() {
       ? {
           label: `Record it and play the rest of week ${found.week}`,
           onPress: () => {
-            d.playWeek();
+            d.simWeek();
             router.replace("/");
           },
         }

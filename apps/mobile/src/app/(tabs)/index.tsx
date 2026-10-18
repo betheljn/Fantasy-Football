@@ -240,7 +240,7 @@ function NextUp({ data }: { data: LeagueData }) {
       {upcoming ? (
         <Button label={d.coaching?.game === upcoming.id ? "Keep coaching your game" : "Coach your game"} onPress={() => router.push(`/coach/${upcoming.id}`)} theme={t} primary />
       ) : (
-        <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} primary />
+        <Button label={`Sim week ${nextWeek}`} onPress={() => d.simWeek()} theme={t} primary />
       )}
       <View style={{ flexDirection: "row", gap: 8 }}>
         {upcoming ? (
@@ -250,7 +250,7 @@ function NextUp({ data }: { data: LeagueData }) {
         ) : null}
         {upcoming ? (
           <View style={{ flex: 1 }}>
-            <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} small />
+            <Button label={`Sim week ${nextWeek}`} onPress={() => d.simWeek()} theme={t} small />
           </View>
         ) : null}
         <View style={{ flex: 1 }}>

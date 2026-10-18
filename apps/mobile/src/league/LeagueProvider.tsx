@@ -230,6 +230,8 @@ export interface DynastyControls {
   answerPress: (choice: number) => void;
   /** Play the coming week (with the calls of the game you just coached, if given). */
   playWeek: (coached?: { game: string; calls: Array<CoachCall | null> }) => void;
+  /** The same week, with the "Simulating" card shown while it plays (a week is most of a second on a phone). */
+  simWeek: () => void;
   /** Your game this week, coached so far (null if you haven't started coaching it). */
   coaching: { game: string; calls: Array<CoachCall | null> } | null;
   /** Save your calls in the game you're coaching (null clears them: the coaches take the whole game). */
@@ -1092,6 +1094,17 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (!state || !schedule || seasonOver) return;
       const s = coached ? { ...state, coaching: { season: schedule.season, ...coached } } : state;
       persist(playOneWeek(s, schedule), true);
+    },
+    simWeek: () => {
+      if (!state || !schedule || seasonOver) return;
+      setBusy("simming");
+      setProgress(0);
+      // Let the card paint before the week's work.
+      setTimeout(() => {
+        const s = stateRef.current;
+        if (s) persist(playOneWeek(s, schedule), true);
+        setBusy(null);
+      }, 30);
     },
     coaching: state?.coaching && schedule && state.coaching.season === schedule.season ? { game: state.coaching.game, calls: state.coaching.calls } : null,
     saveCoaching: (game, calls) => {

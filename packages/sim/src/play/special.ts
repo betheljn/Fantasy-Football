@@ -53,7 +53,10 @@ class Unit {
   }
   /** The best `n` of a pool by `score`. */
   best(pool: readonly Player[], n: number, role: SpecialRole, score: (p: Player) => number) {
-    for (const p of [...pool].filter((x) => !this.used.has(x.id)).sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id)).slice(0, n)) this.add(p, role);
+    // Each player scored once, then sorted (the same order as scoring in the sort).
+    const scored = pool.filter((x) => !this.used.has(x.id)).map((p) => ({ p, s: score(p) }));
+    scored.sort((a, b) => b.s - a.s || a.p.id.localeCompare(b.p.id));
+    for (const { p } of scored.slice(0, n)) this.add(p, role);
   }
   done(fill: SpecialRole): UnitMember[] {
     this.best(this.team.roster, 11 - this.members.length, fill, (p) => p.ratings.speed);

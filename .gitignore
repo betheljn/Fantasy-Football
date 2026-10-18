@@ -6,3 +6,6 @@ dist/
 # Server secrets and Prisma output
 .env
 apps/server/src/generated/
+
+# The sim compiled for the phone-speed benchmark
+packages/sim/.bench/

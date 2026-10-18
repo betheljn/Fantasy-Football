@@ -46,13 +46,9 @@ const DEFENSE = new Set(["DL", "LB", "CB", "S"]);
 export function computeAwards(league: League, stats: SeasonStats, results: readonly GameSummary[]): Award[] {
   const records = computeRecords(league, results);
   const all = [...stats.players.values()];
-  const player = (id: PlayerId) => {
-    for (const t of Object.values(league.teams)) {
-      const p = t.roster.find((x) => x.id === id);
-      if (p) return p;
-    }
-    return undefined;
-  };
+  // Who's who, looked up once (stat lines number in the thousands).
+  const players = new Map(Object.values(league.teams).flatMap((t) => t.roster.map((p) => [p.id, p] as const)).reverse());
+  const player = (id: PlayerId) => players.get(id);
   const award = (name: AwardName, p: PlayerSeason | undefined): Award[] => {
     const info = p && player(p.id);
     if (!p || !info) return [];
