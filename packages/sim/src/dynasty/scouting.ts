@@ -193,40 +193,114 @@ export function scoutingReport(state: ScoutingState, team: string, prospect: Pro
  * Just the numbers a board needs (estimated overall and potential), without
  * building every attribute range: much cheaper when ranking whole classes.
  */
-const estimateCache = new WeakMap<ScoutingState, Map<string, Map<PlayerId, { overall: number; potential: number; knowledge: number }>>>();
+type Estimate = { overall: number; potential: number; knowledge: number };
 
-export function quickEstimate(state: ScoutingState, team: string, prospect: Prospect): { overall: number; potential: number; knowledge: number } {
-  let cache = estimateCache.get(state);
-  if (!cache) estimateCache.set(state, (cache = new Map()));
-  let mine = cache.get(team);
-  if (!mine) cache.set(team, (mine = new Map()));
-  const hit = mine.get(prospect.player.id);
+/**
+ * One team's view of a class in one week, set up once: its estimates so far,
+ * its offsets, and what its knowledge depends on. Boards ask for every
+ * prospect for every team each week, so nothing here is looked up per prospect
+ * that could be looked up once.
+ */
+interface TeamScout {
+  estimates: Map<PlayerId, Estimate>;
+  bases: Map<PlayerId, number>;
+  cls: string;
+  team: string;
+  focus: Record<PlayerId, number> | undefined;
+  quality: number;
+  auto: number;
+  combineDone: boolean;
+}
+
+const scoutCache = new WeakMap<ScoutingState, Map<string, TeamScout>>();
+
+function teamScout(state: ScoutingState, team: string): TeamScout {
+  let byTeam = scoutCache.get(state);
+  if (!byTeam) scoutCache.set(state, (byTeam = new Map()));
+  let ts = byTeam.get(team);
+  if (ts) return ts;
+  const cls = `${state.seed}:${state.classSeason}`;
+  let byClass = baseCache.get(cls);
+  if (!byClass) {
+    if (baseCount > 100_000) {
+      baseCache.clear();
+      baseCount = 0;
+    }
+    baseCache.set(cls, (byClass = new Map()));
+  }
+  let bases = byClass.get(team);
+  if (!bases) byClass.set(team, (bases = new Map()));
+  ts = {
+    estimates: new Map(),
+    bases,
+    cls,
+    team,
+    focus: state.focus[team],
+    quality: state.quality[team] ?? 1,
+    // As in knowledge(): the same numbers, worked out once.
+    auto: SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / seasonWeeks(state)),
+    combineDone: state.combineDone,
+  };
+  byTeam.set(team, ts);
+  return ts;
+}
+
+export function quickEstimate(state: ScoutingState, team: string, prospect: Prospect): Estimate {
+  const ts = teamScout(state, team);
+  const id = prospect.player.id;
+  const hit = ts.estimates.get(id);
   if (hit) return hit;
-  const value = computeEstimate(state, team, prospect);
-  mine.set(prospect.player.id, value);
+  const value = computeEstimate(ts, prospect);
+  ts.estimates.set(id, value);
   return value;
 }
 
-function computeEstimate(state: ScoutingState, team: string, prospect: Prospect): { overall: number; potential: number; knowledge: number } {
+function computeEstimate(ts: TeamScout, prospect: Prospect): Estimate {
   const p = prospect.player;
-  const k = knowledge(state, team, p.id);
-  const base = offsetBase(state, team, p.id);
-  const wAttr = width(SCOUTING.attributeWidth, k);
-  let sum = 0;
-  let total = 0;
-  for (const [key, index, w, combine] of WEIGHTED[p.position]) {
-    sum += (state.combineDone && combine ? p.ratings[key] : rangeEstimate(p.ratings[key], wAttr, offset(base, index))) * w;
-    total += w;
+  const id = p.id;
+  // knowledge(), with the team's lookups already done.
+  const points = (ts.focus?.[id] ?? 0) * ts.quality;
+  const fromFocus = 1 - Math.exp(-points / SCOUTING.pointsScale);
+  const k = 1 - (1 - ts.auto) * (1 - fromFocus);
+  let base = ts.bases.get(id);
+  if (base === undefined) {
+    base = hashString(`scout:${ts.cls}:${ts.team}:${id}`);
+    ts.bases.set(id, base);
+    baseCount++;
   }
-  const potential = range(p.potential, width(SCOUTING.potentialWidth, k), offset(base, RATING_KEYS.length)).estimate;
-  return { overall: sum / total, potential, knowledge: k };
+  const wAttr = width(SCOUTING.attributeWidth, k);
+  const f = WEIGHTED[p.position];
+  const ratings = p.ratings;
+  let sum = 0;
+  for (let i = 0; i < f.keys.length; i++) {
+    const key = f.keys[i]!;
+    sum += (ts.combineDone && f.combine[i] ? ratings[key] : rangeEstimate(ratings[key], wAttr, offset(base, f.index[i]!))) * f.weight[i]!;
+  }
+  const potential = rangeEstimate(p.potential, width(SCOUTING.potentialWidth, k), offset(base, RATING_KEYS.length));
+  return { overall: sum / f.total, potential, knowledge: k };
 }
 
-/** Each position's overall formula as [rating, its index in RATING_KEYS, weight]. */
-/** Each position's overall weights: the rating, its offset index, its weight, and whether the combine measures it. */
-const WEIGHTED = {} as Record<Position, ReadonlyArray<readonly [RatingKey, number, number, boolean]>>;
+/** Each position's overall weights, column by column: the rating, its offset index, its weight, whether the combine measures it; and the weights' total. */
+interface Weighted {
+  keys: RatingKey[];
+  index: number[];
+  weight: number[];
+  combine: boolean[];
+  total: number;
+}
+const WEIGHTED = {} as Record<Position, Weighted>;
 for (const pos of POSITIONS) {
-  WEIGHTED[pos] = (Object.entries(OVERALL_WEIGHTS[pos]) as [RatingKey, number][]).map(([key, w]) => [key, RATING_KEYS.indexOf(key), w, COMBINE_ATTRIBUTES.includes(key)] as const);
+  const entries = Object.entries(OVERALL_WEIGHTS[pos]) as [RatingKey, number][];
+  // The total summed in the same order as the estimate's loop always summed it.
+  let total = 0;
+  for (const [, w] of entries) total += w;
+  WEIGHTED[pos] = {
+    keys: entries.map(([key]) => key),
+    index: entries.map(([key]) => RATING_KEYS.indexOf(key)),
+    weight: entries.map(([, w]) => w),
+    combine: entries.map(([key]) => COMBINE_ATTRIBUTES.includes(key)),
+    total,
+  };
 }
 
 export interface BoardEntry {
