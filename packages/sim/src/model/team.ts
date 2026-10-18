@@ -1,4 +1,5 @@
 import { BASE_STARTERS, POSITIONS, type Position } from "./positions.ts";
+import type { Roof, Stands, Surface } from "../business/stadium.ts";
 import type { PracticeLog, PracticePlan } from "../game/practice.ts";
 import { playerOverall, type Player, type PlayerId } from "./player.ts";
 import type { TeamStaff } from "./staff.ts";
@@ -39,7 +40,7 @@ export interface Team {
   /** The owner's upgrades (a team people play): tiers bought in each track. Off the field only: never in a play. */
   upgrades?: Partial<Record<UpgradeTrack, number>>;
   /** The home stadium as games see it: under a dome or not, and how loud its crowd gets (0-1). Synced from the business. */
-  venue?: { dome: boolean; noise: number };
+  venue?: { dome: boolean; noise: number; roof?: Roof; surface?: Surface; stands?: Stands };
   /** The week's practice a person set (standing until changed; absent: the AI's plan for each opponent). */
   practice?: PracticePlan;
   /** This season's practice so far (hard and light weeks), for growth in the offseason. */

@@ -455,6 +455,19 @@ games replay unchanged); games record their conditions and practice.
 Design and grow your stadium (capacity, roof, surface, video board, name),
 drawn in Skia, paid for through the business engine, feeding home-field
 noise and atmosphere.
+Decided: the roof and surface change how games play (a new rules version,
+so past games replay unchanged): open, retractable (closed in rain, snow
+and cold) or domed; grass (a little slower, fewer injuries) or turf (a
+little faster, more injuries); steeper, closer stands make it louder. Drawn
+as an aerial view in Skia, on a stadium screen and around the field.
+1. Sim: the stadium's design (roof, surface, stands, capacity, video board,
+   name), its projects paid through the business engine, AI teams' choices;
+   older saves' stadiums carried over
+2. Sim: the stadium in games (rules 7): the retractable roof, surface speed
+   and injuries, the stands' noise; recorded on each game
+3. App: the aerial stadium in Skia, the stadium screen (design and build),
+   the stadium around the field on game day
+4. Online: friends build their stadiums
 
 After each step: run it, show sample output, and stop for review.
 

@@ -9,6 +9,12 @@ import {
   BUSINESS_RULES,
   POPULATION,
   PROJECTS,
+  ROOF_NAMES,
+  STANDS_NAMES,
+  SURFACE_NAMES,
+  roofOf,
+  standsOf,
+  surfaceOf,
   attendance,
   economy,
   formatMoney,
@@ -76,7 +82,9 @@ export default function BusinessScreen() {
           <SectionTitle>{b.stadium.name}</SectionTitle>
           <Row label="Capacity" value={b.stadium.capacity.toLocaleString()} theme={t} />
           <Row label="Amenities" value={`${b.stadium.quality} / 100`} theme={t} />
-          <Row label="Roof" value={b.stadium.dome ? "Dome" : "Open air"} theme={t} />
+          <Row label="Roof" value={ROOF_NAMES[roofOf(b.stadium)]} theme={t} />
+          <Row label="Field" value={SURFACE_NAMES[surfaceOf(b.stadium)]} theme={t} />
+          <Row label="Stands" value={STANDS_NAMES[standsOf(b.stadium)]} theme={t} />
           {b.stadium.debt > 0 ? <Row label="Stadium debt" value={formatMoney(b.stadium.debt)} theme={t} /> : null}
           <Row label="Ticket price" value={`$${b.ticketPrice}`} theme={t} />
           <Row label="Concessions per fan" value={`$${b.concessionPrice}`} theme={t} />
