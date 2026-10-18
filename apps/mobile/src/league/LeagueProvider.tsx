@@ -1360,7 +1360,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         if (boardJob.current !== token) return;
         const r = steps.next();
         if (!r.done) {
-          setBoardProgress(r.value);
+          // In 2% steps: the same value skips a re-render (a step is one simulation).
+          setBoardProgress(Math.floor(r.value * 50) / 50);
           setTimeout(step, 0);
           return;
         }
