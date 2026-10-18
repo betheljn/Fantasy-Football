@@ -5,7 +5,7 @@
 // burst and leap against the protection, the snap, the kicker's lift, and a
 // long kick's lower flight.
 import type { Player, PlayerId } from "../model/player.ts";
-import type { Position } from "../model/positions.ts";
+import { POSITIONS, type Position } from "../model/positions.ts";
 import { passRushing } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
@@ -70,8 +70,41 @@ const backups = (team: Team, positions: readonly Position[]) => {
 };
 const coverSpeed = (p: Player) => p.ratings.speed + p.ratings.tackle * 0.6 + p.ratings.pursuit * 0.4;
 
+/**
+ * Units already built, per team: a game builds the same few units on every
+ * kick. Kept only while the team's roster and depth chart are the very same
+ * arrays (a change to either makes new ones), and handed out as copies.
+ */
+interface UnitMemo {
+  roster: readonly Player[];
+  depth: Team["depthChart"];
+  slots: ReadonlyArray<readonly PlayerId[]>;
+  units: Map<string, UnitMember[]>;
+}
+const unitMemos = new WeakMap<Team, UnitMemo>();
+
+function memoUnit(team: Team, key: string, build: () => UnitMember[]): UnitMember[] {
+  let m = unitMemos.get(team);
+  const slots = POSITIONS.map((pos) => team.depthChart[pos]);
+  if (!m || m.roster !== team.roster || m.depth !== team.depthChart || m.slots.some((x, i) => x !== slots[i])) {
+    unitMemos.set(team, (m = { roster: team.roster, depth: team.depthChart, slots, units: new Map() }));
+  }
+  let unit = m.units.get(key);
+  if (!unit) m.units.set(key, (unit = build()));
+  return unit.map((x) => ({ ...x }));
+}
+
 /** The kicking team's unit. */
 export function kickingUnit(team: Team, kind: KickKind): UnitMember[] {
+  return memoUnit(team, `kick:${kind}`, () => buildKickingUnit(team, kind));
+}
+
+/** The other side: the block team on kicks from scrimmage, the return team otherwise. */
+export function receivingUnit(team: Team, kind: KickKind, returner?: PlayerId | null): UnitMember[] {
+  return memoUnit(team, `receive:${kind}:${returner ?? ""}`, () => buildReceivingUnit(team, kind, returner));
+}
+
+function buildKickingUnit(team: Team, kind: KickKind): UnitMember[] {
   const u = new Unit(team);
   if (kind === "field_goal" || kind === "extra_point") {
     u.take("K", 1, "K");
@@ -95,8 +128,7 @@ export function kickingUnit(team: Team, kind: KickKind): UnitMember[] {
   return u.done("COVER");
 }
 
-/** The other side: the block team on kicks from scrimmage, the return team otherwise. */
-export function receivingUnit(team: Team, kind: KickKind, returner?: PlayerId | null): UnitMember[] {
+function buildReceivingUnit(team: Team, kind: KickKind, returner?: PlayerId | null): UnitMember[] {
   const u = new Unit(team);
   if (kind === "field_goal" || kind === "extra_point") {
     u.take("DL", 5, "DL");
