@@ -96,7 +96,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const mean = RUN_BASE + 1.0 * line + 0.9 * runner - (runBlitz ? 0.3 : 0) - (goalLine ? GOAL_LINE.squeeze : 0) + CONCEPT_EFFECT.runYards * callEdge;
   let yards = Math.max(-5, rng.normal(mean, goalLine ? GOAL_LINE.spread : runBlitz ? 3.8 : 3.2));
   const breakaway = clamp(
-    0.035 + 0.02 * burst + 0.01 * wiggle + 0.015 * line + 0.008 * springs - 0.01 * chase + (runBlitz ? 0.015 : 0) + CONCEPT_EFFECT.breakaway * callEdge,
+    (0.035 + 0.02 * burst + 0.01 * wiggle + 0.015 * line + 0.008 * springs - 0.01 * chase + (runBlitz ? 0.015 : 0) + CONCEPT_EFFECT.breakaway * callEdge) * weather(ctx).breakaway,
     0.01,
     0.12,
   );

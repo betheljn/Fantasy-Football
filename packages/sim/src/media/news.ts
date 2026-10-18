@@ -75,7 +75,12 @@ export interface WeekNewsInput {
   userTeam?: string;
   /** Careers before this season (for milestones and the all-time lists). */
   careers?: ReadonlyMap<PlayerId, CareerLine>;
+  /** This season's stories so far: a milestone is told once (yards can dip back under a mark, and a lead can swap back). */
+  told?: readonly Story[];
 }
+
+/** A story's key (its id without the season and week). */
+export const storyKey = (s: Pick<Story, "id">) => s.id.split("-").slice(2).join("-");
 
 const NATIONAL_LIMIT = 12;
 
@@ -176,8 +181,10 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
   const { league, season, week, games, before, after, userTeam } = input;
   const rng = (key: string) => new Rng(`news:${league.seed}:${season}:${week}:${key}`);
   const stories: Story[] = [];
+  const told = new Set((input.told ?? []).filter((s) => s.kind === "milestone").map(storyKey));
   const add = (s: Omit<Story, "season" | "week" | "id"> & { key: string }) => {
     const { key, ...rest } = s;
+    if (s.kind === "milestone" && told.has(key)) return;
     stories.push({ ...rest, id: `${season}-${week}-${key}`, season, week, importance: Math.round(Math.max(0, Math.min(100, s.importance))) });
   };
   const records = computeRecords(league, input.results);

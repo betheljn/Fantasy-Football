@@ -17,9 +17,11 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * concept before each snap, and the matchup of the calls shapes the play;
  * 5 = philosophy fit: each side's scheme draws its core calls up better and
  * the calls it doesn't believe in worse; 6 = game-day conditions: weather
- * (wind, rain, snow, cold) and the home crowd's noise.
+ * (wind, rain, snow, cold) and the home crowd's noise; 7 = the stadium: a
+ * retractable roof closes against the weather, and turf is faster and harder
+ * on bodies than grass.
  */
-export const RULES_VERSION = 6;
+export const RULES_VERSION = 7;
 
 export interface PlayContext {
   offense: Team;
@@ -41,7 +43,8 @@ export interface PlayContext {
 
 /** What the conditions do to this play (neutral before rules 6, or without conditions). */
 export function weather(ctx: Pick<PlayContext, "conditions" | "rules">): ConditionEffects {
-  return conditionEffects((ctx.rules ?? RULES_VERSION) >= 6 ? ctx.conditions : undefined);
+  const rules = ctx.rules ?? RULES_VERSION;
+  return conditionEffects(rules >= 6 ? ctx.conditions : undefined, rules >= 7);
 }
 
 /** The calls on this play, if the duel is on (rules 4 and later), with the offense's edge from the matchup. */

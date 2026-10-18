@@ -86,6 +86,8 @@ import {
   startFrontOffice,
   withOwners,
   syncVenues,
+  renameProblem,
+  renameStadium,
   campStories,
   teamName,
   practiceProblem,
@@ -303,6 +305,8 @@ export interface DynastyControls {
   /** Your business: prices (before the first home game), stadium projects, naming rights. Each returns what stopped it, if anything. */
   setPrices: (ticket: number, concessions: number) => string[];
   startStadiumProject: (kind: ProjectKind, financing: "cash" | "bonds") => string[];
+  /** Name your stadium (not while a sponsor's name is on it). */
+  renameStadium: (name: string) => string[];
   acceptNamingOffer: (offer: NamingOffer) => string[];
   /** Your Hall of Fame ballot: vote for (or take back) a candidate, up to the limit. Open until the offseason. */
   toggleHofVote: (player: string) => void;
@@ -807,7 +811,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const rivals = rivalries(league.seed);
     const rivalryBefore = [...(s.dynasty.rivalryGames ?? []), ...rivalryGames(rivals, s.results, sched.season)];
     const rivalryStories = rivalryNews(league, rivals, rivalryBefore, rivalryGames(rivals, played, sched.season));
-    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam, careers: s.dynasty.careers }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
+    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam, careers: s.dynasty.careers, told: s.news ?? [] }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
     const national = nationalFeed(stories);
     // Rivalry results always make the paper, whatever else happened.
     const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];
@@ -1405,6 +1409,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (problems.length > 0) return problems;
       const next = startProject(b, kind, s.userTeam, financing, s.dynasty.league.season);
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: next } } }, true);
+      if (online) sendMove({ kind: "build", project: kind, financing });
+      return [];
+    },
+    renameStadium: (name) => {
+      const s = stateRef.current;
+      if (!s || !s.userTeam) return ["Not now."];
+      const all = s.dynasty.business ?? startLeagueBusiness(s.dynasty.league);
+      const b = all[s.userTeam]!;
+      const problem = renameProblem(b, name, s.dynasty.league.season);
+      if (problem) return [problem];
+      persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: renameStadium(b, name, s.dynasty.league.season) } } }, true);
+      if (online) sendMove({ kind: "rename", name });
       return [];
     },
     acceptNamingOffer: (offer) => {

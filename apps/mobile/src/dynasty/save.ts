@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice, type StadiumDesign } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -74,6 +74,8 @@ export interface TeamSetup {
   role: "owner" | "gm";
   identity: TeamIdentityChoice;
   coach: CoachBuild;
+  /** Your stadium as you designed it (absent: the one the program came with). */
+  stadium?: StadiumDesign;
   /** The fantasy draft: rounds you pick, your first-round slot, and your picks so far (absent = no draft). */
   draft?: { rounds: number; slot: number; picks: string[] };
 }

@@ -50,6 +50,8 @@ export interface WeekNewsArgs {
   injuries: InjuryNews[];
   trades: TradeRecord[];
   careers?: NonNullable<Parameters<typeof weeklyNews>[0]["careers"]>;
+  /** This season's stories so far (a milestone is told once). */
+  told?: Story[];
   /** Rivalry games played in earlier seasons. */
   rivalryHistory: Parameters<typeof rivalryNews>[2];
   friends: readonly string[];
@@ -66,7 +68,7 @@ export function weekNews(a: WeekNewsArgs): Story[] {
   const rivalryStories = rivalryNews(a.after, rivals, rivalryBefore, rivalryGames(rivals, a.games.map((g) => g.summary), season));
   const write = (userTeam?: string) =>
     [
-      ...weeklyNews({ league: a.after, schedule: a.schedule, season, week: a.week, games: a.games, results, before: rankBefore, after: rankAfter, stats: a.stats, injuries: a.injuries, trades: a.trades, ...(a.careers ? { careers: a.careers } : {}), ...(userTeam ? { userTeam } : {}) }),
+      ...weeklyNews({ league: a.after, schedule: a.schedule, season, week: a.week, games: a.games, results, before: rankBefore, after: rankAfter, stats: a.stats, injuries: a.injuries, trades: a.trades, ...(a.careers ? { careers: a.careers } : {}), ...(a.told ? { told: a.told } : {}), ...(userTeam ? { userTeam } : {}) }),
       ...rivalryStories,
     ].sort((x, y) => y.importance - x.importance);
   // Rivalry results always make the paper, whatever else happened.

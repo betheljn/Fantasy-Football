@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { startLeagueBusiness } from "@dynasty/sim";
 import { applyMove } from "../src/moves.ts";
 import { advance, openSeason } from "../src/season.ts";
 import { newLeagueState } from "../src/state.ts";
@@ -23,5 +24,20 @@ describe("practice online", () => {
     const game = after.progress.results.find((g) => g.home === "OH" || g.away === "OH")!;
     expect(game.practice!.OH).toEqual(plan);
     expect(after.dynasty.league.teams.OH!.practiceLog).toEqual({ hard: 1, light: 0, weeks: 1 });
+  });
+});
+
+describe("stadiums online", () => {
+  const opened = openSeason({ ...newLeagueState("stadium-online"), humans: { OH: "m1" } });
+  it("a friend builds and names their stadium through the business rules", () => {
+    // (A new league's business starts with its first season's books: the move works without it.)
+    const business = opened.dynasty.business ?? startLeagueBusiness(opened.dynasty.league);
+    const rich = { ...opened, dynasty: { ...opened.dynasty, business: { ...business, OH: { ...business.OH!, cash: 2_000_000 } } } };
+    const r = applyMove(rich, "OH", { kind: "build", project: "turf", financing: "cash" });
+    expect(r.problems).toEqual([]);
+    expect(r.state!.dynasty.business!.OH!.pending![0]).toMatchObject({ kind: "turf", financing: "cash" });
+    expect(applyMove(r.state!, "OH", { kind: "build", project: "grass", financing: "cash" }).problems[0]).toMatch(/already grass|being built/);
+    const named = applyMove(rich, "OH", { kind: "rename", name: "The Foundry" });
+    expect(named.state?.dynasty.business!.OH!.stadium.name ?? named.problems[0]).toMatch(/The Foundry|naming rights/);
   });
 });

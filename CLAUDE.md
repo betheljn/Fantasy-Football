@@ -451,7 +451,7 @@ games replay unchanged); games record their conditions and practice.
    camp battles in the preseason
 5. Online: friends' weekly practice plans
 
-### Milestone 26: arenas
+### Milestone 26: arenas (done)
 Design and grow your stadium (capacity, roof, surface, video board, name),
 drawn in Skia, paid for through the business engine, feeding home-field
 noise and atmosphere.

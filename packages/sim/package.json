@@ -32,6 +32,7 @@
     "practice": "node scripts/practice.ts",
     "camp": "node scripts/camp.ts",
     "stadium": "node scripts/stadium.ts",
+    "stadium-games": "node scripts/stadium-games.ts",
     "demo:step6": "node scripts/play-game.ts",
     "anim": "node scripts/anim-preview.ts",
     "league": "node scripts/league-overview.ts",

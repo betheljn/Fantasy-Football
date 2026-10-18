@@ -2,6 +2,7 @@
 // program starts there; make it yours (name, short name, logo, colors, your
 // role), build your head coach, then the fantasy draft (or keep the roster).
 // The sim checks and makes each choice; the draft is saved as you go.
+import { StadiumBuilderScreen } from "./StadiumBuilderScreen";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
@@ -20,8 +21,7 @@ import {
   type SkillGroup,
   type Team,
   type CoachBuild,
-  type TeamIdentityChoice,
-} from "@dynasty/sim";
+  type TeamIdentityChoice, startLeagueBusiness, type StadiumDesign } from "@dynasty/sim";
 import { CoachBuilderScreen } from "./CoachBuilderScreen";
 import { RegionScreen, SkillGroupsScreen } from "./ProgramSetupScreen";
 import { startingDynasty } from "../dynasty/setup";
@@ -48,11 +48,12 @@ export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
   const [program, setProgram] = useState<{ groups: SkillGroup[]; region: string; dynasty: Dynasty; team: string } | null>(null);
   const [building, setBuilding] = useState(false);
   const [look, setLook] = useState<{ role: Role; identity: TeamIdentityChoice } | null>(null);
+  const [stadium, setStadium] = useState<StadiumDesign | null>(null);
   const [coach, setCoach] = useState<CoachBuild | null>(null);
   const dynasty = d.save?.dynasty;
   // The league as your choices make it (program, look and coach), which the draft starts from.
-  const setup: TeamSetup | null = program && look && coach ? { groups: program.groups, region: program.region, team: program.team, role: look.role, identity: look.identity, coach } : null;
-  const setupLeague = useMemo(() => (dynasty && setup ? startingDynasty(dynasty, setup).league : null), [dynasty, setup?.team, look, coach]);
+  const setup: TeamSetup | null = program && look && stadium && coach ? { groups: program.groups, region: program.region, team: program.team, role: look.role, identity: look.identity, stadium, coach } : null;
+  const setupLeague = useMemo(() => (dynasty && setup ? startingDynasty(dynasty, setup).league : null), [dynasty, setup?.team, look, stadium, coach]);
 
   // A draft under way (saved): carry on with it.
   if (d.setup?.draft) return <DraftInProgress setup={d.setup as TeamSetup & { draft: NonNullable<TeamSetup["draft"]> }} />;
@@ -90,18 +91,28 @@ export function TeamSetupScreen({ data: _data }: { data: LeagueData }) {
             team={team}
             initial={{ city: "", nickname: "", tag: "", logo: teamLogo(team).id }}
             backLabel="Your region"
-            onBack={() => (setProgram(null), setLook(null), setCoach(null))}
+            onBack={() => (setProgram(null), setLook(null), setStadium(null), setCoach(null))}
             onDone={(_abbr, role, identity) => setLook({ role, identity })}
           />
         </View>
       ) : null}
       {program && team && look ? (
+        <View style={{ flex: 1, display: stadium ? "none" : "flex" }}>
+          <StadiumBuilderScreen
+            stadium={(program.dynasty.business ?? startLeagueBusiness(program.dynasty.league))[team.abbr]!.stadium}
+            colors={look.identity.colors ?? designedColors(team.abbr)}
+            onBack={() => setLook(null)}
+            onDone={setStadium}
+          />
+        </View>
+      ) : null}
+      {program && team && look && stadium ? (
         <View style={{ flex: 1, display: coach ? "none" : "flex" }}>
           <CoachBuilderScreen
             league={program.dynasty.league}
             abbr={team.abbr}
             teamLabel={`${look.identity.city?.trim() || teamPlace(team)} ${look.identity.nickname.trim()}`}
-            onBack={() => setLook(null)}
+            onBack={() => setStadium(null)}
             onDone={setCoach}
           />
         </View>

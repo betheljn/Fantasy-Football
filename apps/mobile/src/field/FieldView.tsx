@@ -42,6 +42,8 @@ interface Props {
   colorsOf: (abbr: string) => { primary: string; trim: string; onPrimary: string };
   /** Rain or snow falling over the field (wind slants the rain). */
   weather?: { precip: "none" | "rain" | "snow"; wind: number } | null;
+  /** The home stadium around the field: its stands in the home colors (deeper when steep), and a roof overhead. */
+  stadium?: { color: string; trim: string; steep: boolean; roofed: boolean } | null;
 }
 
 const GRASS = "#2f7d3b";
@@ -54,7 +56,7 @@ const GOALPOST = "#f5d90a";
 /** Yards of sideline shown beyond each edge of the field. */
 const MARGIN = 2.5;
 
-export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf, weather }: Props) {
+export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf, weather, stadium }: Props) {
   const scale = width / (FIELD_WIDTH + MARGIN * 2); // px per yard
   const halfView = height / 2 / scale;
   const ball = play.ball;
@@ -147,6 +149,7 @@ export function FieldView({ play, time, width, height, offense, defense, endZone
           <Ball play={play} time={time} scale={scale} />
         </Group>
         {weather && weather.precip !== "none" ? <Precipitation kind={weather.precip} wind={weather.wind} time={time} width={width} height={height} /> : null}
+        {stadium ? <Stands {...stadium} width={width} height={height} /> : null}
       </Canvas>
       <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, overlayStyle]}>
         {numbers}
@@ -356,6 +359,22 @@ export function Precipitation({ kind, wind, time, width, height }: { kind: "rain
     <Group transform={fall}>
       {shapes(0)}
       {shapes(-height)}
+    </Group>
+  );
+}
+
+/** The home stands along both sides of the shot, and a roof's soft light when it's indoors. */
+function Stands({ color, trim, steep, roofed, width, height }: { color: string; trim: string; steep: boolean; roofed: boolean; width: number; height: number }) {
+  const band = steep ? 9 : 6;
+  return (
+    <Group>
+      {[0, height - band].map((y) => (
+        <Group key={y}>
+          <Rect x={0} y={y} width={width} height={band} color={color} opacity={0.9} />
+          <Rect x={0} y={y === 0 ? band - 1.5 : y} width={width} height={1.5} color={trim} />
+        </Group>
+      ))}
+      {roofed ? <Rect x={0} y={0} width={width} height={height} color="rgba(255,255,255,0.06)" /> : null}
     </Group>
   );
 }

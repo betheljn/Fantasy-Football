@@ -4,7 +4,9 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { fromSaveJson, teamLogo, type CoachBuild, type Dynasty, type TeamIdentityChoice } from "@dynasty/sim";
+import { fromSaveJson, startLeagueBusiness, teamLogo, type CoachBuild, type Dynasty, type StadiumDesign, type TeamIdentityChoice } from "@dynasty/sim";
+import { designedColors } from "../../../field/colors";
+import { StadiumBuilderScreen } from "../../../screens/StadiumBuilderScreen";
 import { Button } from "../../../components/ui";
 import { api, type OnlineLeague, type OnlineSetup } from "../../../online/api";
 import { myLeagues, type MyLeague } from "../../../online/store";
@@ -29,6 +31,7 @@ export default function OnlineTeamSetupScreen() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<TeamIdentityChoice | null>(null);
+  const [stadium, setStadium] = useState<StadiumDesign | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -59,7 +62,7 @@ export default function OnlineTeamSetupScreen() {
     setSaving(true);
     setError(null);
     try {
-      await api.setup(loaded.me.id, loaded.me.token, { identity, coach });
+      await api.setup(loaded.me.id, loaded.me.token, { identity, coach, ...(stadium ? { stadium } : {}) });
       router.back();
     } catch (e) {
       setError((e as Error).message);
@@ -111,12 +114,23 @@ export default function OnlineTeamSetupScreen() {
         />
       </View>
       {identity ? (
+        <View style={{ flex: 1, display: stadium ? "none" : "flex" }}>
+          <StadiumBuilderScreen
+            stadium={(loaded.dynasty.business ?? startLeagueBusiness(loaded.dynasty.league))[team.abbr]!.stadium}
+            colors={identity.colors ?? designedColors(team.abbr)}
+            {...(loaded.mine?.stadium ? { initial: loaded.mine.stadium } : {})}
+            onBack={() => setIdentity(null)}
+            onDone={setStadium}
+          />
+        </View>
+      ) : null}
+      {identity && stadium ? (
         <CoachBuilderScreen
           league={loaded.dynasty.league}
           abbr={team.abbr}
           teamLabel={`${identity.city?.trim() || team.region || team.state} ${identity.nickname.trim()}`}
           initial={loaded.mine?.coach}
-          onBack={() => setIdentity(null)}
+          onBack={() => setStadium(null)}
           onDone={save}
           doneLabel={(name) => `Hire coach ${name} and save my team`}
         />

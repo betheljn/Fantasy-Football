@@ -286,7 +286,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   // Completion: add yards after the catch, with the odd broken tackle for a big gain.
   // No deep help (Cover 0) or an uncovered receiver means more room to run.
   // The duel: the right call (a screen into a blitz) leaves room to run; the wrong one runs into a wall.
-  let yac = Math.max(0, (band === "screen" ? rng.normal(5, 3) : rng.normal(3, 2)) + CONCEPT_EFFECT.yac * callEdge * (band === "screen" || band === "short" ? 1.5 : 1));
+  let yac = Math.max(0, (band === "screen" ? rng.normal(5, 3) : rng.normal(3, 2)) + CONCEPT_EFFECT.yac * callEdge * (band === "screen" || band === "short" ? 1.5 : 1) + wx.yac);
   const openField = (shell.deepSafeties === 0 ? 0.04 : 0) + (r.cover ? 0 : 0.04) - 0.01 * shell.deepSafeties;
   const moves = edge((t.elusiveness + t.speed + t.jukeMove + t.breakTackle) / 4);
   const breakRate = clamp(0.045 + 0.03 * moves + 0.02 * sep + openField - 0.015 * edge(nearest.ratings.tackle), 0.02, 0.2);

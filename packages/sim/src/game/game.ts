@@ -1,6 +1,6 @@
 import { InjuryTracker, type Injury } from "./injuries.ts";
 import type { PracticePlan } from "./practice.ts";
-import type { GameConditions } from "./conditions.ts";
+import { conditionEffects, type GameConditions } from "./conditions.ts";
 import type { Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
@@ -173,7 +173,9 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
 
   const rng = new Rng(seed);
   const answers: Array<CoachCall | null> = [];
-  const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away });
+  // From rules 7 the field changes how often players get hurt.
+  const rules = options.rules ?? RULES_VERSION;
+  const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away }, conditionEffects(rules >= 6 ? options.conditions : undefined, rules >= 7).injury);
   // The play duel: what each side has called so far, for the other to read.
   const book = (options.rules ?? RULES_VERSION) >= 4 ? newDuelBook() : undefined;
   // The teams as they stand now (injured players leave the field).

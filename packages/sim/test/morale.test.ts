@@ -120,7 +120,7 @@ describe("career milestones", () => {
       if (!week.games.length) continue;
       results.push(...week.games.map((g) => g.summary));
       const after = computeRankings(week.league, results, ranks);
-      stories.push(...weeklyNews({ league: week.league, schedule: sched, season: sched.season, week: w, games: week.games, results, before: ranks, after, stats, careers: d.careers }));
+      stories.push(...weeklyNews({ league: week.league, schedule: sched, season: sched.season, week: w, games: week.games, results, before: ranks, after, stats, careers: d.careers, told: stories }));
       ranks = after;
       league = week.league;
     }

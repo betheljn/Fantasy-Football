@@ -15,7 +15,7 @@ import { forMember, madeCall } from "./offseason.ts";
 import { idSchema, proposalSchema } from "./schemas.ts";
 import { nextStep, openSeason } from "./season.ts";
 import { decodeState, encodeState, newLeagueState, teamList, type LeagueState, type TeamSetupChoice } from "./state.ts";
-import { COACH_ABILITY_KEYS, DEFENSE_CONCEPTS, OFFENSE_CONCEPTS, SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type CoachCall, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
+import { PROJECTS, buildDesignedStadium, designProblem, COACH_ABILITY_KEYS, DEFENSE_CONCEPTS, OFFENSE_CONCEPTS, SKILL_GROUP_KEYS, coachBuildProblem, createProgram, friendIdentityClash, identityProblem, planPrograms, setUpTeam, skillChoiceProblem, suggestedTag, randomRegion, regions, type CoachCall, type SkillGroup, type TeamIdentityChoice } from "@dynasty/sim";
 
 const nameSchema = { type: "string", minLength: 1, maxLength: 24 } as const;
 
@@ -77,7 +77,7 @@ function lookOf(setup: TeamSetupChoice | undefined, abbr: string, state: LeagueS
 /** Why a friend's setup can't be used: the sim's rules, and never a name, logo or short name another friend has. */
 function setupProblem(state: LeagueState, members: readonly LobbyMember[], memberId: string, setup: TeamSetupChoice): string | null {
   const league = state.dynasty.league;
-  const problem = identityProblem(league, setup.team, setup.identity) ?? coachBuildProblem(setup.coach);
+  const problem = identityProblem(league, setup.team, setup.identity) ?? coachBuildProblem(setup.coach) ?? (setup.stadium ? designProblem(setup.stadium) : null);
   if (problem) return problem;
   const live = liveSetups(state, members);
   const teams = lobbyTeams(state, members);
@@ -310,6 +310,12 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
                 additionalProperties: false,
                 properties: { city: str(40), nickname: str(40), tag: str(8), logo: str(40), colors: { type: "object", required: ["primary", "trim"], additionalProperties: false, properties: { primary: hex, trim: hex } } },
               },
+              stadium: {
+                type: "object",
+                required: ["roof", "surface", "stands", "name"],
+                additionalProperties: false,
+                properties: { roof: { enum: ["open", "retractable", "dome"] }, surface: { enum: ["grass", "turf"] }, stands: { enum: ["classic", "steep"] }, name: str(40) },
+              },
               coach: {
                 type: "object",
                 required: ["firstName", "lastName", "age", "style", "offenseScheme", "defenseScheme", "aggressiveness", "tempo", "ratings"],
@@ -406,6 +412,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       const problem = setupProblem({ ...state, dynasty }, league.members, m.id, setup);
       if (problem) return fail(reply, 409, `${m.displayName}'s team setup no longer works (${problem}); they need to change it`);
       dynasty = setUpTeam(dynasty, setup.team, setup);
+      // Their stadium, built to their design.
+      if (setup.stadium) dynasty = buildDesignedStadium(dynasty, setup.team, setup.stadium);
     }
     const humans = Object.fromEntries(members.map((m) => [teamOf.get(m.id)!, m.id]));
     const { setups: _made, programs: _built, ...rest } = state;
@@ -492,6 +500,12 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
               plan: { type: "array", maxItems: 40, items: { type: "object", required: ["prospect", "points"], additionalProperties: false, properties: { prospect: idSchema, points: { type: "integer", minimum: 1, maximum: 100 } } } },
             },
           },
+          {
+            type: "object",
+            required: ["kind", "project", "financing"],
+            properties: { kind: { const: "build" }, project: { enum: Object.keys(PROJECTS) }, financing: { enum: ["cash", "bonds"] } },
+          },
+          { type: "object", required: ["kind", "name"], properties: { kind: { const: "rename" }, name: { type: "string", maxLength: 40 } } },
           {
             type: "object",
             required: ["kind", "plan"],

@@ -39,3 +39,49 @@ export function stadiumNameProblem(name: string): string | null {
   if (!/^[A-Za-z0-9 .'&-]+$/.test(n)) return "Letters, numbers, spaces and . ' & - only";
   return null;
 }
+
+/** A stadium's design, as chosen when a program builds its first one. */
+export interface StadiumDesign {
+  roof: Roof;
+  surface: Surface;
+  stands: Stands;
+  name: string;
+}
+
+/** Why a design can't be built, or null. */
+export function designProblem(d: StadiumDesign): string | null {
+  if (!(d.roof in ROOF_NAMES)) return "That isn't a roof";
+  if (!(d.surface in SURFACE_NAMES)) return "That isn't a field";
+  if (!(d.stands in STANDS_NAMES)) return "That isn't a kind of stands";
+  if (d.roof === "dome" && d.surface === "grass") return "Grass won't grow under a dome";
+  return stadiumNameProblem(d.name);
+}
+
+/** The stadium built to a design (steep stands hold 3,000 fewer, as when they're rebuilt). */
+export function designedStadium(s: Stadium, d: StadiumDesign): Stadium {
+  const steepNow = d.stands === "steep" && standsOf(s) !== "steep";
+  return {
+    ...s,
+    name: d.name.trim().replace(/\s+/g, " "),
+    roof: d.roof,
+    dome: d.roof === "dome",
+    surface: d.surface,
+    stands: d.stands,
+    capacity: steepNow ? Math.max(30_000, s.capacity - 3_000) : s.capacity,
+  };
+}
+
+/** What each part of the design does on game day (rules 7), in a line. */
+export const ROOF_NOTES: Record<Roof, string> = {
+  open: "The weather plays: wind, rain, snow and cold all come into it.",
+  retractable: "Open on a fine day; closed against rain, snow, cold under 40° and wind over 20 mph. Costs the most to run.",
+  dome: "Never any weather, and the roof traps the noise. Costs more to run.",
+};
+export const SURFACE_NOTES: Record<Surface, string> = {
+  grass: "A touch slower (3% fewer big runs) and kinder on the body (5% fewer injuries).",
+  turf: "Fast: 12% more big runs and more yards after the catch, but 15% more injuries.",
+};
+export const STANDS_NOTES: Record<Stands, string> = {
+  classic: "The crowd as loud as its fans make it.",
+  steep: "Right on top of the field: louder, more visitor false starts, 3,000 fewer seats.",
+};

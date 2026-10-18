@@ -1,14 +1,12 @@
 // The business: your market, your fans, your stadium, this season's home
 // crowds, and last season's books. (The salary cap is the same for every
 // team; market size only changes the business.)
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
-  BOND,
   BUSINESS_RULES,
   POPULATION,
-  PROJECTS,
   ROOF_NAMES,
   STANDS_NAMES,
   SURFACE_NAMES,
@@ -23,10 +21,7 @@ import {
   marketSize,
   namingAvailable,
   namingOffers,
-  projectCost,
-  projectProblems,
   startBusiness,
-  type ProjectKind,
   type SeasonFinances,
   type TeamBusiness,
 } from "@dynasty/sim";
@@ -46,6 +41,7 @@ export default function BusinessScreen() {
   const d = useDynasty();
   const { league, userTeam, results } = useLeague();
   const team = league.teams[userTeam]!;
+  const router = useRouter();
   const dynasty = d.save!.dynasty;
   const b = dynasty.business?.[userTeam] ?? startBusiness(team, league.seed);
   const last = dynasty.finances?.[userTeam]?.at(-1) ?? null;
@@ -110,36 +106,10 @@ export default function BusinessScreen() {
 
         <Prices b={b} keen={keen} econ={econ} locked={gates.length > 0} onSave={(tk, cn) => say(d.setPrices(tk, cn), `Prices set: $${tk} a ticket, $${cn} at the concession stands.`)} theme={t} />
 
-        <Card>
-          <SectionTitle>Stadium projects</SectionTitle>
-          <Text style={{ color: t.muted, marginBottom: 6 }}>
-            Work starts now and opens next season. Bonds cost {Math.round(BOND.interest * 100)}% interest a year and pay down {Math.round(BOND.principal * 100)}% of the debt each season.
-          </Text>
-          {(b.pending ?? []).map((p) => (
-            <Text key={p.kind} style={{ color: t.accent, fontWeight: "700", paddingVertical: 2 }}>
-              Under way: {PROJECTS[p.kind].name} ({formatMoney(p.cost)}, {p.financing}), opens next season
-            </Text>
-          ))}
-          {(Object.keys(PROJECTS) as ProjectKind[]).map((kind) => {
-            const cost = projectCost(kind, userTeam);
-            const blocked = projectProblems(b, kind, userTeam, "bonds").length > 0 && projectProblems(b, kind, userTeam, "cash").length > 0;
-            return (
-              <View key={kind} style={{ paddingVertical: 6, borderTopWidth: 1, borderColor: t.border }}>
-                <Text style={{ color: t.text, fontWeight: "700" }}>
-                  {PROJECTS[kind].name} · {formatMoney(cost)}
-                </Text>
-                <Text style={{ color: t.muted, fontSize: 13 }}>{PROJECTS[kind].does}</Text>
-                {!blocked ? (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                    <Small label="Pay cash" onPress={() => say(d.startStadiumProject(kind, "cash"), `${PROJECTS[kind].name}: under way, paid in cash.`)} disabled={projectProblems(b, kind, userTeam, "cash").length > 0} theme={t} />
-                    <Small label="Use bonds" onPress={() => say(d.startStadiumProject(kind, "bonds"), `${PROJECTS[kind].name}: under way, paid with bonds.`)} disabled={projectProblems(b, kind, userTeam, "bonds").length > 0} theme={t} />
-                  </View>
-                ) : (
-                  <Text style={{ color: t.muted, fontSize: 12 }}>{projectProblems(b, kind, userTeam, "bonds")[0]}</Text>
-                )}
-              </View>
-            );
-          })}
+        <Card style={{ gap: 6 }}>
+          <SectionTitle>Stadium</SectionTitle>
+          <Text style={{ color: t.muted }}>Design and build it (roof, field, stands, seats, boards, the name) on the stadium screen.</Text>
+          <Small label="Open the stadium" onPress={() => router.push("/stadium")} disabled={false} theme={t} />
         </Card>
 
         <Card>

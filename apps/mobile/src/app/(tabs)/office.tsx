@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { NavGroup, NavRow } from "../../components/ui";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
-import { coachLevel, openSlots, ownerStanding, upgradePoints } from "@dynasty/sim";
+import { coachLevel, describeStadium, openSlots, ownerStanding, upgradePoints } from "@dynasty/sim";
 import { useTheme } from "../../theme";
 
 export default function OfficeTab() {
@@ -57,6 +57,7 @@ function YouGroup() {
   const now = ownerStanding(progress, userTeam, { results, playoffs });
   const points = upgradePoints(progress, now.seasonXp);
   const staff = league.teams[userTeam]?.staff;
+  const stadium = d.save?.dynasty.business?.[userTeam]?.stadium;
   const open = staff ? openSlots(staff.hc) + openSlots(staff.oc) + openSlots(staff.dc) : 0;
   return (
     <NavGroup title="You">
@@ -67,8 +68,8 @@ function YouGroup() {
         detail={staff ? `Levels ${coachLevel(staff.hc.xp).level}/${coachLevel(staff.oc.xp).level}/${coachLevel(staff.dc.xp).level} · abilities and fit` : "Abilities and fit"}
         badge={open && d.abilityWindow ? String(open) : undefined}
         onPress={() => router.push("/coaches")}
-        last
       />
+      <NavRow icon="business-outline" title="Stadium" detail={stadium ? describeStadium(stadium) : "Design and build your stadium"} onPress={() => router.push("/stadium")} last />
     </NavGroup>
   );
 }

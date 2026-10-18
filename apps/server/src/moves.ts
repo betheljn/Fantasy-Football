@@ -4,6 +4,12 @@
 // the app, so a move made on a phone lands exactly the same here.
 import {
   SCOUTING,
+  projectProblems,
+  renameProblem,
+  renameStadium,
+  startLeagueBusiness,
+  startProject,
+  type ProjectKind,
   practiceProblem,
   type PracticePlan,
   generateDraftClass,
@@ -59,6 +65,10 @@ export type Move =
   | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> }
   /** This week's scouting points on next year's class (empty: your scouts choose). */
   | { kind: "scout"; plan: Array<{ prospect: string; points: number }> }
+  /** Build on your stadium (cash or bonds; it opens next season). */
+  | { kind: "build"; project: ProjectKind; financing: "cash" | "bonds" }
+  /** Name your stadium. */
+  | { kind: "rename"; name: string }
   /** Your week's practice, standing until changed (null: your staff plans it). */
   | { kind: "practice"; plan: PracticePlan | null };
 
@@ -119,6 +129,20 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
     if (problem) return refuse(problem);
     return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
+
+  if (move.kind === "build" || move.kind === "rename") {
+    const all = s.dynasty.business ?? startLeagueBusiness(league);
+    const b = all[team];
+    if (!b) return refuse("No stadium for your team.");
+    if (move.kind === "rename") {
+      const problem = renameProblem(b, move.name, league.season);
+      if (problem) return refuse(problem);
+      return { state: { ...s, dynasty: { ...s.dynasty, business: { ...all, [team]: renameStadium(b, move.name, league.season) } } }, problems: [] };
+    }
+    const problems = projectProblems(b, move.project, team, move.financing);
+    if (problems.length) return refuse(...problems);
+    return { state: { ...s, dynasty: { ...s.dynasty, business: { ...all, [team]: startProject(b, move.project, team, move.financing, league.season) } } }, problems: [] };
   }
 
   if (move.kind === "scout") {

@@ -1,6 +1,6 @@
 // The league as the server holds it: the dynasty (in the sim's compact save
 // format) and who runs which team. Built and changed only by the sim.
-import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice } from "@dynasty/sim";
+import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice, type StadiumDesign } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 import type { DuelEntry } from "./duels.ts";
 
@@ -36,6 +36,8 @@ export interface TeamSetupChoice {
   team: string;
   identity: TeamIdentityChoice;
   coach: CoachBuild;
+  /** Their stadium's design (absent: the one the team came with). */
+  stadium?: StadiumDesign;
 }
 
 export function newLeagueState(seed: string): LeagueState {

@@ -5,6 +5,7 @@
 // kicks, and a loud crowd rattles the visitors into false starts. Under a
 // dome there's no weather. Every game records its conditions, so it replays
 // the same whatever the forecast says later.
+import type { Roof, Surface } from "../business/stadium.ts";
 import type { League } from "../league/league.ts";
 import type { ScheduledGame } from "../league/schedule.ts";
 import { leagueFormat } from "../league/format.ts";
@@ -24,6 +25,10 @@ export interface GameConditions {
   wind: number;
   /** The home crowd's noise, 0 (none: a neutral site) to 1 (deafening). */
   noise: number;
+  /** The stadium: its roof (a retractable one closed for the game counts as indoors), and the field (rules 7). */
+  roof?: Roof;
+  roofClosed?: boolean;
+  surface?: Surface;
 }
 
 /** Fair weather in front of nobody (what games without recorded conditions played in). */
@@ -61,7 +66,12 @@ export function gameConditions(league: League, game: Pick<ScheduledGame, "id" | 
   const wind = Math.max(0, Math.round(rng.normal(climate.wind, 5)));
   const dome = !!home.venue?.dome;
   const noise = neutralSite ? 0 : (home.venue?.noise ?? 0.5);
-  return dome ? { dome, temp: 70, precip: "none", wind: 0, noise: Math.min(1, noise + 0.1) } : { dome, temp, precip, wind, noise };
+  const roof = home.venue?.roof ?? (dome ? "dome" : "open");
+  const field = { roof, surface: home.venue?.surface ?? (roof === "dome" ? "turf" : "grass") } as const;
+  // A retractable roof closes against rain, snow, cold and a gale; then it's a dome for the day.
+  const closed = roof === "retractable" && (precip !== "none" || temp < 40 || wind >= 20);
+  if (dome || closed) return { dome: true, temp: 70, precip: "none", wind: 0, noise: Math.min(1, noise + 0.1), ...field, ...(closed ? { roofClosed: true } : {}) };
+  return { dome, temp, precip, wind, noise, ...field };
 }
 
 /** What the conditions do to the game (all neutral in calm weather with no crowd). */
@@ -78,11 +88,23 @@ export interface ConditionEffects {
   puntYards: number;
   /** Multiplies the visiting offense's false starts (a typical crowd, 0.5: the usual road factor). */
   visitorFalseStart: number;
+  /** The field (rules 7): multiplies big-run chances, adds yards after the catch, multiplies injuries. */
+  breakaway: number;
+  yac: number;
+  injury: number;
 }
 
-export function conditionEffects(c: GameConditions | undefined): ConditionEffects {
-  const out: ConditionEffects = { completion: 0, deepCompletion: 0, fumble: 1, kickYards: 0, kickAccuracy: 0, puntYards: 0, visitorFalseStart: 1 };
+/** What the field does (rules 7): turf is fast and hard, grass a touch slower and kinder. */
+export const SURFACE_EFFECTS: Record<Surface, { breakaway: number; yac: number; injury: number }> = {
+  turf: { breakaway: 1.12, yac: 0.3, injury: 1.15 },
+  grass: { breakaway: 0.97, yac: 0, injury: 0.95 },
+};
+
+/** What the conditions do (`field`: play the surface too, from rules 7). */
+export function conditionEffects(c: GameConditions | undefined, field = false): ConditionEffects {
+  const out: ConditionEffects = { completion: 0, deepCompletion: 0, fumble: 1, kickYards: 0, kickAccuracy: 0, puntYards: 0, visitorFalseStart: 1, breakaway: 1, yac: 0, injury: 1 };
   if (!c) return out;
+  if (field && c.surface) Object.assign(out, SURFACE_EFFECTS[c.surface]);
   out.visitorFalseStart = 1.3 * (0.5 + c.noise);
   if (c.dome) return out;
   const gust = Math.max(0, c.wind - 10);
@@ -111,7 +133,9 @@ export function conditionEffects(c: GameConditions | undefined): ConditionEffect
 /** "38°, snow, wind 18 mph · loud crowd", for the pregame and the feed. */
 export function describeConditions(c: GameConditions): string {
   const crowd = c.noise >= 0.75 ? "deafening crowd" : c.noise >= 0.6 ? "loud crowd" : c.noise >= 0.35 ? "home crowd" : c.noise > 0 ? "quiet crowd" : "neutral site";
-  if (c.dome) return `Indoors · ${crowd}`;
+  const turf = c.surface === "turf" ? " · turf" : "";
+  if (c.roofClosed) return `Roof closed${turf} · ${crowd}`;
+  if (c.dome) return `Indoors${turf} · ${crowd}`;
   const sky = c.precip === "snow" ? "snow" : c.precip === "rain" ? "rain" : c.temp >= 85 ? "hot" : "clear";
-  return `${c.temp}°, ${sky}${c.wind >= 12 ? `, wind ${c.wind} mph` : ""} · ${crowd}`;
+  return `${c.temp}°, ${sky}${c.wind >= 12 ? `, wind ${c.wind} mph` : ""}${c.roof === "retractable" ? " · roof open" : ""}${turf} · ${crowd}`;
 }

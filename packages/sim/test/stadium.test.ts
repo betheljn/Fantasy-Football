@@ -77,3 +77,57 @@ describe("the stadium's design", () => {
     expect(renameProblem(sponsored, "The Pit", 2034)).toBeNull();
   });
 });
+
+import { Rng, SURFACE_EFFECTS, conditionEffects, describeConditions, gameConditions, generateTeams, simulateGame, type GameConditions, type Team } from "../src/index.ts";
+
+describe("the stadium in games (rules 7)", () => {
+  const withVenue = (venue: NonNullable<Team["venue"]>) => ({ ...league, teams: { ...league.teams, OH: { ...league.teams.OH!, venue } } });
+  const days = (roof: "open" | "retractable") => Array.from({ length: 120 }, (_, i) => gameConditions(withVenue({ dome: false, noise: 0.5, roof, surface: "grass" }), { id: `d${i}`, week: 14, home: "OH" }));
+
+  it("a retractable roof closes against bad weather and opens on a fine day", () => {
+    const open = days("open");
+    const roofed = days("retractable");
+    for (const [i, o] of open.entries()) {
+      const r = roofed[i]!;
+      const bad = o.precip !== "none" || o.temp < 40 || o.wind >= 20;
+      expect(r.roofClosed ?? false).toBe(bad);
+      if (bad) expect(r).toMatchObject({ dome: true, precip: "none", wind: 0 });
+      else expect(r).toMatchObject({ temp: o.temp, precip: o.precip, wind: o.wind, roof: "retractable" });
+    }
+    expect(roofed.some((r) => r.roofClosed)).toBe(true);
+    expect(roofed.some((r) => !r.roofClosed)).toBe(true);
+    expect(describeConditions(roofed.find((r) => r.roofClosed)!)).toMatch(/^Roof closed/);
+  });
+
+  it("the field plays only from rules 7", () => {
+    const turf: GameConditions = { dome: false, temp: 65, precip: "none", wind: 0, noise: 0.5, surface: "turf" };
+    expect(conditionEffects(turf, true)).toMatchObject(SURFACE_EFFECTS.turf);
+    expect(conditionEffects(turf, false)).toMatchObject({ breakaway: 1, yac: 0, injury: 1 });
+    const [A, B] = generateTeams(new Rng("field-rules"), 2) as [Team, Team];
+    const six = simulateGame(A, B, "f1", { rules: 6, conditions: turf });
+    const sixGrass = simulateGame(A, B, "f1", { rules: 6, conditions: { ...turf, surface: "grass" } });
+    expect(six.plays).toEqual(sixGrass.plays);
+  });
+
+  it("turf means more injuries over a run of games", { timeout: 60_000 }, () => {
+    const [A, B] = generateTeams(new Rng("field-injuries"), 2) as [Team, Team];
+    const hurt = (surface: "turf" | "grass") =>
+      Array.from({ length: 80 }, (_, i) => simulateGame(A, B, `fi-${i}`, { conditions: { dome: false, temp: 65, precip: "none", wind: 0, noise: 0.5, surface } }).injuries.length).reduce((a, b) => a + b, 0);
+    expect(hurt("turf")).toBeGreaterThan(hurt("grass"));
+  });
+});
+
+import { buildDesignedStadium, designProblem, startDynasty } from "../src/index.ts";
+
+describe("designing your stadium", () => {
+  it("checks the design, and builds it for a new program", () => {
+    expect(designProblem({ roof: "dome", surface: "grass", stands: "classic", name: "The Barn" })).toContain("Grass won't grow");
+    expect(designProblem({ roof: "open", surface: "grass", stands: "classic", name: "X" })).toContain("at least three");
+    const d = startDynasty("design-test", 1);
+    const made = buildDesignedStadium(d, "OH", { roof: "retractable", surface: "turf", stands: "steep", name: "The Foundry" });
+    const s = made.business!.OH!.stadium;
+    expect([s.name, roofOf(s), surfaceOf(s), standsOf(s), s.dome]).toEqual(["The Foundry", "retractable", "turf", "steep", false]);
+    expect(made.league.teams.OH!.venue).toMatchObject({ roof: "retractable", surface: "turf", stands: "steep" });
+    expect(() => buildDesignedStadium(d, "OH", { roof: "dome", surface: "grass", stands: "classic", name: "Nope" })).toThrow();
+  });
+});

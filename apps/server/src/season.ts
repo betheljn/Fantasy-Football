@@ -184,6 +184,7 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     trades: talks.trades,
     ...(s.dynasty.careers ? { careers: s.dynasty.careers } : {}),
     rivalryHistory: s.dynasty.rivalryGames ?? [],
+    told: p.news ?? [],
     friends: [...humanTeams(s)],
   });
   const progress: SeasonProgress = {

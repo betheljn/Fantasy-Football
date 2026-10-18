@@ -10,7 +10,7 @@
 // sponsors and media, the national TV deal and revenue sharing; expenses are
 // payroll, staff, stadium operations and debt. After each season the fan base
 // moves with the results.
-import { VIDEO_BOARD_MAX, stadiumNameProblem, covered, roofOf, standsOf, surfaceOf, videoBoardOf, type Roof, type Stands, type Surface } from "./stadium.ts";
+import { VIDEO_BOARD_MAX, designProblem, designedStadium, stadiumNameProblem, covered, type StadiumDesign, roofOf, standsOf, surfaceOf, videoBoardOf, type Roof, type Stands, type Surface } from "./stadium.ts";
 import { REGION_CLIMATE } from "../game/conditions.ts";
 import { regionOf } from "../gen/regions.ts";
 import { Rng } from "../rng.ts";
@@ -472,4 +472,17 @@ export function renameStadium(b: TeamBusiness, name: string, season: number): Te
   const problem = renameProblem(b, name, season);
   if (problem) throw new Error(problem);
   return { ...b, stadium: { ...b.stadium, name: name.trim().replace(/\s+/g, " ") } };
+}
+
+/**
+ * A new program builds its stadium to its own design (part of building the
+ * program: no cost now; a roof costs more to run every season).
+ */
+export function buildDesignedStadium<D extends { league: League; business?: Record<string, TeamBusiness> }>(dynasty: D, team: string, design: StadiumDesign): D {
+  const problem = designProblem(design);
+  if (problem) throw new Error(problem);
+  const business = dynasty.business ?? startLeagueBusiness(dynasty.league);
+  const b = business[team];
+  if (!b) throw new Error(`No business for ${team}`);
+  return syncVenues({ ...dynasty, business: { ...business, [team]: { ...b, stadium: designedStadium(b.stadium, design) } } });
 }
