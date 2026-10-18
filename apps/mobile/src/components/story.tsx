@@ -26,6 +26,7 @@ const KIND_LABEL: Record<Story["kind"], string> = {
   milestone: "Milestone",
   title: "Title game",
   playoff: "Playoffs",
+  camp: "Camp",
 };
 
 const KIND_TONE: Partial<Record<Story["kind"], "accent" | "bad" | "gold">> = { milestone: "gold", title: "gold", playoff: "gold", upset: "bad", injury: "bad", mvp: "gold", rivalry: "gold", recap: "accent", preview: "accent" };

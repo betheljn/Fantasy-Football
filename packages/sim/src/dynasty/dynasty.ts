@@ -1,6 +1,7 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { trainingCamp, type CampBattle } from "./camp.ts";
 import { syncVenues } from "../business/business.ts";
 import { bankOwners, syncUpgrades, type OwnerProgress } from "./progression.ts";
 import { bankCoaches } from "./coaches.ts";
@@ -142,6 +143,8 @@ export interface Dynasty {
   springs?: SpringSeason[];
   /** The owners people play (your team; online, each friend's): their XP and levels. */
   owners?: Record<string, OwnerProgress>;
+  /** This season's training camp battles (settled before it). */
+  camp?: CampBattle[];
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -546,12 +549,15 @@ export function completeOffseason(
   const rostered = new Set(allTeams(settled.league).flatMap((t) => t.roster.map((p) => p.id)));
   const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
   // (Last season's practice log has done its work in development.)
-  const nextLeague: League = {
+  const settledLeague: League = {
     ...settled.league,
     season: next,
     freeAgents,
     teams: Object.fromEntries(Object.entries(settled.league.teams).map(([abbr, t]) => [abbr, t.practiceLog ? (({ practiceLog: _done, ...rest }) => rest)(t) : t])),
   };
+  // Training camp settles the close spots on every depth chart before the new season.
+  const camp = trainingCamp(settledLeague);
+  const nextLeague = camp.league;
 
   // Close the books: every team's season finances, cash and fans.
   // Your team (any team making its own cuts and offers) runs its own business.
@@ -611,6 +617,7 @@ export function completeOffseason(
       business: books.business,
       finances,
       // Owners bank the season's XP (games, calls, titles, awards, and their players' growth).
+      camp: camp.battles,
       ...(dynasty.owners ? { owners: bankOwners(dynasty.owners, league.season, { results: played.season.results, playoffs, awards }, league, s.developed) } : {}),
     })),
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
