@@ -129,7 +129,8 @@ export type OnlineMove =
   | { kind: "upgrade"; track: UpgradeTrack }
   | { kind: "ability"; ability: CoachAbility }
   | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> }
-  | { kind: "practice"; plan: PracticePlan | null };
+  | { kind: "practice"; plan: PracticePlan | null }
+  | { kind: "scout"; plan: Array<{ prospect: string; points: number }> };
 
 /** Your call for the offseason stage that's open (send it again to change it). */
 export type OffseasonChoice =

@@ -3,7 +3,7 @@ import { practiceFor, practiceWeek, type PracticePlan } from "../game/practice.t
 import { gameConditions, type GameConditions } from "../game/conditions.ts";
 import { kickoffAbilities } from "../dynasty/coaches.ts";
 import { callTally } from "../game/duelrecap.ts";
-import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
+import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
 import { simulateGame, startCoachedGame, type CoachedGame, type GameResult } from "../game/game.ts";
 import type { League } from "./league.ts";
 import { generateSchedule, type Schedule, type ScheduledGame } from "./schedule.ts";
@@ -92,7 +92,7 @@ export function playWeek(
   onGame?: (game: GameResult, scheduled: ScheduledGame) => void,
   /** Games people coached this week (by game id), played with their calls. */
   coached?: ({ game: string } & CoachedCalls) | ReadonlyArray<{ game: string } & CoachedCalls>,
-): { league: League; games: Array<{ summary: GameSummary; result: GameResult }> } {
+): { league: League; games: Array<{ summary: GameSummary; result: GameResult }>; practiceInjuries: Injury[] } {
   if (week === 1) league = kickoffAbilities(league);
   const byGame = new Map((coached === undefined ? [] : Array.isArray(coached) ? coached : [coached as { game: string } & CoachedCalls]).map((c) => [c.game, c]));
   const games = schedule.games.filter((g) => g.week === week).map((g) => {
@@ -103,7 +103,7 @@ export function playWeek(
   // Then the week's practice for the next games: logs for growth, and the odd practice injury.
   const plans = Object.assign({}, ...games.map((g) => g.summary.practice ?? {})) as Record<string, PracticePlan>;
   const practiced = practiceWeek(league, week, plans);
-  return { league: advanceInjuries(practiced.league, [...games.flatMap((g) => g.result.injuries), ...practiced.injuries]), games };
+  return { league: advanceInjuries(practiced.league, [...games.flatMap((g) => g.result.injuries), ...practiced.injuries]), games, practiceInjuries: practiced.injuries };
 }
 
 export function simulateSeason(league: League, opts: SeasonOptions = {}): SeasonResult {

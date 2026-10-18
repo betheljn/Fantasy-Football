@@ -321,7 +321,7 @@ export function weeklyNews(input: WeekNewsInput): Story[] {
   const hurt = [...(input.injuries ?? [])].filter((i) => i.overall >= 75 || (i.position === "QB" && i.starter)).sort((a, b) => b.weeks - a.weeks || b.overall - a.overall);
   for (const i of hurt.slice(0, 3)) {
     const seasonOver = i.weeks >= SEASON_ENDING;
-    add({ key: `injury-${i.player}`, kind: "injury", importance: 36 + (seasonOver ? 18 : Math.min(12, i.weeks * 2)) + (i.position === "QB" ? 6 : 0), teams: [i.team], players: [i.player], headline: seasonOver ? `${nick(league, i.team)} lose ${i.position} ${i.name} for the season` : `${nick(league, i.team)} ${i.position} ${i.name} out ${i.weeks} week${i.weeks === 1 ? "" : "s"}`, body: `${i.name} (${i.overall}) ${seasonOver ? "is done for the season" : `will miss ${i.weeks} week${i.weeks === 1 ? "" : "s"}`} ${injuryPhrase(i.type)}.` });
+    add({ key: `injury-${i.player}`, kind: "injury", importance: 36 + (seasonOver ? 18 : Math.min(12, i.weeks * 2)) + (i.position === "QB" ? 6 : 0), teams: [i.team], players: [i.player], headline: seasonOver ? `${nick(league, i.team)} lose ${i.position} ${i.name} for the season` : `${nick(league, i.team)} ${i.position} ${i.name} out ${i.weeks} week${i.weeks === 1 ? "" : "s"}`, body: `${i.name} (${i.overall}) ${seasonOver ? "is done for the season" : `will miss ${i.weeks} week${i.weeks === 1 ? "" : "s"}`} ${injuryPhrase(i.type)}${i.practice ? ", hurt in practice this week" : ""}.` });
   }
 
   // --- trades ---

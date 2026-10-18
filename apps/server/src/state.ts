@@ -19,6 +19,8 @@ export interface LeagueState {
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
   /** Friends coaching their game this week: their calls so far, by team (private until the week is played). */
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
+  /** Friends' scouting points for the coming week (spent when it's played, then cleared), by team: private. */
+  scoutPlans?: Record<string, Array<{ prospect: string; points: number }>>;
   /** Friends' standing recruiting plans (points a week per prospect), by team: private to each friend. */
   recruiting?: Record<string, Array<{ prospect: string; points: number }>>;
   /** This week's games between friends: both coaches' calls, by game id (private: each sees only their duelView). */

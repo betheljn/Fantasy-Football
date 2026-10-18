@@ -761,7 +761,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const coached = mine && s.coaching ? { game: mine.id, team: s.userTeam, calls: s.coaching.calls } : undefined;
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g), coached);
     const collection = collectWeek(s.collection ?? startCollection(s.dynasty.recordBook), s.dynasty.league, sched.season, week_.games, s.userTeam);
-    const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
+    const news = injuryNews(s.dynasty.league, [...week_.games.flatMap((g) => g.result.injuries), ...week_.practiceInjuries], week);
     // Settle this week's slates, then the weekly top-up.
     const before = s.picks ?? newPicks();
     const due = before.open.filter((x) => x.week === week && x.season === sched.season);
@@ -1218,7 +1218,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = state.scoutPlan.find((a) => a.prospect === prospect)?.points ?? 0;
       const points = Math.max(0, Math.min(current + delta, current + (SCOUT_POINTS - used)));
       const rest = state.scoutPlan.filter((a) => a.prospect !== prospect);
-      persist({ ...state, scoutPlan: points > 0 ? [...rest, { prospect, points }] : rest });
+      const next = points > 0 ? [...rest, { prospect, points }] : rest;
+      persist({ ...state, scoutPlan: next });
+      // Online, this week's points go to the server (private to you; spent when the week is played).
+      if (online) sendMove({ kind: "scout", plan: next });
     },
     recruitPlan: state?.recruitPlan ?? [],
     recruitPoints: state?.userTeam ? recruitingPoints(state.dynasty.league.teams[state.userTeam]) : 0,

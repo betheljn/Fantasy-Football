@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
 });
 
 /** Rain streaks (slanted by the wind) or snowflakes falling over the field, moving with the play clock. */
-function Precipitation({ kind, wind, time, width, height }: { kind: "rain" | "snow"; wind: number; time: SharedValue<number>; width: number; height: number }) {
+export function Precipitation({ kind, wind, time, width, height }: { kind: "rain" | "snow"; wind: number; time: SharedValue<number>; width: number; height: number }) {
   // The same flakes every time (a fixed scatter), drawn twice so the fall wraps around.
   const drops = useMemo(() => {
     const out: Array<{ x: number; y: number; s: number }> = [];
@@ -342,13 +342,14 @@ function Precipitation({ kind, wind, time, width, height }: { kind: "rain" | "sn
   }, [kind, width, height]);
   const speed = kind === "snow" ? 40 : 260;
   const slant = kind === "rain" ? Math.min(0.6, wind / 40) : 0;
-  const fall = useDerivedValue(() => [{ translateY: (time.value * speed) % height }, { translateX: ((time.value * speed * slant) % width) }]);
+  // Straight down (the streaks' slant shows the wind; a sideways drift would leave one side bare).
+  const fall = useDerivedValue(() => [{ translateY: (time.value * speed) % height }]);
   const shapes = (dy: number) =>
     drops.map((d, i) =>
       kind === "snow" ? (
         <Circle key={`${dy}-${i}`} cx={d.x} cy={d.y + dy} r={1.6 * d.s} color="rgba(255,255,255,0.75)" />
       ) : (
-        <Line key={`${dy}-${i}`} p1={vec(d.x, d.y + dy)} p2={vec(d.x - 6 * slant * d.s, d.y + dy + 9 * d.s)} color="rgba(200,220,255,0.45)" strokeWidth={1} />
+        <Line key={`${dy}-${i}`} p1={vec(d.x, d.y + dy)} p2={vec(d.x - 6 * slant * d.s, d.y + dy + 9 * d.s)} color="rgba(210,225,255,0.6)" strokeWidth={1.3} />
       ),
     );
   return (

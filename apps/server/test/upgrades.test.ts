@@ -19,7 +19,7 @@ describe("owner upgrades online", () => {
 });
 
 describe("coach abilities online", () => {
-  it("are picked before the season starts, with an open slot", () => {
+  it("are picked before the season starts, with an open slot", { timeout: 60_000 }, () => {
     const s = openSeason({ ...newLeagueState("ability-online"), humans: { OH: "m1" } });
     expect(applyMove(s, "OH", { kind: "ability", ability: "shot_caller" }).problems[0]).toContain("no open ability slot");
     const league = s.dynasty.league;

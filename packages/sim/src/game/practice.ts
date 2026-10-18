@@ -130,7 +130,7 @@ export function practiceWeek(league: League, week: number, plans: Readonly<Recor
     const healthy = t.roster.filter((p) => !p.injury);
     if (!healthy.length) continue;
     const p = rng.pick(healthy);
-    injuries.push({ player: p.id, team: abbr, type: rng.pick(["hamstring", "ankle", "shoulder", "groin"]), weeks: rng.int(1, 3) });
+    injuries.push({ player: p.id, team: abbr, type: rng.pick(["hamstring", "ankle", "shoulder", "groin"]), weeks: rng.int(1, 3), practice: true });
   }
   return { league: { ...league, teams }, injuries };
 }

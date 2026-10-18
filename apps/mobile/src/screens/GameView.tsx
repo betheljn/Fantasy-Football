@@ -144,6 +144,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
               defense={uniform(play.defense, play.defense === game.home)}
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               colorsOf={teamColors}
+              weather={game.conditions && !game.conditions.dome ? game.conditions : null}
             />
           ) : (
             <FieldView
@@ -193,7 +194,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
       <View style={s.bottom}>
         {tab === "preview" ? (
           <ScrollView>
-            <Pregame home={home} away={away} context={context} chance={wp.pregame} />
+            <Pregame home={home} away={away} context={context} chance={wp.pregame} {...(game.conditions ? { conditions: game.conditions } : {})} {...(game.practice ? { practice: game.practice } : {})} />
           </ScrollView>
         ) : tab === "recap" && box ? (
           <ScrollView>

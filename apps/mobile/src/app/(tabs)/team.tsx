@@ -55,7 +55,7 @@ export default function TeamTab() {
 
       {(solo && d.scouting) || (!solo && d.canMakeMoves) ? (
         <NavGroup title="Next year's draft">
-          {solo ? <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} /> : null}
+          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} />
           <NavRow
             icon="megaphone-outline"
             title="Recruiting"

@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { describeConditions, teamName, BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { describeConditions, teamName, BASE_STARTERS, type GameConditions, type PracticePlan, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
 import { teamColors, teamShort } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
@@ -73,6 +73,18 @@ export function WinBar({ game, home }: { game: GameResult; home: number }) {
   );
 }
 
+/** What the weather means for the game, in a line (null in fair weather). */
+function weatherNote(c: GameConditions): string | null {
+  if (c.dome) return null;
+  const notes = [
+    c.precip === "snow" ? "Snow: a slippery ball and tough throwing" : c.precip === "rain" ? "Rain: watch the ball security and the passing game" : null,
+    c.wind >= 16 ? `Wind ${c.wind} mph: deep balls and long kicks suffer` : null,
+    c.temp < 32 ? "Bitter cold: kicks come up short" : null,
+    c.noise >= 0.75 ? "A deafening crowd: the visitors will struggle with the snap count" : null,
+  ].filter(Boolean);
+  return notes.length ? notes.join(". ") + "." : null;
+}
+
 /** The home team's win chance play by play: up is the home team, down the road team. */
 export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: { game: GameResult; chances: number[]; pregame: number; upto: number; width: number; height?: number }) {
   const t = useTheme();
@@ -107,7 +119,7 @@ export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: 
 }
 
 /** Before kickoff: the two teams side by side, and the players to watch. */
-export function Pregame({ home, away, context, chance }: { home: Team; away: Team; context?: GameContext; chance: number }) {
+export function Pregame({ home, away, context, chance, conditions, practice }: { home: Team; away: Team; context?: GameContext; chance: number; conditions?: GameConditions; practice?: Record<string, PracticePlan> }) {
   const t = useTheme();
   const rh = teamRatings(home);
   const ra = teamRatings(away);
@@ -120,6 +132,22 @@ export function Pregame({ home, away, context, chance }: { home: Team; away: Tea
   const fav = chance >= 0.5 ? home : away;
   return (
     <View style={{ padding: 12, gap: 10 }}>
+      {conditions ? (
+        <Card style={{ gap: 4 }}>
+          <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Game day</Text>
+          <Text style={{ color: t.text }}>{describeConditions(conditions)}</Text>
+          {weatherNote(conditions) ? <Text style={{ color: t.muted, fontSize: 12 }}>{weatherNote(conditions)}</Text> : null}
+          {practice
+            ? [away, home].map((tm) =>
+                practice[tm.abbr] ? (
+                  <Text key={tm.abbr} style={{ color: t.muted, fontSize: 12 }}>
+                    {`${tm.abbr} practiced ${practice[tm.abbr]!.intensity === "normal" ? "as usual" : practice[tm.abbr]!.intensity === "hard" ? "hard" : "light"}`}
+                  </Text>
+                ) : null,
+              )
+            : null}
+        </Card>
+      ) : null}
       <Card style={{ gap: 6 }}>
         <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Tale of the tape</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>

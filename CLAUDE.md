@@ -430,7 +430,7 @@ friends recruit head to head for the same prospects.
 4. Online: friends' weekly recruiting calls, private until the week is
    played, head to head for the same prospects
 
-### Milestone 25: practice and game day
+### Milestone 25: practice and game day (done)
 Weekly practice plan (focus, intensity, injury risk, installing plays for
 the next opponent), training camp position battles, weather by region and
 week, crowd noise; shown on the field and in the feed.

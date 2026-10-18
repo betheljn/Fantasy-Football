@@ -13,6 +13,8 @@ interface ServerState {
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
   /** Your calls in your game this week (the server sends only yours). */
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
+  /** Your scouting points for this week (the server sends only yours). */
+  scoutPlans?: Record<string, Array<{ prospect: string; points: number }>>;
   /** Your standing recruiting plan (the server sends only yours). */
   recruiting?: Record<string, Array<{ prospect: string; points: number }>>;
   progress: {
@@ -48,7 +50,7 @@ export function saveFromServer(text: string, userTeam: string): { save: SaveStat
     playoffRoundsShown: p.playoffs ? postseasonStages(s.dynasty.league).length : 0,
     report: null,
     scouting: p.scouting ?? null,
-    scoutPlan: [],
+    scoutPlan: s.scoutPlans?.[userTeam] ?? [],
     recruitPlan: s.recruiting?.[userTeam] ?? [],
     trades: p.trades,
     playoffs: p.playoffs,

@@ -150,6 +150,7 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
               defense={uniform(play.defense, play.defense === home.abbr)}
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               colorsOf={teamColors}
+              weather={sofar.conditions && !sofar.conditions.dome ? sofar.conditions : null}
             />
           ) : (
             <FieldView

@@ -50,6 +50,8 @@ export interface Injury {
   type: string;
   /** Games he'll miss after this one (0 = just the rest of this game; SEASON_ENDING = out for the season). */
   weeks: number;
+  /** Hurt in practice during the week, not in a game. */
+  practice?: boolean;
 }
 
 /** A player's current injury (on the player, between games). */
@@ -290,6 +292,8 @@ export interface InjuryNews {
   type: string;
   weeks: number;
   starter: boolean;
+  /** Hurt in practice. */
+  practice?: boolean;
 }
 
 /** This week's injuries that matter (a starter or a good player, out at least a week), worst first. */
@@ -304,7 +308,7 @@ export function injuryNews(league: League, injuries: readonly Injury[], week: nu
     const starter = rank >= 0 && rank < BASE_STARTERS[p.position];
     const ovr = playerOverall(p);
     if (!starter && ovr < 70) continue;
-    news.push({ week, team: t.abbr, player: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, overall: ovr, type: i.type, weeks: i.weeks, starter });
+    news.push({ week, team: t.abbr, player: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, overall: ovr, type: i.type, weeks: i.weeks, starter, ...(i.practice ? { practice: true } : {}) });
   }
   return news.sort((a, b) => b.weeks - a.weeks || b.overall - a.overall);
 }

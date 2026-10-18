@@ -494,6 +494,32 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           },
           {
             type: "object",
+            required: ["kind", "plan"],
+            properties: {
+              kind: { const: "scout" },
+              plan: { type: "array", maxItems: 40, items: { type: "object", required: ["prospect", "points"], additionalProperties: false, properties: { prospect: idSchema, points: { type: "integer", minimum: 1, maximum: 100 } } } },
+            },
+          },
+          {
+            type: "object",
+            required: ["kind", "plan"],
+            properties: {
+              kind: { const: "practice" },
+              plan: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    type: "object",
+                    required: ["installs", "intensity"],
+                    additionalProperties: false,
+                    properties: { installs: { type: "array", maxItems: 3, items: { enum: [...OFFENSE_CONCEPTS, ...DEFENSE_CONCEPTS] } }, intensity: { enum: ["light", "normal", "hard"] } },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            type: "object",
             required: ["kind", "game", "calls"],
             properties: { kind: { const: "coach" }, game: { type: "string", maxLength: 80 }, calls: { type: "array", maxItems: MAX_CALLS, items: { anyOf: [{ type: "null" }, callSchema] } } },
           },
@@ -584,7 +610,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     const { state, version, data: raw } = await loadState(req.params.id);
     reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
     // In the offseason, other friends' calls for the open stage stay private (and everyone's coaching calls).
-    const data = state.offseason || state.coaching || state.duels || state.recruiting ? encodeState(forMember(state, member.team)) : raw;
+    const data = state.offseason || state.coaching || state.duels || state.recruiting || state.scoutPlans ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
     if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));
     return reply.send(data);

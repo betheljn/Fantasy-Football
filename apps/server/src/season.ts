@@ -149,10 +149,12 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   const cls = generateDraftClass(league0);
   const scoutingNow = p.scouting ?? createScouting(league0, cls);
   const recruiting = Object.fromEntries(Object.entries(s.recruiting ?? {}).filter(([team, plan]) => s.humans[team] && plan.length > 0));
-  const scouting = scoutingNow.week < seasonWeeks(scoutingNow) ? advanceScoutingWeek(scoutingNow, league0, cls, {}, recruiting) : scoutingNow;
+  // Friends who placed this week's scouting points spend them as placed (the rest scout on their own).
+  const scoutChoices = Object.fromEntries(Object.entries(s.scoutPlans ?? {}).filter(([team, plan]) => s.humans[team] && plan.length > 0));
+  const scouting = scoutingNow.week < seasonWeeks(scoutingNow) ? advanceScoutingWeek(scoutingNow, league0, cls, scoutChoices, recruiting) : scoutingNow;
   const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g), coached);
   const collection = collectWeek(structuredClone(p.collection), league0, sched.season, played.games);
-  const hurt = injuryNews(league0, played.games.flatMap((g) => g.result.injuries), week);
+  const hurt = injuryNews(league0, [...played.games.flatMap((g) => g.result.injuries), ...played.practiceInjuries], week);
   // Injured reserve and signings: the AI's teams, plus friends who didn't ready up.
   const runOwn = new Set([...humanTeams(s)].filter((t) => ready.has(t)));
   const covered = [...humanTeams(s)].filter((t) => !ready.has(t)).sort();
@@ -182,9 +184,9 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   };
 }
 
-/** The week's coached calls (and duels) are used up once it's played. */
+/** The week's coached calls, duels and scouting points are used up once it's played. */
 function withoutCoaching(s: LeagueState): LeagueState {
-  const { coaching: _done, duels: _duels, ...rest } = s;
+  const { coaching: _done, duels: _duels, scoutPlans: _scouted, ...rest } = s;
   return rest;
 }
 

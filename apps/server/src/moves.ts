@@ -3,6 +3,9 @@
 // the same sim rules (and the same functions, with the same arguments) as in
 // the app, so a move made on a phone lands exactly the same here.
 import {
+  SCOUTING,
+  practiceProblem,
+  type PracticePlan,
   generateDraftClass,
   recruitingPoints,
   abilityProblem,
@@ -53,7 +56,11 @@ export type Move =
   /** A new ability for one of your coaches (before the season's first week: abilities never change mid-season). */
   | { kind: "ability"; ability: CoachAbility }
   /** Your standing recruiting plan: points a week per prospect in next year's class (empty: your staff recruits). */
-  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> };
+  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> }
+  /** This week's scouting points on next year's class (empty: your scouts choose). */
+  | { kind: "scout"; plan: Array<{ prospect: string; points: number }> }
+  /** Your week's practice, standing until changed (null: your staff plans it). */
+  | { kind: "practice"; plan: PracticePlan | null };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
 export const MAX_CALLS = 600;
@@ -112,6 +119,29 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
     if (problem) return refuse(problem);
     return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
+
+  if (move.kind === "scout") {
+    if (!seasonOn) return refuse("Scouting runs during the regular season.");
+    const ids = new Set(generateDraftClass(league).prospects.map((x) => x.player.id));
+    if (move.plan.some((a) => !ids.has(a.prospect) || !Number.isInteger(a.points) || a.points <= 0)) return refuse("That plan doesn't match next year's class.");
+    const used = move.plan.reduce((n, a) => n + a.points, 0);
+    if (used > SCOUTING.pointsPerWeek) return refuse(`That's ${used} points; you have ${SCOUTING.pointsPerWeek} a week.`);
+    const { [team]: _old, ...others } = s.scoutPlans ?? {};
+    return { state: { ...s, scoutPlans: move.plan.length ? { ...others, [team]: move.plan } : others }, problems: [] };
+  }
+
+  if (move.kind === "practice") {
+    if (!seasonOn) return refuse("Practice runs during the regular season.");
+    // Practice is part of this week's game: set once it's being coached or dueled.
+    if (s.coaching?.[team] || duelUnderWay(s, team)) return refuse("Your game this week is under way: practice is set until it's played.");
+    if (move.plan) {
+      const problem = practiceProblem(move.plan);
+      if (problem) return refuse(problem);
+    }
+    const { practice: _old, ...rest } = league.teams[team]!;
+    const updated = move.plan ? { ...rest, practice: move.plan } : rest;
+    return { state: withLeague(s, { ...league, teams: { ...league.teams, [team]: updated } }), problems: [] };
   }
 
   if (move.kind === "recruit") {

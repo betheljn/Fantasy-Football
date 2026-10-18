@@ -40,3 +40,21 @@ describe("recruiting online", () => {
     expect(openSeason(s).recruiting).toBeUndefined();
   });
 });
+
+import { SCOUTING, knowledge } from "@dynasty/sim";
+
+describe("scouting points online", () => {
+  const opened = openSeason({ ...newLeagueState("scout-online"), humans: { OH: "m1", TX: "m2" } });
+  const cls = generateDraftClass(opened.dynasty.league);
+  const target = cls.prospects.find((p) => p.boardRank > 200)!;
+
+  it("this week's points are checked, private, spent when the week is played, then cleared", { timeout: 120_000 }, () => {
+    expect(applyMove(opened, "OH", { kind: "scout", plan: [{ prospect: target.player.id, points: SCOUTING.pointsPerWeek + 1 }] }).problems[0]).toContain("a week");
+    const s = applyMove(opened, "OH", { kind: "scout", plan: [{ prospect: target.player.id, points: SCOUTING.pointsPerWeek }] }).state!;
+    expect(forMember(s, "TX").scoutPlans).toBeUndefined();
+    const after = advance(s, new Set(["OH", "TX"])).state;
+    expect(after.scoutPlans).toBeUndefined();
+    // Ohio put the whole week on him; Texas didn't.
+    expect(knowledge(after.progress.scouting!, "OH", target.player.id)).toBeGreaterThan(knowledge(after.progress.scouting!, "TX", target.player.id) + 0.2);
+  });
+});
