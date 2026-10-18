@@ -12,6 +12,7 @@ import type { ScheduledGame } from "../league/schedule.ts";
 import type { Team } from "../model/team.ts";
 import type { Situation } from "../play/events.ts";
 import { Rng } from "../rng.ts";
+import { weightedPick } from "../play/common.ts";
 import type { Injury } from "./injuries.ts";
 
 export type Intensity = "light" | "normal" | "hard";
@@ -67,9 +68,27 @@ export function aiPracticePlan(team: Team, opponent: Team): PracticePlan {
   const passes = offensePlaybook(opponent, EARLY, "pass", "shotgun");
   const theirO = runs.map((r, i) => 0.45 * r + 0.55 * passes[i]!);
   const defenseScore = DEFENSE_CONCEPTS.map((d, j) => ({ d, score: -OFFENSE_CONCEPTS.reduce((t, _c, i) => t + theirO[i]! * EDGE_TABLE[i]![j]!, 0) }));
-  const two = offenseScore.sort((a, b) => b.score - a.score || a.c.localeCompare(b.c)).slice(0, 2).map((x) => x.c);
-  const one = defenseScore.sort((a, b) => b.score - a.score || a.d.localeCompare(b.d))[0]!.d;
+  // Some variety: each staff picks among its best few, its own way (the same every time for this matchup).
+  const rng = new Rng(`${team.abbr}:${opponent.abbr}:${team.staff?.oc.id ?? ""}:practice`);
+  const pickFrom = <T extends { score: number }>(xs: T[], n: number, k: number): T[] => {
+    const pool = [...xs].sort((a, b) => b.score - a.score).slice(0, k);
+    const out: T[] = [];
+    while (out.length < n && pool.length) {
+      const min = Math.min(...pool.map((x) => x.score));
+      const i = pool.indexOf(weightedPick(rng, pool, (x) => x.score - min + 0.25));
+      out.push(pool.splice(i, 1)[0]!);
+    }
+    return out;
+  };
+  const two = pickFrom(offenseScore.map((x) => ({ ...x, score: x.score + 0.8 * schemeLean(team, x.c) })), 2, 5).map((x) => x.c);
+  const one = pickFrom(defenseScore, 1, 3)[0]!.d;
   return { installs: [...two, one], intensity: "normal" };
+}
+
+/** How much a team's own playbook favours a concept (its scheme's mix in an ordinary situation). */
+function schemeLean(team: Team, c: OffenseConcept): number {
+  const kind = OFFENSE_CONCEPT_INFO[c].kind;
+  return offensePlaybook(team, EARLY, kind, "shotgun")[OFFENSE_CONCEPTS.indexOf(c)]! * 3;
 }
 
 /** Both teams' plans for a game: their own standing plans, or the AI's for this opponent. */

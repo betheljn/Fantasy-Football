@@ -10,6 +10,7 @@ import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
 import { OnlineLeagueView, STAGE_NAMES } from "./OnlineLeague";
 import { useOffers } from "./offers";
+import { StoryCard } from "../components/story";
 
 export function OnlineHub() {
   const t = useTheme();
@@ -27,6 +28,13 @@ export function OnlineHub() {
   const open = d.canMakeMoves ? 72 - team.roster.length : 0;
   const off = me.offseason;
   const madeCall = off ? !!off.choices[STAGE_CHOICE_KEY[off.stage]]?.[me.team] : false;
+  // The latest headlines (your own first among the week's biggest).
+  const news = d.save?.news ?? [];
+  const latest = news.length ? Math.max(...news.map((x) => x.week)) : 0;
+  const headlines = news
+    .filter((x) => x.week === latest)
+    .sort((a, b) => Number(b.teams.includes(userTeam)) - Number(a.teams.includes(userTeam)) || b.importance - a.importance)
+    .slice(0, 3);
   const items: Array<{ key: string; icon: IconName; title: string; detail: string; go: string }> = [];
   // Your game this week, if it's against an AI team: coach it (the league plays it with your calls).
   const next = d.canMakeMoves ? schedule.games.find((g) => g.week === weeksPlayed + 1 && (g.home === userTeam || g.away === userTeam)) : undefined;
@@ -75,6 +83,17 @@ export function OnlineHub() {
           items.map((x, i) => <NavRow key={x.key} icon={x.icon} title={x.title} detail={x.detail} badge={x.key === "offers" ? String(waiting) : undefined} onPress={() => router.push(x.go as never)} last={i === items.length - 1} />)
         )}
       </NavGroup>
+      {headlines.length ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: t.muted, fontWeight: "700", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, marginLeft: 4 }}>Around the league</Text>
+          {headlines.map((s, i) => (
+            <StoryCard key={s.id} s={s} lead={i === 0} mine={s.teams.includes(userTeam)} theme={t} />
+          ))}
+          <Text onPress={() => router.push("/news")} style={{ color: t.accent, fontWeight: "700", textAlign: "center", paddingVertical: 6 }}>
+            All the headlines
+          </Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

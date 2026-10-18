@@ -8,6 +8,7 @@
 // own team that week; anyone who didn't is covered by the AI (injured reserve
 // and free-agent signings, as for every AI team).
 import {
+  type Story,
   withOwners,
   syncVenues,
   advanceScoutingWeek,
@@ -51,6 +52,7 @@ import {
 } from "@dynasty/sim";
 import type { LeagueState } from "./state.ts";
 import { weekDuels } from "./duels.ts";
+import { campNews, postseasonStories, weekNews } from "./news.ts";
 
 /** Everything played this season so far (cleared when the next season opens). */
 export interface SeasonProgress {
@@ -68,6 +70,8 @@ export interface SeasonProgress {
   lineups: LineupLog;
   /** Next year's draft class as every team has scouted and recruited it so far (absent: from before weekly scouting online). */
   scouting?: ScoutingState;
+  /** The season's news: the national feed, and each friend's own stories (tagged for them; sent only to them). */
+  news?: Story[];
 }
 
 /**
@@ -116,7 +120,9 @@ export function openSeason(s: LeagueState): LeagueState {
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
-  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups } };
+  // Training camp's stories open the season's news.
+  const news = s.dynasty.camp?.length ? campNews(league, s.dynasty.camp, [...humanTeams(s)]) : [];
+  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups, ...(news.length ? { news } : {}) } };
 }
 
 /**
@@ -125,7 +131,7 @@ export function openSeason(s: LeagueState): LeagueState {
  */
 export function advance(s: LeagueState, ready: ReadonlySet<string>): { state: LeagueState; summary: AdvanceSummary } {
   // Every friend is an owner, earning XP (leagues from before owners get theirs now).
-  s = { ...s, dynasty: withOwners(s.dynasty, humanTeams(s)) };
+  s = { ...s, dynasty: syncVenues(withOwners(s.dynasty, humanTeams(s))) };
   const step = nextStep(s);
   if (step.kind === "week") return playNextWeek(s, ready);
   if (step.kind === "playoffs") return playPlayoffs(s);
@@ -166,6 +172,20 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   const talks = aiTradeWeek(ai.league, seasonWindow(ai.league, week), humanTeams(s), tradedIds(p.trades));
   lineups = logTrades(lineups, ai.league, talks.league, talks.trades, week + 1);
   const games = played.games.map((g) => g.summary);
+  const news = weekNews({
+    before: league0,
+    after: talks.league,
+    schedule: sched,
+    week,
+    games: played.games,
+    resultsBefore: p.results,
+    stats,
+    injuries: hurt,
+    trades: talks.trades,
+    ...(s.dynasty.careers ? { careers: s.dynasty.careers } : {}),
+    rivalryHistory: s.dynasty.rivalryGames ?? [],
+    friends: [...humanTeams(s)],
+  });
   const progress: SeasonProgress = {
     ...p,
     results: [...p.results, ...games],
@@ -177,6 +197,7 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     covered: covered.length ? [...p.covered, { week, teams: covered }] : p.covered,
     lineups,
     scouting,
+    news: [...(p.news ?? []), ...news],
   };
   return {
     state: { ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
@@ -198,8 +219,9 @@ function seasonResult(s: LeagueState) {
 
 function playPlayoffs(s: LeagueState) {
   const playoffs = simulatePlayoffs(s.dynasty.league, seasonResult(s));
+  const news = postseasonStories(s.dynasty.league, s.dynasty.league.season, playoffs, [...humanTeams(s)]);
   return {
-    state: { ...s, progress: { ...s.progress, playoffs } },
+    state: { ...s, progress: { ...s.progress, playoffs, news: [...(s.progress.news ?? []), ...news] } },
     summary: { kind: "playoffs" as const, season: s.dynasty.league.season, champion: playoffs.champion, runnerUp: playoffs.runnerUp },
   };
 }

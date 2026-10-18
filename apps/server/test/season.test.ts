@@ -39,6 +39,8 @@ describe("online season", () => {
     expect(po.summary.kind).toBe("playoffs");
     s = po.state;
     expect(s.progress.playoffs?.champion).toBeTruthy();
+    // The postseason makes the news (title games and every round).
+    expect(s.progress.news!.some((x) => x.kind === "playoff" || x.kind === "title")).toBe(true);
     expect(nextStep(s)).toEqual({ kind: "offseason", stage: "open" });
     // Draft week ends; then a stage at a time, Ohio making some calls and Texas none.
     s = advance(s, new Set()).state;
@@ -71,6 +73,9 @@ describe("online season", () => {
     expect(s.offseason).toBeUndefined();
     expect(s.dynasty.league.season).toBe(2032);
     expect(s.weeksPlayed).toBe(0);
+    // The new season opens with training camp's stories.
+    expect(s.progress.news!.length).toBeGreaterThan(0);
+    expect(s.progress.news!.every((x) => x.kind === "camp")).toBe(true);
     expect(s.progress.results).toHaveLength(0);
     expect(s.dynasty.history.at(-1)?.champion).toBe(po.state.progress.playoffs!.champion);
     expect(s.dynasty.springs?.at(-1)).toBeTruthy();

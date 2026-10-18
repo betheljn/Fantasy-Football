@@ -610,7 +610,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     const { state, version, data: raw } = await loadState(req.params.id);
     reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
     // In the offseason, other friends' calls for the open stage stay private (and everyone's coaching calls).
-    const data = state.offseason || state.coaching || state.duels || state.recruiting || state.scoutPlans ? encodeState(forMember(state, member.team)) : raw;
+    const privateBits = state.offseason || state.coaching || state.duels || state.recruiting || state.scoutPlans || state.progress.news?.some((x) => x.for);
+    const data = privateBits ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
     if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));
     return reply.send(data);

@@ -52,6 +52,8 @@ export interface Story {
   importance: number;
   /** Only for your team's local feed (your recap and preview). */
   local?: boolean;
+  /** Online: the friend's team whose own feed this belongs in (absent: everyone's). */
+  for?: string;
 }
 
 export interface WeekNewsInput {
