@@ -91,6 +91,7 @@ export * from "./contracts/inseason.ts";
 export * from "./picks/lines.ts";
 export * from "./picks/slates.ts";
 export * from "./picks/house.ts";
+export * from "./picks/shared.ts";
 export * from "./media/news.ts";
 export * from "./media/radio.ts";
 export * from "./collect/moments.ts";

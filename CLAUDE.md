@@ -469,6 +469,22 @@ as an aerial view in Skia, on a stadium screen and around the field.
    the stadium around the field on game day
 4. Online: friends build their stadiums
 
+### Milestone 27: online radio and picks
+Picks and the radio show in leagues with friends (until now solo only).
+Decided: the league works the board out once a week on the server (everyone
+sees the same board and the same show); the featured games are AI against AI
+(nobody bets against a friend's team), plus overs on your own players in your
+own game; each friend keeps their own points against the house, and a
+leaderboard ranks the friends.
+1. Sim: the shared board (every friend's game for their own players, then the
+   featured AI games), each friend's view of it, slates checked against that
+   view (lines from the board, never the phone), the show with every friend's
+   game off it, and the friends' leaderboard
+2. Server: the board and the show worked out after each week is played;
+   slates placed as moves, settled when the week is played; balances,
+   history and host records per league; the leaderboard
+3. App: the picks screen, the radio show and the leaderboard online
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style

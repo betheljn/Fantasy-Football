@@ -95,9 +95,10 @@ const describe = (p: Prop, side: PickSide, home: string, away: string) =>
   p.kind === "spread" ? sideLabel(p, side, home, away) : p.kind === "total" ? `${side} ${p.line} total points` : `${p.name} ${side} ${p.line} ${PROP_STAT_NAMES[p.stat!]}`;
 
 /** Each host's picks for the week, by personality; one pick per game per host. */
-export function hostPicks(board: readonly GameLines[], stats: SeasonStats, own?: string): HostPick[] {
-  // Your own game stays off the show's board, as it's off yours.
-  const games = board.filter((g) => !own || (g.game.home !== own && g.game.away !== own));
+export function hostPicks(board: readonly GameLines[], stats: SeasonStats, own?: string | ReadonlySet<string>): HostPick[] {
+  // Your own game stays off the show's board, as it's off yours (online: every friend's game).
+  const off = typeof own === "string" ? new Set([own]) : (own ?? new Set<string>());
+  const games = board.filter((g) => !off.has(g.game.home) && !off.has(g.game.away));
   const props = games.flatMap((g) => g.props.map((p) => ({ p, g })));
   const take = (role: HostRole, ranked: Array<{ p: Prop; side: PickSide; reason: string }>): HostPick[] => {
     const used = new Set<string>();
@@ -237,6 +238,8 @@ export interface RadioShowInput {
   records: HostRecords;
   /** Your team: off the show's board, as it's off yours. */
   own?: string;
+  /** Online: every friend's team (their games stay off the show, as they're off the board). */
+  friends?: ReadonlySet<string>;
 }
 
 /** Write this week's show. */
@@ -277,7 +280,7 @@ export function radioShow(input: RadioShowInput): RadioShow {
   }
 
   // This week's picks.
-  const picks = hostPicks(input.board, input.stats, input.own);
+  const picks = hostPicks(input.board, input.stats, input.friends ?? input.own);
   const homeAway = new Map(input.board.map((g) => [g.game.id, g.game]));
   for (const role of HOST_ROLES) {
     const mine = picks.filter((p) => p.host === role);
