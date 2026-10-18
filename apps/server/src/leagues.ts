@@ -534,6 +534,28 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           },
           {
             type: "object",
+            required: ["kind", "picks", "stake"],
+            properties: {
+              kind: { const: "slate" },
+              picks: {
+                type: "array",
+                maxItems: 6,
+                items: {
+                  type: "object",
+                  required: ["prop", "side"],
+                  additionalProperties: false,
+                  properties: {
+                    prop: { type: "string", maxLength: 80 },
+                    side: { enum: ["over", "under"] },
+                    via: { type: "object", required: ["host", "fade"], additionalProperties: false, properties: { host: { type: "string", maxLength: 40 }, fade: { type: "boolean" } } },
+                  },
+                },
+              },
+              stake: { type: "integer", minimum: 1, maximum: 10_000_000 },
+            },
+          },
+          {
+            type: "object",
             required: ["kind", "game", "calls"],
             properties: { kind: { const: "coach" }, game: { type: "string", maxLength: 80 }, calls: { type: "array", maxItems: MAX_CALLS, items: { anyOf: [{ type: "null" }, callSchema] } } },
           },
@@ -624,7 +646,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
     const { state, version, data: raw } = await loadState(req.params.id);
     reply.header("content-type", "application/json").header("x-save-version", String(version)).header("vary", "accept-encoding");
     // In the offseason, other friends' calls for the open stage stay private (and everyone's coaching calls).
-    const privateBits = state.offseason || state.coaching || state.duels || state.recruiting || state.scoutPlans || state.progress.news?.some((x) => x.for);
+    const privateBits = state.offseason || state.coaching || state.duels || state.recruiting || state.scoutPlans || state.progress.news?.some((x) => x.for) || Object.values(state.picks?.members ?? {}).some((m) => m.open.length > 0);
     const data = privateBits ? encodeState(forMember(state, member.team)) : raw;
     // A save is a couple of MB of text; gzipped it's a fraction of that (phones unzip it themselves).
     if (/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return reply.header("content-encoding", "gzip").send(await gzipped(data));

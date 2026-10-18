@@ -3,6 +3,7 @@
 import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice, type StadiumDesign } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 import type { DuelEntry } from "./duels.ts";
+import type { LeaguePicks } from "./picks.ts";
 
 export const STATE_VERSION = 1;
 
@@ -29,6 +30,8 @@ export interface LeagueState {
   setups?: Record<string, TeamSetupChoice>;
   /** In the lobby: each friend's top three skill groups (by member id); their program is built when the league starts. */
   programs?: Record<string, { groups: SkillGroup[]; region?: string }>;
+  /** Picks and the radio show: the coming week's board and show, the hosts' records, each friend's points (open slates private). */
+  picks?: LeaguePicks;
 }
 
 /** A friend's team made theirs: its identity and the head coach they built. */

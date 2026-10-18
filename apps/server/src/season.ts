@@ -53,6 +53,7 @@ import {
 import type { LeagueState } from "./state.ts";
 import { weekDuels } from "./duels.ts";
 import { campNews, postseasonStories, weekNews } from "./news.ts";
+import { openBoard, picksOf, settleWeek } from "./picks.ts";
 
 /** Everything played this season so far (cleared when the next season opens). */
 export interface SeasonProgress {
@@ -122,7 +123,9 @@ export function openSeason(s: LeagueState): LeagueState {
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
   // Training camp's stories open the season's news.
   const news = s.dynasty.camp?.length ? campNews(league, s.dynasty.camp, [...humanTeams(s)]) : [];
-  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups, ...(news.length ? { news } : {}) } };
+  const opened: LeagueState = { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups, ...(news.length ? { news } : {}) } };
+  // Week 1's board and show (last season's shows are done; the hosts' records carry on).
+  return openBoard({ ...opened, picks: { ...picksOf(opened), shows: [], last: [] } }, scheduleOf(opened), 1);
 }
 
 /**
@@ -200,8 +203,10 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     scouting,
     news: [...(p.news ?? []), ...news],
   };
+  // The week's slates and the hosts' picks are settled; then next week's board and show.
+  const settled = settleWeek({ ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress }, sched.season, week, played.games);
   return {
-    state: { ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
+    state: openBoard(settled, sched, week + 1),
     summary: { kind: "week" as const, season: sched.season, week, games, covered, trades: talks.trades.length, moves: ai.moves.length },
   };
 }

@@ -48,6 +48,7 @@ import {
 } from "@dynasty/sim";
 import { scheduleOf } from "./season.ts";
 import { duelUnderWay } from "./duels.ts";
+import { placeSlate } from "./picks.ts";
 import type { LeagueState } from "./state.ts";
 
 export type Move =
@@ -70,7 +71,9 @@ export type Move =
   /** Name your stadium. */
   | { kind: "rename"; name: string }
   /** Your week's practice, standing until changed (null: your staff plans it). */
-  | { kind: "practice"; plan: PracticePlan | null };
+  | { kind: "practice"; plan: PracticePlan | null }
+  /** A slate on the coming week's board: picks by prop id and side (the board sets the lines), and the points played. */
+  | { kind: "slate"; picks: Array<{ prop: string; side: "over" | "under"; via?: { host: string; fade: boolean } }>; stake: number };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
 export const MAX_CALLS = 600;
@@ -122,6 +125,8 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
   const week = s.weeksPlayed + 1;
   // (A league started before rosters were logged has no log yet; moves start it, as in the app.)
   const log = p.lineups ?? startLog(league);
+
+  if (move.kind === "slate") return placeSlate(s, team, move.picks, move.stake);
 
   if (move.kind === "upgrade") {
     // This season's XP so far counts toward your level.

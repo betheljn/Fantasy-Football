@@ -10,7 +10,7 @@
     "db:down": "docker compose down",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "test": "vitest run",
+    "test": "PICKS_SIMS=6 vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

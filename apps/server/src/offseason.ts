@@ -2,6 +2,7 @@
 // hires, re-signings, the draft board, free agency, cuts), changeable until
 // the stage closes. Anyone without a call when it closes is left to the AI.
 import { newsFor } from "./news.ts";
+import { picksForMember } from "./picks.ts";
 import { STAGE_CHOICE_KEY, type FreeAgentOffer, type PlayerId, type StaffSlot, type StagedChoices } from "@dynasty/sim";
 import type { FastifyInstance } from "fastify";
 import { changeLeague } from "./advance.ts";
@@ -58,6 +59,8 @@ export function forMember(s: LeagueState, team: string | null): LeagueState {
     const { recruiting: _all, ...rest } = s;
     s = mine ? { ...rest, recruiting: { [team!]: mine } } : rest;
   }
+  // Each friend's open slates are theirs alone (everyone's points and settled slates are on the leaderboard).
+  if (s.picks) s = { ...s, picks: picksForMember(s.picks, team) };
   // Duels are shown call by call (GET /duel), never whole.
   if (s.duels) {
     const { duels: _duels, ...rest } = s;
