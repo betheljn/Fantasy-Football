@@ -5,6 +5,11 @@
 import {
   SCOUTING,
   projectProblems,
+  acceptNaming,
+  homeGates,
+  namingAvailable,
+  namingOffers,
+  priceLimits,
   renameProblem,
   renameStadium,
   startLeagueBusiness,
@@ -73,6 +78,10 @@ export type Move =
   /** Your week's practice, standing until changed (null: your staff plans it). */
   | { kind: "practice"; plan: PracticePlan | null }
   /** A slate on the coming week's board: picks by prop id and side (the board sets the lines), and the points played. */
+  /** Your ticket and concession prices for the season (before your first home game). */
+  | { kind: "prices"; ticket: number; concessions: number }
+  /** Sell the stadium's naming rights: one of this season's offers, by its place in the list. */
+  | { kind: "naming"; offer: number }
   | { kind: "slate"; picks: Array<{ prop: string; side: "over" | "under"; via?: { host: string; fade: boolean } }>; stake: number };
 
 /** Most calls a coached game can have (a long overtime game has well under this). */
@@ -134,6 +143,22 @@ export function applyMove(s: LeagueState, team: string, move: Move): MoveResult 
     const problem = upgradeProblem(s.dynasty.owners?.[team], move.track, live);
     if (problem) return refuse(problem);
     return { state: { ...s, dynasty: buyUpgrade(s.dynasty, team, move.track, live) }, problems: [] };
+  }
+
+  if (move.kind === "prices" || move.kind === "naming") {
+    const all = s.dynasty.business ?? startLeagueBusiness(league);
+    const b = all[team];
+    if (!b) return refuse("No business for your team.");
+    if (move.kind === "prices") {
+      if (homeGates(league.teams[team]!, b, p.results, 0.5).length > 0) return refuse("Prices are set for the season once the first home game is played. Change them in the offseason.");
+      const lim = priceLimits(league.seed, league.season);
+      if (!Number.isInteger(move.ticket) || !Number.isInteger(move.concessions) || move.ticket < lim.ticket[0] || move.ticket > lim.ticket[1] || move.concessions < lim.concessions[0] || move.concessions > lim.concessions[1]) return refuse("That price is out of bounds.");
+      return { state: { ...s, dynasty: { ...s.dynasty, business: { ...all, [team]: { ...b, ticketPrice: move.ticket, concessionPrice: move.concessions } } } }, problems: [] };
+    }
+    const offer = namingOffers(league.seed, team, league.season)[move.offer];
+    if (!offer) return refuse("That offer isn't on the table.");
+    if (!namingAvailable(b, league.season)) return refuse("The stadium already carries a sponsor's name.");
+    return { state: { ...s, dynasty: { ...s.dynasty, business: { ...all, [team]: acceptNaming(b, offer, league.season) } } }, problems: [] };
   }
 
   if (move.kind === "build" || move.kind === "rename") {

@@ -575,8 +575,10 @@ export function completeOffseason(
   const nextLeague = camp.league;
 
   // Close the books: every team's season finances, cash and fans.
-  // Your team (any team making its own cuts and offers) runs its own business.
-  const humans = new Set([...teamChoices(cutChoices).keys(), ...teamChoices(freeAgencyChoices).keys()]);
+  // A person's team runs its own business: any team making its own cuts and
+  // offers, and every owner's team (online, a friend who left the offseason
+  // to the AI still sets their own prices and deals).
+  const humans = new Set([...teamChoices(cutChoices).keys(), ...teamChoices(freeAgencyChoices).keys(), ...Object.keys(dynasty.owners ?? {})]);
   const books = closeSeasonBooks(league, dynasty.business ?? startLeagueBusiness(league), league.season, played.season.results, records, dynasty.lastWinPct ?? new Map(), humans);
   const finances: Record<string, SeasonFinances[]> = {};
   for (const [abbr, f] of Object.entries(books.finances)) finances[abbr] = [...(dynasty.finances?.[abbr] ?? []), f].slice(-5);

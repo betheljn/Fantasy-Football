@@ -31,6 +31,10 @@ export default function OfficeTab() {
           <NavRow icon="cash-outline" title="Business" detail="Tickets, stadium, naming rights and the books" onPress={() => router.push("/business")} />
           <NavRow icon="color-palette-outline" title="Team look" detail="Name, logo and colors" onPress={() => router.push("/look")} last />
         </NavGroup>
+      ) : d.online ? (
+        <NavGroup title="Your job">
+          <NavRow icon="cash-outline" title="Business" detail="Tickets, stadium, naming rights and the books" onPress={() => router.push("/business")} last />
+        </NavGroup>
       ) : null}
 
       <YouGroup />

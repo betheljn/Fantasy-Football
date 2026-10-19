@@ -506,6 +506,8 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
             properties: { kind: { const: "build" }, project: { enum: Object.keys(PROJECTS) }, financing: { enum: ["cash", "bonds"] } },
           },
           { type: "object", required: ["kind", "name"], properties: { kind: { const: "rename" }, name: { type: "string", maxLength: 40 } } },
+          { type: "object", required: ["kind", "ticket", "concessions"], properties: { kind: { const: "prices" }, ticket: { type: "integer", minimum: 1, maximum: 100_000 }, concessions: { type: "integer", minimum: 1, maximum: 100_000 } } },
+          { type: "object", required: ["kind", "offer"], properties: { kind: { const: "naming" }, offer: { type: "integer", minimum: 0, maximum: 9 } } },
           {
             type: "object",
             required: ["kind", "plan"],

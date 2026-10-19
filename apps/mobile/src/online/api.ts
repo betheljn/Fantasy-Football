@@ -135,6 +135,9 @@ export type OnlineMove =
   | { kind: "scout"; plan: Array<{ prospect: string; points: number }> }
   | { kind: "build"; project: ProjectKind; financing: "cash" | "bonds" }
   | { kind: "rename"; name: string }
+  | { kind: "prices"; ticket: number; concessions: number }
+  /** Sell the naming rights: this season's offer at that place in the list. */
+  | { kind: "naming"; offer: number }
   /** A slate on the coming week's board: prop ids and sides (the league's board sets the lines). */
   | { kind: "slate"; picks: Array<{ prop: string; side: "over" | "under"; via?: { host: string; fade: boolean } }>; stake: number };
 

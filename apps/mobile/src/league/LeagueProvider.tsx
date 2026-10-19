@@ -81,6 +81,7 @@ import {
   answerPress,
   closeSeasonBooks,
   priceLimits,
+  namingOffers,
   jobOffers,
   pressConference,
   seasonReview,
@@ -1422,6 +1423,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const lim = priceLimits(league.seed, league.season);
       if (ticket < lim.ticket[0] || ticket > lim.ticket[1] || concessions < lim.concessions[0] || concessions > lim.concessions[1]) return ["That price is out of bounds."];
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, ticketPrice: ticket, concessionPrice: concessions } } } }, true);
+      if (online) sendMove({ kind: "prices", ticket, concessions });
       return [];
     },
     startStadiumProject: (kind, financing) => {
@@ -1454,6 +1456,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const b = all[s.userTeam]!;
       if (!namingAvailable(b, s.dynasty.league.season)) return ["The stadium already carries a sponsor's name."];
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: acceptNaming(b, offer, s.dynasty.league.season) } } }, true);
+      if (online) {
+        const at = namingOffers(s.dynasty.league.seed, s.userTeam, s.dynasty.league.season).findIndex((o) => o.sponsor === offer.sponsor && o.perYear === offer.perYear && o.years === offer.years);
+        if (at >= 0) sendMove({ kind: "naming", offer: at });
+      }
       return [];
     },
     toggleHofVote: (id) => {
