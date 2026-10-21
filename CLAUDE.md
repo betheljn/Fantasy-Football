@@ -485,6 +485,55 @@ leaderboard ranks the friends.
    history and host records per league; the leaderboard
 3. App: the picks screen, the radio show and the leaderboard online
 
+### Milestone 28: league life with friends
+The social side of online leagues: talk, recaps, a commissioner's tools and
+rivalries between friends. The server stays the source of truth.
+To decide: chat as a simple message board per league (no live sockets) or
+real-time; moderation (the commissioner deletes, everyone reports).
+1. Server: league chat (messages per league, newest first, paged; length
+   limits; the commissioner can delete), and automatic league posts (a week
+   played, a trade between friends, a title)
+2. Server: commissioner tools: pause the league, extend this week's deadline,
+   hand a friend's team to the AI (or back), remove a member; every action
+   posted to the league
+3. Sim and server: friends' rivalries: head-to-head records between friends,
+   a weekly league recap story everyone sees (the friends' games, the duels,
+   the picks leaderboard), friend-vs-friend lines in the news and on the show
+4. App: the league's chat and posts, commissioner controls, head-to-head on
+   team pages, and a shared league history (seasons, champions, the friends'
+   titles and records)
+
+### Milestone 29: game day depth
+More to play in your own games; the sim still decides every play, and new
+effects come in under a new rules version so past games replay unchanged.
+To decide: whether fatigue and substitutions are automatic with an override,
+or a call you make; how much of a two-minute drill you run yourself.
+1. Sim: player fatigue through a game (stamina and snaps), automatic rotation
+   by the depth chart, and your override (keep a starter in, rest a player)
+2. Sim: halftime adjustments (lean against what they've been calling, from
+   the first half's film) and momentum (a big play or turnover swings the
+   next few snaps a little)
+3. Sim: the two-minute drill and the end of the half: hurry-up, spikes,
+   out-of-bounds throws, timeouts; injuries you react to mid-game (who goes in)
+4. App: the call sheet's new choices (halftime, the hurry-up, subs), big-play
+   replays on the field, and a drive chart on the broadcast view
+
+### Milestone 30: owner choices that matter
+The owner's side as real trade-offs, not set-and-forget. Follows the long
+balance check (upgrades were tuned down; this makes them choices instead).
+To decide: whether upgrades cost money as well as points; how strongly owner
+goals and fan pressure push back on a winning but money-losing team.
+1. Sim: upgrades with running costs from the team's cash (facilities,
+   recruiting, analytics and the clinic each cost money every season), so a
+   small market chooses; a re-run of the long balance check
+2. Sim: coach contracts negotiated (years, money, a raise after a good
+   season; a coach who leaves for a better job), and owner goals each season
+   (win now, build, make money) that move the owner's trust and the fans
+3. Sim: the business as a weekly call: prices by game (a rival, a big game, a
+   losing streak), promotions, and fan mood that answers back
+4. App and server: the owner's screens (goals, budget, upgrades with their
+   running costs, coach contracts), solo and online
+
 After each step: run it, show sample output, and stop for review.
 
 ## Working style
