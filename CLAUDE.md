@@ -488,8 +488,10 @@ leaderboard ranks the friends.
 ### Milestone 28: league life with friends
 The social side of online leagues: talk, recaps, a commissioner's tools and
 rivalries between friends. The server stays the source of truth.
-To decide: chat as a simple message board per league (no live sockets) or
-real-time; moderation (the commissioner deletes, everyone reports).
+Decided: live chat over WebSockets (@fastify/websocket on the server, React
+Native's own WebSocket on the phone), messages kept in Postgres so history
+loads when you open the league; you can delete your own messages and the
+commissioner can delete anyone's (shown as removed).
 1. Server: league chat (messages per league, newest first, paged; length
    limits; the commissioner can delete), and automatic league posts (a week
    played, a trade between friends, a title)

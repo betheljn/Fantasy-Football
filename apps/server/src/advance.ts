@@ -2,6 +2,8 @@
 // readied up, when the deadline passes, or when the commissioner says so) and
 // friends' own moves. One change at a time per league; the save's version
 // guards against two servers racing.
+import { teamName, type League } from "@dynasty/sim";
+import { leaguePost } from "./chat.ts";
 import type { Db } from "./db.ts";
 import { tradeWindowOf } from "./moves.ts";
 import { advance, type AdvanceSummary } from "./season.ts";
@@ -55,7 +57,7 @@ type LeagueRow = NonNullable<Awaited<ReturnType<Db["league"]["findUnique"]>>> & 
  * in a season or another change got there first.
  */
 export async function advanceLeague(db: Db, leagueId: string, now = new Date()): Promise<AdvanceSummary | null> {
-  const r = await changeLeague<{ summary: AdvanceSummary; tradesOpen: boolean } | null>(
+  const r = await changeLeague<{ summary: AdvanceSummary; tradesOpen: boolean; post: string | null } | null>(
     db,
     leagueId,
     (state, league) => {
@@ -64,11 +66,13 @@ export async function advanceLeague(db: Db, leagueId: string, now = new Date()):
       const a = advance(state, ready);
       // Offers between friends last while trading stays open (not past the deadline, nor into a new season).
       const tradesOpen = a.summary.kind !== "offseason" && tradeWindowOf(a.state) !== null;
-      return { state: a.state, result: { summary: a.summary, tradesOpen }, resetWeek: true };
+      const post = advancePost(a.summary, a.state.dynasty.league, new Set(Object.keys(a.state.humans)));
+      return { state: a.state, result: { summary: a.summary, tradesOpen, post }, resetWeek: true };
     },
     now,
   );
   if (!r?.result) return null;
+  if (r.result.post) await leaguePost(db, leagueId, r.result.post);
   if (!r.result.tradesOpen) {
     await db.tradeOffer.updateMany({ where: { leagueId, status: "open" }, data: { status: "expired", note: "Trading closed before it was answered." } });
   }
@@ -84,4 +88,21 @@ export async function advanceOverdue(db: Db, now = new Date()): Promise<Array<{ 
     if (summary) out.push({ leagueId: id, summary });
   }
   return out;
+}
+
+/** What the league posts to its chat after an advance (null: nothing worth a post). */
+export function advancePost(summary: AdvanceSummary, league: League, friends: ReadonlySet<string>): string | null {
+  const name = (abbr: string) => (league.teams[abbr] ? teamName(league.teams[abbr]!) : abbr);
+  if (summary.kind === "week") {
+    const theirs = summary.games.filter((g) => friends.has(g.home) || friends.has(g.away));
+    const lines = theirs.map((g) => {
+      const [w, l, ws, ls] = g.homeScore >= g.awayScore ? [g.home, g.away, g.homeScore, g.awayScore] : [g.away, g.home, g.awayScore, g.homeScore];
+      return ws === ls ? `${name(g.away)} and ${name(g.home)} tied ${ws}-${ls}` : `${name(w)} ${ws}, ${name(l)} ${ls}`;
+    });
+    return [`Week ${summary.week} is in.`, ...lines].join("\n");
+  }
+  if (summary.kind === "playoffs") return `${name(summary.champion)} won the ${summary.season} championship over ${name(summary.runnerUp)}.`;
+  if (summary.done === "open") return `The ${summary.season} offseason is open: staff calls first.`;
+  if (summary.next === null) return `The ${summary.nextSeason ?? summary.season + 1} season is open.`;
+  return null;
 }

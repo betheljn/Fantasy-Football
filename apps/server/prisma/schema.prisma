@@ -30,6 +30,7 @@ model League {
   members    Member[]
   save       LeagueSave?
   offers     TradeOffer[]
+  messages   ChatMessage[]
 }
 
 model Member {
@@ -77,4 +78,23 @@ model TradeOffer {
   updatedAt DateTime @updatedAt
 
   @@index([leagueId, status])
+}
+
+/// The league's chat: friends' messages and the league's own posts (a week
+/// played, a trade between friends, a title). Kept so history loads when you
+/// open the league; sent live to everyone connected.
+model ChatMessage {
+  id        String    @id @default(cuid())
+  leagueId  String
+  league    League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  /// Who wrote it (null: the league's own post).
+  memberId  String?
+  /// "chat" (a friend's message) or "post" (the league's).
+  kind      String    @default("chat")
+  body      String
+  createdAt DateTime  @default(now())
+  /// Removed by its writer or the commissioner (the body is cleared).
+  removedAt DateTime?
+
+  @@index([leagueId, createdAt])
 }
