@@ -122,6 +122,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       saveVersion: version,
       weekHours: league.weekHours,
       deadline: league.deadline?.toISOString() ?? null,
+      paused: league.paused,
       next: league.phase === "season" ? nextStep(state) : null,
       /** In the offseason: friends who've made their call for the open stage. */
       madeCall: madeCall(state),
@@ -135,6 +136,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
           team: teamOf(m),
           isCommissioner: m.isCommissioner,
           ready: m.ready,
+          away: m.away,
           setUp: setups.has(teamOf(m) ?? ""),
           ...(program ? { program: { groups: program.groups, region: placed?.region ?? null } } : {}),
         };
@@ -442,8 +444,9 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       const league = await db.league.findUniqueOrThrow({ where: { id: member.leagueId } });
       if (league.phase !== "season") return fail(reply, 409, "The league hasn't started");
       await db.member.update({ where: { id: member.id }, data: { ready: req.body.ready } });
-      const waiting = await db.member.count({ where: { leagueId: league.id, ready: false } });
-      const advanced = waiting === 0 ? await advanceLeague(db, league.id) : null;
+      // Nobody waits on a team the commissioner handed to the AI; a paused league doesn't play on its own.
+      const waiting = await db.member.count({ where: { leagueId: league.id, ready: false, away: false } });
+      const advanced = waiting === 0 && !league.paused ? await advanceLeague(db, league.id) : null;
       return { advanced, league: await view(league.id) };
     },
   );

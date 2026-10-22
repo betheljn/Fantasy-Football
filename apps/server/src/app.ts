@@ -5,6 +5,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { advanceOverdue } from "./advance.ts";
 import { chatRoutes } from "./chat.ts";
+import { commissionerRoutes } from "./commissioner.ts";
 import type { Db } from "./db.ts";
 import { leagueRoutes } from "./leagues.ts";
 import { offerRoutes } from "./offers.ts";
@@ -49,6 +50,7 @@ export function buildApp({ db, logger = false, sweepEveryMs }: AppOptions): Fast
   leagueRoutes(app, db);
   offerRoutes(app, db);
   offseasonRoutes(app, db);
+  commissionerRoutes(app, db);
   // League chat (its live route needs the WebSocket plugin loaded first).
   app.register(websocket);
   app.register(async (scoped) => chatRoutes(scoped, db));

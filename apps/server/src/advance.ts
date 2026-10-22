@@ -81,7 +81,8 @@ export async function advanceLeague(db: Db, leagueId: string, now = new Date()):
 
 /** Advance every league whose deadline has passed (run on a timer). */
 export async function advanceOverdue(db: Db, now = new Date()): Promise<Array<{ leagueId: string; summary: AdvanceSummary }>> {
-  const due = await db.league.findMany({ where: { phase: "season", deadline: { lte: now } }, select: { id: true } });
+  // (A paused league waits for the commissioner.)
+  const due = await db.league.findMany({ where: { phase: "season", paused: false, deadline: { lte: now } }, select: { id: true } });
   const out: Array<{ leagueId: string; summary: AdvanceSummary }> = [];
   for (const { id } of due) {
     const summary = await advanceLeague(db, id, now);

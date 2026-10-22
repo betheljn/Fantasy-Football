@@ -25,6 +25,8 @@ model League {
   weekHours  Int      @default(24)
   /** When the coming week is played if not everyone has readied up (null in the lobby). */
   deadline   DateTime?
+  /** Paused by the commissioner: the deadline doesn't run and nothing plays on its own. */
+  paused     Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   members    Member[]
@@ -45,6 +47,8 @@ model Member {
   isCommissioner Boolean  @default(false)
   /** Ready for the next week to be played. */
   ready          Boolean  @default(false)
+  /** Handed to the AI by the commissioner: the AI makes their calls, and nobody waits on them. */
+  away           Boolean  @default(false)
   joinedAt       DateTime @default(now())
 
   @@unique([leagueId, team])
