@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice, type StadiumDesign } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice, type StadiumDesign, type FriendGame } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -65,6 +65,8 @@ export interface SaveState {
   setup?: TeamSetup;
   /** Online: every friend's points and settled slates (the picks leaderboard). */
   friendsPicks?: Array<{ team: string; balance: number; history: SettledSlate[] }>;
+  /** Online: every game between two friends' teams, every season (the head-to-head series). */
+  friendGames?: FriendGame[];
 }
 
 export interface TeamSetup {

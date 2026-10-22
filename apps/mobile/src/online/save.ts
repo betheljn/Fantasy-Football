@@ -1,7 +1,7 @@
 // An online league's save, as the server sends it, turned into the app's own
 // save state so every league screen (standings, teams, box scores, replays)
 // works on it unchanged. Read-only: nothing here is ever saved on the phone.
-import { SLATE_RULES, memberBoard, type GameLines, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord, postseasonStages, type ScoutingState, type Story } from "@dynasty/sim";
+import { type FriendGame, SLATE_RULES, memberBoard, type GameLines, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, fromSaveJson, type CoachCall, type Collection, type Dynasty, type OffseasonStage, type StagedChoices, type GameSummary, type InjuryNews, type InSeasonMove, type LineupLog, type PlayoffResult, type SeasonStats, type TradeRecord, postseasonStages, type ScoutingState, type Story } from "@dynasty/sim";
 import { SAVE_VERSION, type SaveState } from "../dynasty/save";
 
 /** The server's league state (apps/server/src/state.ts and season.ts). */
@@ -25,6 +25,7 @@ interface ServerState {
     last: GradedHostPick[];
     members: Record<string, { balance: number; open: Slate[]; history: SettledSlate[] }>;
   };
+  friendGames?: FriendGame[];
   progress: {
     /** Next year's class as every team has scouted and recruited it so far. */
     scouting?: ScoutingState;
@@ -71,6 +72,7 @@ export function saveFromServer(text: string, userTeam: string): { save: SaveStat
     news: p.news ?? [],
     ...(s.coaching?.[userTeam] ? { coaching: { season: s.dynasty.league.season, ...s.coaching[userTeam]! } } : {}),
     ...(s.picks ? picksFromServer(s.picks, userTeam, new Set(Object.keys(s.humans))) : {}),
+    ...(s.friendGames ? { friendGames: s.friendGames } : {}),
   };
   return { save, humans: s.humans, offseason: s.offseason ?? null };
 }

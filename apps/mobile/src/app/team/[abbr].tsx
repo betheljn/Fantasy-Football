@@ -23,7 +23,8 @@ import {
 import { useMemo } from "react";
 import { Button, Card, LinkRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner } from "../../components/ui";
 import { teamColors } from "../../field/colors";
-import { useLeague } from "../../league/LeagueProvider";
+import { useDynasty, useLeague } from "../../league/LeagueProvider";
+import { FriendSeriesCard } from "../../components/FriendSeries";
 import { useTheme } from "../../theme";
 
 export default function TeamScreen() {
@@ -31,6 +32,7 @@ export default function TeamScreen() {
   const router = useRouter();
   const { abbr } = useLocalSearchParams<{ abbr: string }>();
   const { league, schedule, results, standings, rankings, userTeam, weeksPlayed } = useLeague();
+  const d = useDynasty();
   const team = league.teams[abbr ?? ""];
   const injured = useMemo(() => (team ? injuryReport(league, weeksPlayed, team.abbr) : []), [league, weeksPlayed, team]);
   if (!team) return <Text style={{ padding: 16, color: t.text }}>Unknown team.</Text>;
@@ -75,6 +77,8 @@ export default function TeamScreen() {
           Payroll {formatMoney(pay)} of {formatMoney(limit)}
           {rollover > 0 ? ` (${formatMoney(cap)} cap + ${formatMoney(rollover)} rolled over)` : " (the cap)"}
         </Text>
+
+        {d.online && team.abbr in d.online.humans ? <FriendSeriesCard team={team.abbr} friends={Object.keys(d.online.humans)} games={d.save?.friendGames ?? []} title={team.abbr === userTeam ? "Against your friends" : "Against friends"} /> : null}
 
         {(() => {
           const room = teamMorale(team, results, league.season, cap);

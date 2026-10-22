@@ -23,6 +23,8 @@ export interface OnlineMember {
   team: string | null;
   isCommissioner: boolean;
   ready: boolean;
+  /** Handed to the AI by the commissioner (nobody waits on them). */
+  away?: boolean;
   /** Their team's look and coach are set (lobby). */
   setUp?: boolean;
   /** Their skill groups and the region their program lands in (lobby). */
@@ -82,6 +84,8 @@ export interface OnlineLeague {
   saveVersion: number;
   weekHours: number;
   deadline: string | null;
+  /** Paused by the commissioner: nothing plays until it's picked back up. */
+  paused?: boolean;
   next: NextStep | null;
   /** In the offseason: friends who've made their call for the open stage. */
   madeCall: string[];
@@ -167,6 +171,34 @@ export interface OnlineDuel extends DuelView {
   handoff: { until: "drive" | "half" | "game"; at: number } | null;
 }
 
+/** A message in the league's chat: a friend's, or the league's own post. */
+export interface ChatMessage {
+  id: string;
+  kind: "chat" | "post";
+  memberId: string | null;
+  /** The writer's name (null for the league's posts). */
+  author: string | null;
+  /** Empty once removed. */
+  body: string;
+  removed: boolean;
+  createdAt: string;
+}
+
+/** What arrives over the live connection. */
+export type ChatEvent = { type: "ready" } | { type: "message"; message: ChatMessage } | { type: "removed"; id: string } | { type: "error"; error: string };
+
+/** The commissioner's tools. */
+export type CommissionerAction =
+  | { action: "pause" }
+  | { action: "resume" }
+  | { action: "extend"; hours: number }
+  | { action: "away"; memberId: string }
+  | { action: "back"; memberId: string }
+  | { action: "remove"; memberId: string };
+
+/** The league's live connection (WebSocket), on the same server. */
+export const liveUrl = (id: string) => `${serverUrl().replace(/^http/, "ws")}/leagues/${id}/live`;
+
 /** A trade one friend offered another. */
 export interface TradeOffer {
   id: string;
@@ -211,6 +243,10 @@ export const api = {
   start: (id: string, token: string) => call<OnlineLeague>("POST", `/leagues/${id}/start`, {}, token),
   ready: (id: string, token: string, ready: boolean) => call<{ advanced: AdvanceSummary | null; league: OnlineLeague }>("POST", `/leagues/${id}/ready`, { ready }, token),
   advance: (id: string, token: string) => call<{ advanced: AdvanceSummary; league: OnlineLeague }>("POST", `/leagues/${id}/advance`, {}, token),
+  chat: (id: string, token: string, before?: string) => call<{ messages: ChatMessage[]; more: boolean }>("GET", `/leagues/${id}/chat${before ? `?before=${encodeURIComponent(before)}` : ""}`, undefined, token),
+  sendChat: (id: string, token: string, body: string) => call<{ message: ChatMessage }>("POST", `/leagues/${id}/chat`, { body }, token),
+  removeChat: (id: string, token: string, messageId: string) => call<{ removed: boolean }>("POST", `/leagues/${id}/chat/${messageId}/remove`, {}, token),
+  commissioner: (id: string, token: string, action: CommissionerAction) => call<{ done: boolean; deadline?: string }>("POST", `/leagues/${id}/commissioner`, action, token),
   move: (id: string, token: string, move: OnlineMove) => call<MoveAnswer>("POST", `/leagues/${id}/moves`, { move }, token),
   offseason: (id: string, token: string, choice: OffseasonChoice) =>
     call<{ done: boolean; problems: string[]; saveVersion: number }>("POST", `/leagues/${id}/offseason`, { choice }, token),

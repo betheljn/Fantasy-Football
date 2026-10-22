@@ -485,7 +485,7 @@ leaderboard ranks the friends.
    history and host records per league; the leaderboard
 3. App: the picks screen, the radio show and the leaderboard online
 
-### Milestone 28: league life with friends
+### Milestone 28: league life with friends (done)
 The social side of online leagues: talk, recaps, a commissioner's tools and
 rivalries between friends. The server stays the source of truth.
 Decided: live chat over WebSockets (@fastify/websocket on the server, React

@@ -13,6 +13,7 @@ export default function MediaTab() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
       <NavGroup>
+        {d.online ? <NavRow icon="chatbubbles-outline" title="League chat" detail="Talk with your league, live" onPress={() => router.push("/chat")} /> : null}
         <NavRow icon="newspaper-outline" title="Headlines" detail={top ? top.headline : "Stories start after week 1"} onPress={() => router.push("/news")} />
         <NavRow
           icon="repeat-outline"
