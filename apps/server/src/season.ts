@@ -54,6 +54,7 @@ import type { LeagueState } from "./state.ts";
 import { weekDuels } from "./duels.ts";
 import { campNews, postseasonStories, weekNews } from "./news.ts";
 import { openBoard, picksOf, settleWeek } from "./picks.ts";
+import { friendGamesOf, friendStories } from "@dynasty/sim";
 
 /** Everything played this season so far (cleared when the next season opens). */
 export interface SeasonProgress {
@@ -190,6 +191,9 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     told: p.news ?? [],
     friends: [...humanTeams(s)],
   });
+  // Games between friends: the series story, and kept for the head-to-head.
+  const friendsPlayed = friendGamesOf(games, humanTeams(s), sched.season, week);
+  const friendNews = friendStories(talks.league, friendsPlayed, s.friendGames ?? []);
   const progress: SeasonProgress = {
     ...p,
     results: [...p.results, ...games],
@@ -201,10 +205,10 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     covered: covered.length ? [...p.covered, { week, teams: covered }] : p.covered,
     lineups,
     scouting,
-    news: [...(p.news ?? []), ...news],
+    news: [...(p.news ?? []), ...friendNews, ...news],
   };
   // The week's slates and the hosts' picks are settled; then next week's board and show.
-  const settled = settleWeek({ ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress }, sched.season, week, played.games);
+  const settled = settleWeek({ ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress, ...(friendsPlayed.length || s.friendGames ? { friendGames: [...(s.friendGames ?? []), ...friendsPlayed] } : {}) }, sched.season, week, played.games);
   return {
     state: openBoard(settled, sched, week + 1),
     summary: { kind: "week" as const, season: sched.season, week, games, covered, trades: talks.trades.length, moves: ai.moves.length },
@@ -226,8 +230,13 @@ function seasonResult(s: LeagueState) {
 function playPlayoffs(s: LeagueState) {
   const playoffs = simulatePlayoffs(s.dynasty.league, seasonResult(s));
   const news = postseasonStories(s.dynasty.league, s.dynasty.league.season, playoffs, [...humanTeams(s)]);
+  // Friends meeting in championship week or the playoffs count in their series too.
+  const post = [...(playoffs.titleGames ?? []).map((g) => g.summary), ...playoffs.games.map((g) => g.summary)];
+  const weeks = scheduleOf(s).weeks;
+  const friendsPlayed = post.flatMap((g, i) => friendGamesOf([g], humanTeams(s), s.dynasty.league.season, weeks + 1 + (i < (playoffs.titleGames?.length ?? 0) ? 0 : 1)));
+  const friendNews = friendStories(s.dynasty.league, friendsPlayed, s.friendGames ?? []);
   return {
-    state: { ...s, progress: { ...s.progress, playoffs, news: [...(s.progress.news ?? []), ...news] } },
+    state: { ...s, progress: { ...s.progress, playoffs, news: [...(s.progress.news ?? []), ...news, ...friendNews] }, ...(friendsPlayed.length ? { friendGames: [...(s.friendGames ?? []), ...friendsPlayed] } : {}) },
     summary: { kind: "playoffs" as const, season: s.dynasty.league.season, champion: playoffs.champion, runnerUp: playoffs.runnerUp },
   };
 }

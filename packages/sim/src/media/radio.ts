@@ -191,6 +191,11 @@ const REACT: Record<Story["kind"], Voice> = {
     hottake: ["That kid is starting by week three. Book it.", "Spring legend. Fall legend. Same thing.", "If he's not on the field opening day, somebody should be fired."],
     veteran: ["Spring ball is where you find out who wants it. That one wants it.", "I came up through the spring league. That's how you earn it.", "Practice-squad guys play for their lives in the spring. You can tell."],
   },
+  friends: {
+    numbers: ["I don't have a model for friendship. I do have one for that defense, and it's not kind.", "Head-to-head records are small samples. Small samples are the fun ones."],
+    hottake: ["That's bragging rights for a YEAR. Frame the box score.", "Somebody's group chat is on fire right now.", "That's not a win, that's a statement."],
+    veteran: ["You never forget the ones against your buddies. Never.", "Games against people you know are the hardest ones to sleep after."],
+  },
   rivalry: { numbers: ["Rivalry games run about four points closer than you'd expect. I checked."], hottake: ["That trophy belongs in one place and everybody knows where."], veteran: ["Throw the records out in a rivalry game. I've lived it."] },
   preview: { numbers: [""], hottake: [""], veteran: [""] },
   title: {
@@ -240,6 +245,8 @@ export interface RadioShowInput {
   own?: string;
   /** Online: every friend's team (their games stay off the show, as they're off the board). */
   friends?: ReadonlySet<string>;
+  /** Online: this week's games between friends, one line each ("X at Y. X lead the series 3-1."). */
+  friendPreviews?: readonly string[];
 }
 
 /** Write this week's show. */
@@ -277,6 +284,12 @@ export function radioShow(input: RadioShowInput): RadioShow {
       const rec = input.records[role];
       line(role, `${say(key(`result:${role}`), won * 2 >= mine.length ? BRAG[role] : CROW[role], { won, total: mine.length })} That's ${rec.won}-${rec.lost} on the season.`);
     }
+  }
+
+  // Online: this week's games between friends (off the board, never off the air).
+  for (const [i, text] of (input.friendPreviews ?? []).entries()) {
+    const role = HOST_ROLES[(i + 1) % 3]!;
+    line(role, `${i === 0 ? say(key("friends"), ["Circle this one:", "The one everybody in this league is talking about:", "Bragging rights on the line:"]) : "And"} ${text}`);
   }
 
   // This week's picks.

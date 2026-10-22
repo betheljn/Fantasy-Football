@@ -10,6 +10,7 @@ import {
   addToRecords,
   buildBoxScore,
   emptyRecords,
+  friendPreviews,
   gameLines,
   gradeHostPicks,
   memberBoard,
@@ -84,7 +85,9 @@ export function openBoard(s: LeagueState, schedule: Schedule, week: number): Lea
   const humans = humanTeams(s);
   const lines = sharedBoardGames(league, schedule, week, humans).map((g) => gameLines(league, g, sims()));
   const stories = (s.progress.news ?? []).filter((x) => x.week === week - 1 && !x.for && !x.local).sort((a, b) => b.importance - a.importance);
-  const show = radioShow({ leagueSeed: league.seed, season: league.season, week, board: lines, stats: s.progress.stats, stories, lastWeek: p.last, records: p.records, friends: humans });
+  const upcoming = schedule.games.filter((g) => g.week === week && humans.has(g.home) && humans.has(g.away));
+  const previews = friendPreviews(league, upcoming, s.friendGames ?? []);
+  const show = radioShow({ leagueSeed: league.seed, season: league.season, week, board: lines, stats: s.progress.stats, stories, lastWeek: p.last, records: p.records, friends: humans, ...(previews.length ? { friendPreviews: previews } : {}) });
   return { ...s, picks: { ...p, board: { season: league.season, week, lines }, shows: [...p.shows.filter((x) => x.season === league.season), show] } };
 }
 

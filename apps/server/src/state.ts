@@ -4,6 +4,7 @@ import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fro
 import { emptyProgress, type SeasonProgress } from "./season.ts";
 import type { DuelEntry } from "./duels.ts";
 import type { LeaguePicks } from "./picks.ts";
+import type { FriendGame } from "@dynasty/sim";
 
 export const STATE_VERSION = 1;
 
@@ -32,6 +33,8 @@ export interface LeagueState {
   programs?: Record<string, { groups: SkillGroup[]; region?: string }>;
   /** Picks and the radio show: the coming week's board and show, the hosts' records, each friend's points (open slates private). */
   picks?: LeaguePicks;
+  /** Every game between two friends' teams, every season (the head-to-head series). */
+  friendGames?: FriendGame[];
 }
 
 /** A friend's team made theirs: its identity and the head coach they built. */

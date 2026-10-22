@@ -37,7 +37,7 @@ export const MILESTONES: ReadonlyArray<{ key: PlayerStatKey; marks: readonly num
   { key: "tackles", marks: [750, 1_000, 1_500], what: "career tackles" },
 ];
 
-export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom" | "milestone" | "title" | "playoff" | "camp";
+export type StoryKind = "upset" | "clash" | "thriller" | "blowout" | "performance" | "streak" | "rankings" | "injury" | "trade" | "mvp" | "recap" | "preview" | "rivalry" | "spring" | "lockerroom" | "milestone" | "title" | "playoff" | "camp" | "friends";
 
 export interface Story {
   id: string;

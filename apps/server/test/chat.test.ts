@@ -98,13 +98,28 @@ describe("league chat", () => {
     expect(await closed).toBe(4003);
   });
 
-  it("posts each week's friends' results, the champion, and the new season", () => {
-    const league = newLeagueState("chat-posts").dynasty.league;
-    const g = (home: string, away: string, hs: number, as: number) => ({ id: `${home}${away}`, week: 3, home, away, homeScore: hs, awayScore: as, winner: hs > as ? home : as > hs ? away : null }) as never;
-    const week = advancePost({ kind: "week", season: 2031, week: 3, games: [g("OH", "TX", 24, 17), g("CA", "NY", 10, 13), g("MI", "FL", 20, 20)], covered: [], trades: 0, moves: 0 }, league, new Set(["OH", "MI"]));
-    expect(week!.split("\n")).toEqual(["Week 3 is in.", expect.stringMatching(/^.+ 24, .+ 17$/), expect.stringMatching(/tied 20-20$/)]);
-    expect(advancePost({ kind: "playoffs", season: 2031, champion: "OH", runnerUp: "TX" }, league, new Set())).toMatch(/won the 2031 championship over/);
-    expect(advancePost({ kind: "offseason", season: 2031, done: "cuts", next: null, covered: [], nextSeason: 2032 }, league, new Set())).toBe("The 2032 season is open.");
-    expect(advancePost({ kind: "offseason", season: 2031, done: "staff", next: "hire", covered: [] }, league, new Set())).toBeNull();
+  it("posts the week's recap (friends' results, series, the picks leader), the champion, and the new season", () => {
+    const base = newLeagueState("chat-posts");
+    const g = (home: string, away: string, hs: number, as: number, duel = false) =>
+      ({ id: `${home}${away}`, week: 3, home, away, homeScore: hs, awayScore: as, winner: hs > as ? home : as > hs ? away : null, ...(duel ? { coached: { team: home, calls: [], rival: away } } : {}) }) as never;
+    // OH and TX are friends who've met twice (OH won both) before tonight's duel; MI is a friend too.
+    const earlier = [1, 2].map((week) => ({ season: 2031, week, home: "OH", away: "TX", homeScore: 21, awayScore: 10, duel: false }));
+    const state = {
+      ...base,
+      humans: { OH: "m1", TX: "m2", MI: "m3" },
+      friendGames: [...earlier, { season: 2031, week: 3, home: "OH", away: "TX", homeScore: 24, awayScore: 17, duel: true }],
+      picks: { board: null, shows: [], records: { numbers: { won: 0, lost: 0 }, hottake: { won: 0, lost: 0 }, veteran: { won: 0, lost: 0 } }, last: [], members: { TX: { balance: 1250, open: [], history: [{} as never] }, OH: { balance: 900, open: [], history: [{} as never] } } },
+    };
+    const owners = new Map([["OH", "Jai"], ["TX", "Sam"], ["MI", "Kit"]]);
+    const week = advancePost({ kind: "week", season: 2031, week: 3, games: [g("OH", "TX", 24, 17, true), g("CA", "NY", 10, 13), g("MI", "FL", 20, 20)], covered: [], trades: 0, moves: 0 }, state, owners)!;
+    expect(week.split("\n")).toEqual([
+      "Week 3 is in.",
+      expect.stringMatching(/^Jai's .+ 24, Sam's .+ 17 \(a duel\): .+ lead the series 3-0$/),
+      expect.stringMatching(/^Florida .+ and Kit's .+ tied 20-20$/),
+      "Picks: Sam leads with 1,250 points.",
+    ]);
+    expect(advancePost({ kind: "playoffs", season: 2031, champion: "OH", runnerUp: "CA" }, state, owners)).toMatch(/^Jai's .+ won the 2031 championship over California/);
+    expect(advancePost({ kind: "offseason", season: 2031, done: "cuts", next: null, covered: [], nextSeason: 2032 }, state, owners)).toBe("The 2032 season is open.");
+    expect(advancePost({ kind: "offseason", season: 2031, done: "staff", next: "hire", covered: [] }, state, owners)).toBeNull();
   });
 });
