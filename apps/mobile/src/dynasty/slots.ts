@@ -3,6 +3,7 @@
 // which one you were playing.
 import { SLOT_COUNT, deserialize, deserializeProgress, serialize, serializeProgress, type OffseasonProgress, type SaveState, type SlotInfo } from "./save";
 import { LEGACY_KEY, loadText, removeText, saveText } from "./storage";
+import { teamLogo, teamName } from "@dynasty/sim";
 
 const INDEX = "slots";
 const slotKey = (n: number) => `slot${n}`;
@@ -61,7 +62,9 @@ export function slotInfo(slot: number, s: SaveState, progress: OffseasonProgress
     : s.weeksPlayed === 0 ? "Preseason"
     : s.playoffRoundsShown > 0 ? "Playoffs"
     : `Week ${s.weeksPlayed}`;
-  return { slot, team: s.userTeam, season, stage, savedAt: Date.now() };
+  const team = s.userTeam ? s.dynasty.league.teams[s.userTeam] : undefined;
+  const look = team ? { name: teamName(team), logo: teamLogo(team).id, ...(team.colors ? { colors: team.colors } : {}) } : {};
+  return { slot, team: s.userTeam, season, stage, savedAt: Date.now(), ...look };
 }
 
 async function updateIndex(slot: number, info: SlotInfo | null, active: number | null): Promise<SlotIndex> {

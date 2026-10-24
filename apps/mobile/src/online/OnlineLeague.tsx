@@ -3,12 +3,14 @@
 // deadline plays it), the commissioner can push it through, and the scores.
 // Everything is decided on the server; this asks and shows. Used by the
 // league's own screen and, once the league is open in the app, by the hub.
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Button, Card, SectionTitle, Swatch } from "../components/ui";
+import { Button, Card, Chips, LogoBadge, SectionTitle, Swatch } from "../components/ui";
+import { designedColors } from "../field/colors";
 import { useDynasty, useLeagueMaybe } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
+import { SKILL_GROUPS, regions } from "@dynasty/sim";
 import { api, type AdvanceSummary, type NextStep, type OffseasonStage, type OnlineGame, type OnlineLeague, type OnlineTeam } from "./api";
 
 /** Each offseason stage, as friends see it. */
@@ -50,6 +52,12 @@ export function OnlineLeagueView({ me, inApp = false, onLeague }: { me: MyLeague
     const timer = setInterval(refresh, POLL_MS);
     return () => clearInterval(timer);
   }, [refresh]);
+  // Back from setting up your team: show it straight away.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   // The latest week's scores, whenever a new week has been played.
   const weeksPlayed = league?.weeksPlayed ?? 0;
@@ -105,6 +113,7 @@ export function OnlineLeagueView({ me, inApp = false, onLeague }: { me: MyLeague
   return (
     <View style={{ gap: 12 }}>
       {error ? <Text style={{ color: t.score, fontWeight: "600" }}>{error}</Text> : null}
+      <ChatLink me={me} theme={t} />
       {league.phase === "lobby" ? <Lobby {...props} /> : <Season {...props} games={games} last={last} linkGames={inApp} />}
       {inApp ? null : <Forget id={league.id} theme={t} />}
     </View>
@@ -122,11 +131,18 @@ interface Props {
 
 const memberName = (l: OnlineLeague, memberId: string | null) => l.members.find((m) => m.id === memberId)?.displayName;
 const teamName = (l: OnlineLeague, abbr: string) => l.teams.find((x) => x.abbr === abbr)?.name ?? abbr;
+/** A team's badge as the lobby knows it (its friend's look, if set up). */
+function TeamLook({ x, size }: { x: OnlineTeam; size: number }) {
+  const c = x.colors ?? designedColors(x.abbr);
+  return <LogoBadge logo={x.logo} primary={c.primary} trim={c.trim} size={size} label={x.name} />;
+}
+
 const record = (x: OnlineTeam) => `${x.wins}-${x.losses}${x.ties ? `-${x.ties}` : ""}`;
 
 function Lobby({ league, me, self, busy, act, theme: t }: Props) {
+  const router = useRouter();
   const waiting = league.members.filter((m) => !m.team);
-  const conferences = useMemo(() => [...new Set(league.teams.map((x) => x.conference))], [league.teams]);
+  const mine = self?.team ? league.teams.find((x) => x.abbr === self.team) : undefined;
   return (
     <>
       <Card>
@@ -141,54 +157,79 @@ function Lobby({ league, me, self, busy, act, theme: t }: Props) {
         <SectionTitle>Who's in</SectionTitle>
         {league.members.map((m) => (
           <View key={m.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 3 }}>
-            {m.team ? <Swatch abbr={m.team} size={24} /> : <View style={{ width: 24 }} />}
+            {m.team ? <TeamLook x={league.teams.find((x) => x.abbr === m.team)!} size={24} /> : <View style={{ width: 24 }} />}
             <Text style={{ color: t.text, flex: 1, fontWeight: m.id === me.memberId ? "800" : "400" }}>
               {m.displayName}
               {m.isCommissioner ? <Text style={{ color: t.muted }}> · commissioner</Text> : null}
             </Text>
-            <Text style={{ color: m.team ? t.text : t.muted }}>{m.team ? teamName(league, m.team) : "choosing…"}</Text>
+            <Text style={{ color: m.team ? t.text : t.muted }}>
+              {m.team ? teamName(league, m.team) : "choosing…"}
+              {m.team && m.setUp ? <Text style={{ color: t.muted, fontSize: 12 }}> · set up</Text> : null}
+            </Text>
           </View>
         ))}
         {self?.isCommissioner ? (
           <View style={{ marginTop: 10, gap: 6 }}>
             <Button label="Start the season" primary disabled={busy || waiting.length > 0} onPress={() => act(() => api.start(me.id, me.token))} />
-            {waiting.length > 0 ? <Text style={{ color: t.muted, fontSize: 12 }}>Waiting on a state from {waiting.map((m) => m.displayName).join(", ")}.</Text> : null}
+            {waiting.length > 0 ? <Text style={{ color: t.muted, fontSize: 12 }}>Waiting on a program from {waiting.map((m) => m.displayName).join(", ")}.</Text> : null}
           </View>
         ) : (
-          <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>The commissioner starts the season once everyone has a state.</Text>
+          <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>The commissioner starts the season once everyone has a program.</Text>
         )}
       </Card>
 
-      <Card>
-        <SectionTitle>{self?.team ? `You're ${teamName(league, self.team)}` : "Claim your state"}</SectionTitle>
-        <Text style={{ color: t.muted, marginBottom: 6 }}>Team rating in brackets. Tap a free state to claim it{self?.team ? " instead" : ""}.</Text>
-        {conferences.map((c) => (
-          <View key={c} style={{ marginBottom: 8 }}>
-            <Text style={{ color: t.muted, fontWeight: "700", marginBottom: 2 }}>{c}</Text>
-            {league.teams
-              .filter((x) => x.conference === c)
-              .map((x) => {
-                const mine = x.abbr === self?.team;
-                const taken = !!x.claimedBy && !mine;
-                return (
-                  <Pressable
-                    key={x.abbr}
-                    disabled={busy || taken}
-                    onPress={() => act(() => api.claim(me.id, me.token, mine ? null : x.abbr))}
-                    accessibilityRole="button"
-                    accessibilityLabel={mine ? `Give up ${x.name}` : `Claim ${x.name}`}
-                    style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 5, opacity: taken ? 0.5 : pressed ? 0.6 : 1 })}
-                  >
-                    <Swatch abbr={x.abbr} size={24} />
-                    <Text style={{ flex: 1, color: mine ? t.accent : t.text, fontWeight: mine ? "800" : "400" }}>
-                      {x.name} <Text style={{ color: t.muted }}>({x.overall.toFixed(1)})</Text>
-                    </Text>
-                    <Text style={{ color: mine ? t.accent : t.muted, fontSize: 12 }}>{mine ? "yours · tap to give up" : taken ? memberName(league, x.claimedBy) : x.division}</Text>
-                  </Pressable>
-                );
-              })}
+      {mine ? (
+        <Card style={{ gap: 10 }}>
+          <SectionTitle>Make it yours</SectionTitle>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <TeamLook x={mine} size={52} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{mine.name}</Text>
+              <Text style={{ color: t.muted, fontSize: 12 }}>
+                {self?.setUp ? `${mine.tag} · head coach ${mine.coach}` : "Name the team, pick its logo and colors, and build your head coach. Or keep it as it is."}
+              </Text>
+            </View>
           </View>
-        ))}
+          <Button label={self?.setUp ? "Change my team" : "Make it yours"} primary={!self?.setUp} disabled={busy} onPress={() => router.push(`/online/setup/${me.id}`)} />
+          {self?.setUp ? (
+            <Text onPress={() => act(() => api.setup(me.id, me.token, null))} accessibilityRole="button" style={{ color: t.muted, fontSize: 12, textAlign: "center" }}>
+              Undo: keep the team as generated
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {self?.isCommissioner && league.members.some((m) => m.program) ? (
+        <Card style={{ gap: 10 }}>
+          <SectionTitle>Regions</SectionTitle>
+          <Text style={{ color: t.muted, fontSize: 12 }}>Each program&apos;s region was drawn at random. As commissioner you can move any of them before the start (a region holds five).</Text>
+          {league.members
+            .filter((m) => m.program)
+            .map((m) => (
+              <View key={m.id} style={{ gap: 4 }}>
+                <Text style={{ color: t.text, fontWeight: "700" }}>
+                  {m.displayName} <Text style={{ color: t.muted, fontWeight: "400" }}>· {m.program!.region ?? "no room"}</Text>
+                </Text>
+                <Chips options={regions().map((r) => ({ key: r.name, label: r.name }))} value={m.program!.region ?? ""} onChange={(r) => act(() => api.region(me.id, me.token, m.id, r))} />
+              </View>
+            ))}
+        </Card>
+      ) : null}
+
+      <Card style={{ gap: 8 }}>
+        <SectionTitle>Your program</SectionTitle>
+        {self?.program ? (
+          <>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: "800" }}>{self.program.region ? `${self.program.region} region` : "No region has room"}</Text>
+            <Text style={{ color: t.muted, fontSize: 12 }}>Built around {self.program.groups.map((g) => SKILL_GROUPS[g].label.toLowerCase()).join(", ")}. Your region was drawn at random; the commissioner can move it.</Text>
+            <Button label="Change skill groups" disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
+          </>
+        ) : (
+          <>
+            <Text style={{ color: t.muted }}>Pick the three skill groups you want to build around. Your region is drawn at random.</Text>
+            <Button label="Build your program" primary disabled={busy} onPress={() => router.push(`/online/program/${me.id}`)} />
+          </>
+        )}
       </Card>
     </>
   );
@@ -269,7 +310,7 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
             <Text style={{ color: t.text, fontSize: 17, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{record(yours)}</Text>
           </View>
         ) : null}
-        <Text style={{ color: t.muted }}>{untilLabel(league.deadline, now)}</Text>
+        <Text style={{ color: league.paused ? t.score : t.muted, fontWeight: league.paused ? "700" : "400" }}>{league.paused ? "Paused by the commissioner: nothing plays until it's picked back up." : untilLabel(league.deadline, now)}</Text>
         <Button
           label={self?.ready ? "Ready ✓ (tap to undo)" : "I'm ready"}
           primary={!self?.ready}
@@ -277,13 +318,15 @@ function Season({ league, me, self, busy, act, theme: t, games, last, linkGames 
           onPress={() => act(() => api.ready(me.id, me.token, !self?.ready))}
         />
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          {ready} of {league.members.length} ready: {league.members.map((m) => `${m.displayName}${m.ready ? " ✓" : ""}`).join(", ")}.{" "}
+          {ready} of {league.members.filter((m) => !m.away).length} ready: {league.members.map((m) => `${m.displayName}${m.away ? " (with the AI)" : m.ready ? " ✓" : ""}`).join(", ")}.{" "}
           {league.next?.kind === "offseason" && league.next.stage !== "open"
             ? `Calls in from: ${league.madeCall.length ? league.madeCall.map((abbr) => memberName(league, league.teams.find((x) => x.abbr === abbr)?.claimedBy ?? null) ?? abbr).join(", ") : "nobody yet"}. Anyone without a call when the stage closes is left to the AI.`
             : "Anyone not ready when the week is played has the AI handle their injured reserve and signings."}
         </Text>
         {self?.isCommissioner ? <Button label={busy ? "Playing…" : "Play it now (commissioner)"} small disabled={busy} onPress={() => act(() => api.advance(me.id, me.token))} /> : null}
       </Card>
+
+      {self?.isCommissioner ? <CommissionerTools league={league} me={me} busy={busy} act={act} theme={t} /> : null}
 
       {last ? <JustPlayed last={last} league={league} friends={friends} theme={t} /> : null}
 
@@ -374,5 +417,62 @@ function Forget({ id, theme: t }: { id: string; theme: Theme }) {
         {armed ? "Tap again to sign out for good (this phone's sign-in is the only way back in)" : "Sign this phone out of the league"}
       </Text>
     </Pressable>
+  );
+}
+
+/** The league's chat, one tap from its page. */
+function ChatLink({ me, theme: t }: { me: MyLeague; theme: Theme }) {
+  const router = useRouter();
+  return (
+    <Pressable onPress={() => router.push(`/chat?league=${me.id}`)} accessibilityRole="button" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: t.border, backgroundColor: t.card }}>
+      <Text style={{ color: t.text, fontWeight: "800", flex: 1 }}>League chat</Text>
+      <Text style={{ color: t.accent, fontWeight: "700" }}>Open ›</Text>
+    </Pressable>
+  );
+}
+
+/** The commissioner's tools: pause, more time this week, and each friend's team (to the AI and back, or out of the league). */
+function CommissionerTools({ league, me, busy, act, theme: t }: { league: OnlineLeague; me: MyLeague; busy: boolean; act: Props["act"]; theme: Theme }) {
+  const [armed, setArmed] = useState<string | null>(null);
+  // Each tool runs on the server, then the league is fetched again.
+  const run = (action: Parameters<typeof api.commissioner>[2]) =>
+    act(async () => {
+      await api.commissioner(me.id, me.token, action);
+      return api.league(me.id, me.token);
+    });
+  return (
+    <Card style={{ gap: 10 }}>
+      <SectionTitle>Commissioner</SectionTitle>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <Button label={league.paused ? "Pick it back up" : "Pause the league"} small disabled={busy} onPress={() => run({ action: league.paused ? "resume" : "pause" })} />
+        {!league.paused && league.deadline ? (
+          <>
+            <Button label="+6 hours" small disabled={busy} onPress={() => run({ action: "extend", hours: 6 })} />
+            <Button label="+1 day" small disabled={busy} onPress={() => run({ action: "extend", hours: 24 })} />
+          </>
+        ) : null}
+      </View>
+      {league.members
+        .filter((m) => m.id !== me.memberId)
+        .map((m) => (
+          <View key={m.id} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: t.text, flex: 1 }}>
+              {m.displayName}
+              {m.away ? <Text style={{ color: t.muted }}> · with the AI</Text> : null}
+            </Text>
+            <Text onPress={() => !busy && run({ action: m.away ? "back" : "away", memberId: m.id })} accessibilityRole="button" style={{ color: t.accent, fontWeight: "700" }}>
+              {m.away ? "Give it back" : "Hand to the AI"}
+            </Text>
+            <Text
+              onPress={() => (busy ? null : armed === m.id ? (setArmed(null), run({ action: "remove", memberId: m.id })) : setArmed(m.id))}
+              accessibilityRole="button"
+              style={{ color: armed === m.id ? t.score : t.muted, fontWeight: armed === m.id ? "800" : "600" }}
+            >
+              {armed === m.id ? "Tap again to remove" : "Remove"}
+            </Text>
+          </View>
+        ))}
+      <Text style={{ color: t.muted, fontSize: 12 }}>Everything here is posted to the league chat. A team handed to the AI has its calls made for it, and nobody waits on it to ready up.</Text>
+    </Card>
   );
 }

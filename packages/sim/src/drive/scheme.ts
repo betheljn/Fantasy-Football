@@ -17,6 +17,7 @@ import {
   type Personnel,
 } from "../play/formation.ts";
 import { halfSecondsLeft, paceFor, type CallContext } from "./playcall.ts";
+import { DEFENSE_CONCEPT_INFO, type DefenseConcept } from "../play/concepts.ts";
 
 const PERSONNEL_LIST: Personnel[] = ["11", "12", "21", "13", "10"];
 const COVERAGE_LIST: Coverage[] = ["cover_0", "cover_1", "cover_2", "cover_3", "cover_4"];
@@ -67,14 +68,18 @@ export function chooseOffense(rng: Rng, team: Team, c: Situational, rules?: numb
 }
 
 /** Prevent defense: protecting a lead late, give up anything underneath but nothing deep. */
-function isPrevent(c: Situational): boolean {
+export function isPrevent(c: Situational): boolean {
   const s = c.situation;
   const late = halfSecondsLeft(s);
   return c.margin < 0 && s.quarter >= 4 && late <= 120 && 100 - s.yardline > 30;
 }
 
-/** Defensive package, coverage and blitz, in response to the offense's personnel. */
-export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: OffenseFormation): DefenseFormation {
+/**
+ * Defensive package, coverage and blitz, in response to the offense's personnel.
+ * In the play duel (rules 4), `concept` picks the call (given whether it's a
+ * prevent situation) and the coverage and blitz come from it.
+ */
+export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: OffenseFormation, concept?: (prevent: boolean) => DefenseConcept): DefenseFormation {
   const s = c.situation;
   const toGoal = 100 - s.yardline;
   const long = isLongYardage(c);
@@ -85,6 +90,12 @@ export function chooseDefense(rng: Rng, team: Team, c: Situational, offense: Off
   else if (offense.personnel === "11") pkg = long ? (rng.chance(0.5) ? "dime" : "nickel") : rng.chance(0.8) ? "nickel" : "base";
   else if (offense.personnel === "12") pkg = rng.chance(0.6) ? "base" : "nickel";
   else pkg = rng.chance(0.9) ? "base" : "nickel";
+
+  if (concept) {
+    const call = DEFENSE_CONCEPT_INFO[concept(isPrevent(c))];
+    const front = buildDefense(team, pkg, call.coverage);
+    return buildDefense(team, pkg, call.coverage, pickBlitzers(rng, front, call.blitz));
+  }
 
   // Coverage mix by situation; corners who are better in man than in zone mean more man.
   const corners = starters(team, "CB", 2);

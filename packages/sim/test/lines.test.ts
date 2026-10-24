@@ -55,7 +55,8 @@ describe("lines", () => {
       seen.push(r.value);
       r = steps.next();
     }
-    expect(seen).toEqual([0.5, 1]);
+    // A simulation a step (small steps keep a phone responsive): the first game done at half way.
+    expect(seen.map((x) => Math.round(x * 10) / 10)).toEqual([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]);
     expect(r.value).toHaveLength(2);
   });
 });

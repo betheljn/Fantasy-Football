@@ -5,7 +5,10 @@ import { useRouter } from "expo-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import {
+  teamPlace,
   PLAYOFF_ROUNDS,
+  STAGE_NAMES,
+  postseasonStages,
   ROUND_NAMES,
   STATES,
   OWNER_GOALS,
@@ -14,27 +17,23 @@ import {
   backLabel,
   injuryLabel,
   injuryReport,
-  TRADE_DEADLINE_WEEK,
+  tradeDeadline,
   IR_MIN_WEEKS,
   type TradeRecord,
-  allTeams,
-  formatMoney,
   formatRecord,
-  payroll,
-  salaryCap,
-  staffOverall,
   teamName,
   mood,
   teamAppeal,
-  teamRatings,
   winPct,
+  allLeanings,
 } from "@dynasty/sim";
-import { Card, Icon, LinkRow, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
-import { teamColors } from "../../field/colors";
+import { Card, Icon, LinkRow, LogoBadge, NavGroup, NavRow, SectionTitle, Stat, StatRow, Swatch, TeamBanner, type IconName } from "../../components/ui";
+import { designedColors, teamColors, teamShort } from "../../field/colors";
 import { OnlineHub } from "../../online/OnlineHub";
 import { OffseasonStepper, type OffseasonStepKey } from "../../components/OffseasonStepper";
 import { CutsScreen } from "../../screens/CutsScreen";
 import { DraftScreen } from "../../screens/DraftScreen";
+import { TeamSetupScreen } from "../../screens/TeamSetupScreen";
 import { FreeAgencyScreen } from "../../screens/FreeAgencyScreen";
 import { ResignScreen } from "../../screens/ResignScreen";
 import { HireScreen, StaffScreen } from "../../screens/StaffScreen";
@@ -62,7 +61,7 @@ export default function Home() {
     case "offseason":
       return <Working icon="sync-outline" title="Running the offseason" body="Staff moves, retirements, player development, contracts, the draft and free agency." />;
     case "choose":
-      return data ? <ChooseTeam data={data} /> : null;
+      return data ? <TeamSetupScreen data={data} /> : null;
     case "fired":
       return data && d.save?.fired ? <Fired data={data} /> : null;
     case "staff":
@@ -86,7 +85,7 @@ export default function Home() {
     case "draft":
       return d.draftTurn && data ? (
         <Stepped step="draft" note={`round ${d.draftTurn.round}, pick ${d.draftTurn.overall}`}>
-          <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} />
+          <DraftScreen turn={d.draftTurn} userTeam={data.userTeam} onPick={d.draftPick} onAuto={d.autoDraft} leanings={d.scouting ? allLeanings(d.scouting) : undefined} />
         </Stepped>
       ) : null;
     case "freeagency":
@@ -127,56 +126,6 @@ function Stepped({ step, note, children }: { step: OffseasonStepKey; note?: stri
       <OffseasonStepper step={step} note={note} />
       <View style={{ flex: 1 }}>{children}</View>
     </View>
-  );
-}
-
-function ChooseTeam({ data }: { data: LeagueData }) {
-  const t = useTheme();
-  const d = useDynasty();
-  const teams = useMemo(
-    () => allTeams(data.league).map((team) => ({ team, ovr: teamRatings(team).overall })).sort((a, b) => b.ovr - a.ovr),
-    [data.league],
-  );
-  const cap = salaryCap(data.league.seed, data.league.season);
-  const [role, setRole] = useState<"owner" | "gm">("owner");
-  return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: t.text }}>Choose your team</Text>
-      <Card>
-        <SectionTitle>Your role</SectionTitle>
-        {(
-          [
-            ["owner", "Owner and GM", "Run everything. Nobody can fire you; the board and the fans grade every season."],
-            ["gm", "GM for an AI owner", "The owner has a goal and a temper. Meet it and you keep the job; miss it too often and you're out."],
-          ] as const
-        ).map(([key, label, note]) => (
-          <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="radio" accessibilityState={{ selected: role === key }} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
-            <Icon name={role === key ? "radio-button-on" : "radio-button-off"} color={role === key ? t.accent : t.muted} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: t.text, fontWeight: "700" }}>{label}</Text>
-              <Text style={{ color: t.muted, fontSize: 13 }}>{note}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </Card>
-      <Text style={{ color: t.muted, marginBottom: 8 }}>Strongest rosters first. A weak team is a longer road — and a better story.</Text>
-      {teams.map(({ team, ovr }) => (
-        <Card key={team.abbr} style={{ paddingVertical: 4 }}>
-          <LinkRow label={`Choose ${teamName(team)}`} onPress={() => d.chooseTeam(team.abbr, role)}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Swatch abbr={team.abbr} size={36} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: t.text, fontWeight: "700" }}>{teamName(team)}</Text>
-                <Text style={{ color: t.muted, fontSize: 12 }}>
-                  Coach {team.staff?.hc.lastName} ({team.staff ? staffOverall(team.staff.hc) : "–"}) · payroll {formatMoney(payroll(team, data.league.season))} of {formatMoney(cap)}
-                </Text>
-              </View>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: t.text, fontVariant: ["tabular-nums"] }}>{ovr.toFixed(0)}</Text>
-            </View>
-          </LinkRow>
-        </Card>
-      ))}
-    </ScrollView>
   );
 }
 
@@ -230,12 +179,13 @@ function NextUp({ data }: { data: LeagueData }) {
     );
   }
   if (d.phase === "playoffs") {
-    const round = PLAYOFF_ROUNDS[playoffRoundsShown]!;
+    const stage = postseasonStages(league)[playoffRoundsShown]!;
     return (
       <Card style={{ gap: 10, borderColor: t.accent, borderWidth: 1.5 }}>
-        <SectionTitle>Playoffs</SectionTitle>
-        <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{ROUND_NAMES[round]}</Text>
-        <Button label={`Play the ${ROUND_NAMES[round]}`} onPress={d.playPlayoffRound} theme={t} primary />
+        <SectionTitle>{stage === "titles" ? "Postseason" : "Playoffs"}</SectionTitle>
+        <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>{STAGE_NAMES[stage]}</Text>
+        {stage === "titles" ? <Text style={{ color: t.muted }}>Each division&apos;s top two play for the title and its automatic bid; then the field of 16 is set.</Text> : null}
+        <Button label={stage === "titles" ? "Play championship week" : `Play the ${STAGE_NAMES[stage]}`} onPress={d.playPlayoffRound} theme={t} primary />
         <PlayoffDetails data={data} />
       </Card>
     );
@@ -268,7 +218,7 @@ function NextUp({ data }: { data: LeagueData }) {
           {league.teams[abbr]!.nickname}
         </Text>
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          {league.teams[abbr]!.state} · {r ? formatRecord(r) : "0-0"}
+          {teamPlace(league.teams[abbr]!)} · {r ? formatRecord(r) : "0-0"}
         </Text>
       </View>
     );
@@ -290,7 +240,7 @@ function NextUp({ data }: { data: LeagueData }) {
       {upcoming ? (
         <Button label={d.coaching?.game === upcoming.id ? "Keep coaching your game" : "Coach your game"} onPress={() => router.push(`/coach/${upcoming.id}`)} theme={t} primary />
       ) : (
-        <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} primary />
+        <Button label={`Sim week ${nextWeek}`} onPress={() => d.simWeek()} theme={t} primary />
       )}
       <View style={{ flexDirection: "row", gap: 8 }}>
         {upcoming ? (
@@ -300,7 +250,7 @@ function NextUp({ data }: { data: LeagueData }) {
         ) : null}
         {upcoming ? (
           <View style={{ flex: 1 }}>
-            <Button label={`Sim week ${nextWeek}`} onPress={() => d.playWeek()} theme={t} small />
+            <Button label={`Sim week ${nextWeek}`} onPress={() => d.simWeek()} theme={t} small />
           </View>
         ) : null}
         <View style={{ flex: 1 }}>
@@ -334,8 +284,8 @@ function NeedsYou({ data }: { data: LeagueData }) {
   if (d.phase === "season" && d.scouting && d.scoutPlan.length === 0) {
     items.push({ key: "scout", icon: "search-outline", title: "Scouting points to assign", detail: `${SCOUT_POINTS} this week; your scouts choose if you don't`, go: "/scouting" });
   }
-  if (d.canTrade && d.tradeWindow?.week !== 0 && TRADE_DEADLINE_WEEK - weeksPlayed === 1) {
-    items.push({ key: "deadline", icon: "swap-horizontal-outline", title: "Last week to trade", detail: `Trading closes after week ${TRADE_DEADLINE_WEEK}`, go: "/trade" });
+  if (d.canTrade && d.tradeWindow?.week !== 0 && tradeDeadline(data.league) - weeksPlayed === 1) {
+    items.push({ key: "deadline", icon: "swap-horizontal-outline", title: "Last week to trade", detail: `Trading closes after week ${tradeDeadline(data.league)}`, go: "/trade" });
   }
   if (d.canTrade && d.tradeWindow?.week === 0) {
     items.push({ key: "draftweek", icon: "swap-horizontal-outline", title: "Draft week: trades are open", detail: "Deal players and picks before the offseason", go: "/trade" });
@@ -372,7 +322,7 @@ function LastWeek({ data }: { data: LeagueData }) {
     .slice(0, 3);
   if (!last && top.length === 0) return null;
   return (
-    <NavGroup title={week ? `Week ${week}` : "Last week"}>
+    <NavGroup title={week > data.schedule.weeks ? (STAGE_NAMES[postseasonStages(data.league)[week - data.schedule.weeks - 1] ?? "championship"]) : week ? `Week ${week}` : "Last week"}>
       {last ? <NavRow icon="play-circle-outline" title={resultLine(last, userTeam)} detail="Watch the replay" onPress={() => router.push(`/game/${last.id}`)} last={top.length === 0} /> : null}
       {top.map((s, i) => (
         <NavRow key={s.id} icon="newspaper-outline" title={s.headline} onPress={() => router.push("/news")} last={i === top.length - 1} />
@@ -457,8 +407,14 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   const { playoffs, playoffRoundsShown, userTeam } = data;
   if (!playoffs) return null;
   const made = playoffs.seeds.find((s) => s.team === userTeam);
-  const nextRound = PLAYOFF_ROUNDS[playoffRoundsShown];
-  const played = PLAYOFF_ROUNDS.slice(0, playoffRoundsShown);
+  // Championship week first (format 2), then the rounds.
+  const stages = postseasonStages(data.league);
+  const titlesFirst = stages[0] === "titles";
+  const titlesShown = titlesFirst && playoffRoundsShown > 0;
+  const nextStage = stages[playoffRoundsShown];
+  const nextRound = nextStage && nextStage !== "titles" ? nextStage : undefined;
+  const played = stages.slice(0, playoffRoundsShown).filter((x): x is (typeof PLAYOFF_ROUNDS)[number] => x !== "titles");
+  const myTitle = playoffs.titleGames?.find((g) => g.first === userTeam || g.second === userTeam);
   // Your next playoff game, if you're still alive and it's been set.
   const upcoming = nextRound ? playoffs.games.find((g) => g.round === nextRound && (g.summary.home === userTeam || g.summary.away === userTeam)) : undefined;
   // Your playoff games so far, and the one that ended your run (if one has).
@@ -470,7 +426,8 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   });
   const champion = made && !lost && mine.some((g) => g.round === PLAYOFF_ROUNDS[PLAYOFF_ROUNDS.length - 1]);
   let status = "You missed the playoffs this year.";
-  if (champion) status = "Champions! You won it all.";
+  if (titlesFirst && !titlesShown) status = myTitle ? `You play for the ${myTitle.division} title, ${myTitle.first === userTeam ? `at home against ${teamShort(myTitle.second)}` : `at ${teamShort(myTitle.first)}`}.` : "Championship week first: each division's top two play for the title.";
+  else if (champion) status = "Champions! You won it all.";
   else if (lost) {
     const opp = lost.summary.home === userTeam ? lost.summary.away : lost.summary.home;
     status = `Out in the ${ROUND_NAMES[lost.round]}: lost ${scoreOf(lost, opp)}-${scoreOf(lost, userTeam)} to ${opp}.`;
@@ -486,6 +443,27 @@ function PlayoffDetails({ data, folded }: { data: LeagueData; folded?: boolean }
   return (
     <View>
       {!(folded && champion) ? <Text style={{ color: t.muted, marginBottom: 8 }}>{status}</Text> : null}
+      {titlesShown && playoffs.titleGames && (view === "all" || (view === "latest" && played.length === 0)) ? (
+        <View style={{ marginBottom: 8 }}>
+          <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>Championship Week</Text>
+          {playoffs.titleGames.map((g) => {
+            const isMine = g.first === userTeam || g.second === userTeam;
+            return (
+              <LinkRow key={g.summary.id} label={`${g.division} title, watch`} onPress={() => router.push(`/game/${g.summary.id}`)}>
+                <Text style={{ color: t.text, fontWeight: isMine ? "800" : "400", fontVariant: ["tabular-nums"] }}>
+                  {g.division}: {teamShort(g.summary.away)} {g.summary.awayScore} – {teamShort(g.summary.home)} {g.summary.homeScore}
+                  {g.summary.overtime ? " OT" : ""}
+                </Text>
+              </LinkRow>
+            );
+          })}
+        </View>
+      ) : null}
+      {titlesFirst && !titlesShown && myTitle ? (
+        <View style={{ marginBottom: 8 }}>
+          <Button label={`Watch your ${myTitle.division} title game`} onPress={() => router.push(`/game/${myTitle.summary.id}`)} theme={t} />
+        </View>
+      ) : null}
       {shown.map((round) => (
         <View key={round} style={{ marginBottom: 8 }}>
           <Text style={{ color: t.text, fontWeight: "700", marginBottom: 2 }}>{ROUND_NAMES[round]}</Text>
@@ -532,16 +510,22 @@ function Saves() {
       </View>
       <Text style={{ fontSize: 30, fontWeight: "900", color: t.text }}>Football Dynasty</Text>
       <Text style={{ color: t.muted, textAlign: "center", marginVertical: 12, maxWidth: 320 }}>
-        Fifty teams, one per state. Pick one, play the seasons, build a dynasty.
+        Ten regions, each with its own kind of talent. Build a program in yours, play the seasons, build a dynasty.
       </Text>
       <View style={{ width: "100%", maxWidth: 360, gap: 8, marginBottom: 16 }}>
         {d.slots.map((s) => (
           <Card key={s.slot} style={{ paddingVertical: 4 }}>
             <LinkRow label={`Continue save ${s.slot}`} onPress={() => d.openSlot(s.slot)}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {s.team ? <Swatch abbr={s.team} size={38} /> : <Icon name="add-circle-outline" size={38} color={t.muted} />}
+                {s.team && s.logo ? (
+                  <LogoBadge logo={s.logo} primary={(s.colors ?? designedColors(s.team)).primary} trim={(s.colors ?? designedColors(s.team)).trim} size={38} />
+                ) : s.team ? (
+                  <Swatch abbr={s.team} size={38} />
+                ) : (
+                  <Icon name="add-circle-outline" size={38} color={t.muted} />
+                )}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? stateName(s.team) : "New league"}</Text>
+                  <Text style={{ color: t.text, fontWeight: "700" }}>{s.team ? (s.name ?? stateName(s.team)) : "New league"}</Text>
                   <Text style={{ color: t.muted, fontSize: 12 }}>
                     Save {s.slot} · {s.season} season · {s.stage}
                   </Text>
@@ -615,10 +599,10 @@ function Report({ report }: { report: OffseasonReport }) {
             {r.fired ? (
               <>
                 <Text style={{ color: t.text }}>
-                  Fired by {data?.league.teams[r.team ?? ""]?.state ?? "your old team"} after the season. {r.verdict}
+                  Fired by {(data?.league.teams[r.team ?? ""] ? teamPlace(data.league.teams[r.team ?? ""]!) : "your old team")} after the season. {r.verdict}
                 </Text>
                 <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
-                  A fresh start in {data?.league.teams[data.userTeam]?.state}: your new owner's trust starts at {d.save?.office?.trust}.
+                  A fresh start in {data?.league.teams[data.userTeam] ? teamPlace(data.league.teams[data.userTeam]!) : ""}: your new owner's trust starts at {d.save?.office?.trust}.
                 </Text>
               </>
             ) : (
@@ -644,7 +628,7 @@ function Report({ report }: { report: OffseasonReport }) {
                   <Text style={{ fontWeight: "800" }}>
                     {m.position} {m.name}
                   </Text>{" "}
-                  ({Math.round(m.pct * 100)}%) · #{m.jersey ?? "?"} retired by {m.team}
+                  ({Math.round(m.pct * 100)}%) · #{m.jersey ?? "?"} retired by {teamShort(m.team)}
                 </Text>
               ))}
             </Card>

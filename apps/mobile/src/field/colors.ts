@@ -3,7 +3,7 @@
 // always looks the same and no two teams share a look. The home team wears its
 // primary; the road team wears white with its primary as trim, so the two
 // sides never clash.
-import { STATES } from "@dynasty/sim";
+import { STATES, teamLogo, teamTag, type Team } from "@dynasty/sim";
 import type { TeamColors } from "./FieldView";
 
 /** 50 primary / trim pairs, all fictional. */
@@ -38,8 +38,46 @@ export interface TeamPalette {
 
 /** A team's primary and trim colors, and the text colors that read on them. */
 export function teamColors(abbr: string): TeamPalette {
+  const chosen = looks.get(abbr)?.colors;
+  return chosen ? palette(chosen.primary, chosen.trim) : designedColors(abbr);
+}
+
+/** The pair designed for a team (what it wears unless its colors were chosen). */
+export function designedColors(abbr: string): TeamPalette {
   const [primary, trim] = PALETTE[ORDER.get(abbr) ?? hue(abbr)]!;
+  return palette(primary, trim);
+}
+
+export function palette(primary: string, trim: string): TeamPalette {
   return { primary, trim, onPrimary: readableOn(primary), onTrim: readableOn(trim) };
+}
+
+/** What the league says each team looks like: chosen colors, logo and short name. */
+interface TeamLook {
+  colors?: { primary: string; trim: string };
+  logo: string;
+  tag: string;
+}
+
+const looks = new Map<string, TeamLook>();
+
+/**
+ * Take each team's look from the league (call when the league changes, before
+ * its screens draw). Teams not given keep their designed colors.
+ */
+export function setTeamLooks(teams: Iterable<Team>): void {
+  looks.clear();
+  for (const t of teams) looks.set(t.abbr, { colors: t.colors, logo: teamLogo(t).id, tag: teamTag(t) });
+}
+
+/** A team's logo id (null before any league is loaded). */
+export function teamLogoId(abbr: string): string | null {
+  return looks.get(abbr)?.logo ?? null;
+}
+
+/** The short name shown for a team (its abbr unless it chose another). */
+export function teamShort(abbr: string): string {
+  return looks.get(abbr)?.tag ?? abbr;
 }
 
 /** Free agents and anyone without a team. */

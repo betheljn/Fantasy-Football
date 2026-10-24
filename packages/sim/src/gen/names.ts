@@ -1,5 +1,7 @@
 // Name pools for generated players and teams. Everything here is fictional;
-// team nicknames deliberately avoid real pro and major college team names.
+// generated teams get compound nicknames; generic ones (Tigers, Lions) are
+// fine, but never a name that points at one real team ("49ers", "76ers").
+import { LEAGUE_LOGOS, LOGOS } from "./logos.ts";
 
 export const FIRST_NAMES = [
   "Aaron", "Adrian", "Alec", "Andre", "Austin", "Blake", "Brandon", "Brody", "Caleb", "Cameron",
@@ -46,12 +48,5 @@ export const STATES: ReadonlyArray<readonly [name: string, abbr: string]> = [
   ["Virginia", "VA"], ["Washington", "WA"], ["West Virginia", "WV"], ["Wisconsin", "WI"], ["Wyoming", "WY"],
 ];
 
-export const NICKNAMES = [
-  "Ironclads", "Anvils", "Riveters", "Foxhounds", "Ridgebacks", "Thunderheads", "Quarrymen", "Harriers",
-  "Stormcrows", "Copperheads", "Kestrels", "Blacksmiths", "Drovers", "Surveyors", "Lanterns", "Sawtooths",
-  "Brawlers", "Prospectors", "Tumbleweeds", "Keelboats", "Wildfire", "Longshots", "Granite", "Bandogs",
-  "Lamplighters", "Millwrights", "Tinsmiths", "Hailstones", "Northwinds", "Bluestems", "Canalmen", "Pathfinders",
-  "Wolfhounds", "Ferrymen", "Stonecutters", "Rainmakers", "Coalers", "Tidecallers", "Ropewalkers", "Sandpipers",
-  "Headwinds", "Fieldhands", "Ironwoods", "Cragsmen", "Brakemen", "Signalmen", "Duststorms", "Timberjacks",
-  "Graystones", "Switchmen",
-];
+/** The nicknames a new league hands out, one per team (the first 50 logos). */
+export const NICKNAMES: readonly string[] = LOGOS.slice(0, LEAGUE_LOGOS).map((l) => l.nickname);

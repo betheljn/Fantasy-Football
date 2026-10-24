@@ -8,6 +8,7 @@ import { RARITIES, RECORD_NAMES, RECORD_STATS, startCollection, type Moment, typ
 import { Card, SectionTitle, Segmented, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
+import { teamShort } from "../field/colors";
 
 const RARITY_COLOR: Record<Rarity, string> = { common: "#9aa5b1", rare: "#4f9cf9", epic: "#b06ef7", legendary: "#f5b83d" };
 const RARITY_NAME: Record<Rarity, string> = { common: "Common", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -115,7 +116,7 @@ function RecordTable({ title, entries, theme: t, game }: { title: string; entrie
             <Text style={{ flex: 1, color: t.muted }}>{RECORD_NAMES[stat]}</Text>
             {r ? (
               <Text style={{ color: t.text, textAlign: "right" }}>
-                <Text style={{ fontWeight: "800" }}>{r.value.toLocaleString()}</Text> {r.name} ({r.team}, {r.season}
+                <Text style={{ fontWeight: "800" }}>{r.value.toLocaleString()}</Text> {r.name} ({teamShort(r.team)}, {r.season}
                 {game && r.week ? ` wk ${r.week}` : ""})
               </Text>
             ) : (

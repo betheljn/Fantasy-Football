@@ -1,11 +1,15 @@
 // The dynasty loop: play a season, then run the offseason, over and over.
 // Each call returns a new Dynasty; nothing is mutated, so every past season's
 // league (and therefore every game) can still be replayed.
+import { trainingCamp, type CampBattle } from "./camp.ts";
+import { syncVenues } from "../business/business.ts";
+import { bankOwners, syncUpgrades, type OwnerProgress } from "./progression.ts";
+import { bankCoaches } from "./coaches.ts";
 import { teamChoices, type PerTeam } from "../choices.ts";
 import { seasonEndMorale } from "../contracts/morale.ts";
 import { applyBreakouts, playSpring, type SpringSeason } from "../spring/spring.ts";
 import { closeSeasonBooks, startLeagueBusiness, type SeasonFinances, type TeamBusiness } from "../business/business.ts";
-import { hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
+import { HOF_RULES, hofBallot, hofVote, inductees, type HofVote, type Inductee } from "../collect/halloffame.ts";
 import { rivalries, rivalryGames, type RivalryGame } from "../collect/rivalries.ts";
 import { collectSeason, collectWeek, startCollection, type Collection, type Moment, type RecordBook } from "../collect/moments.ts";
 import { aiInSeasonMoves, endSeasonMoves, freeAgentPool } from "../contracts/inseason.ts";
@@ -14,7 +18,6 @@ import { capHit, deadMoney } from "../model/contract.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { ROSTER_MAX, starters } from "../model/team.ts";
 import { generateLeague, allTeams, teamRatings, type League } from "../league/league.ts";
-import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
 import { generateSchedule, type Schedule } from "../league/schedule.ts";
 import { playWeek, type SeasonResult } from "../league/season.ts";
 import { healAll } from "../game/injuries.ts";
@@ -48,7 +51,7 @@ import {
   type OpenYearResult,
   type ResignChoices,
 } from "../contracts/offseason.ts";
-import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, type ScoutingState } from "./scouting.ts";
+import { advanceScoutingWeek, createScouting, runCombine, scoutSeason, seasonWeeks, type ScoutingState } from "./scouting.ts";
 import {
   staffHiring,
   staffReleases,
@@ -138,6 +141,10 @@ export interface Dynasty {
   finances?: Record<string, SeasonFinances[]>;
   /** The last few spring seasons. */
   springs?: SpringSeason[];
+  /** The owners people play (your team; online, each friend's): their XP and levels. */
+  owners?: Record<string, OwnerProgress>;
+  /** This season's training camp battles (settled before it). */
+  camp?: CampBattle[];
 }
 
 /** Offseasons simulated (without games) before a new dynasty's first season. */
@@ -182,7 +189,8 @@ export function* buildDynasty(seed: number | string, burnIn = BURN_IN_OFFSEASONS
  */
 export function quietOffseason(league: League): League {
   const draftClass = generateDraftClass(league);
-  const scouting = runCombine({ ...createScouting(league, draftClass), week: REGULAR_SEASON_WEEKS });
+  const fresh = createScouting(league, draftClass);
+  const scouting = runCombine({ ...fresh, week: seasonWeeks(fresh) });
   const order = allTeams(league)
     .map((t) => ({ t: t.abbr, r: teamRatings(t).overall }))
     .sort((a, b) => a.r - b.r)
@@ -199,7 +207,7 @@ export function quietOffseason(league: League): League {
 /** Bring in-season scouting to draft day: any weeks not scouted get the AI's choices, then the combine. */
 export function finishScouting(scouting: ScoutingState, league: League, draftClass: DraftClass): ScoutingState {
   let state = scouting;
-  while (state.week < REGULAR_SEASON_WEEKS) state = advanceScoutingWeek(state, league, draftClass);
+  while (state.week < seasonWeeks(state)) state = advanceScoutingWeek(state, league, draftClass);
   return state.combineDone ? state : runCombine(state);
 }
 
@@ -218,6 +226,21 @@ export function talentSnapshot(league: League): TalentSnapshot {
 }
 
 const fullName = (p: Player) => `${p.firstName} ${p.lastName}`;
+
+/** Career games that keep a short career on record after a player is gone. */
+export const CAREER_KEEP_GAMES = 30;
+
+/**
+ * The careers worth keeping once players are gone: anyone still in the league
+ * (on a roster, on injured reserve or a free agent), and anyone who played long
+ * enough to matter later (a Hall of Fame look, an all-time list). A short
+ * career that's over is dropped, so saves don't grow with every backup who
+ * ever played.
+ */
+export function keptCareers(careers: ReadonlyMap<PlayerId, CareerLine>, league: League): Map<PlayerId, CareerLine> {
+  const here = new Set<PlayerId>([...allTeams(league).flatMap((t) => [...t.roster, ...(t.reserve ?? [])].map((p) => p.id)), ...(league.freeAgents ?? []).map((p) => p.id)]);
+  return new Map([...careers].filter(([id, c]) => here.has(id) || c.seasons >= HOF_RULES.minSeasons || c.games >= CAREER_KEEP_GAMES));
+}
 
 /** Play one season and its offseason. Returns the dynasty ready for the next season. */
 export function advanceSeason(dynasty: Dynasty): Dynasty {
@@ -361,14 +384,16 @@ export function offseasonStaffReleases(dynasty: Dynasty, played: PlayedSeason, d
 
 export function beginOffseason(dynasty: Dynasty, played: PlayedSeason, staffChoices: StaffChoices = {}): OffseasonState {
   // Injured reserve rejoins the roster, everyone hurt heals, and last season's free agents leave.
-  const league = healAll(endSeasonMoves(dynasty.league));
+  const healed = healAll(endSeasonMoves(dynasty.league));
   const { season, stats, playoffs } = played;
+  const awards = computeAwards(healed, stats, season.results);
+  // Coaches bank the season's XP before anyone is fired or hired (people pick their own coaches' new abilities).
+  const league = bankCoaches(healed, { results: season.results, playoffs, awards }, new Set(Object.keys(dynasty.owners ?? {})));
 
   // The class entering next season was scouted while this season was played.
   const draftClass = generateDraftClass(league);
   const scouting = played.scouting ? finishScouting(played.scouting, league, draftClass) : scoutSeason(league, draftClass);
 
-  const awards = computeAwards(league, stats, season.results);
   const standings = divisionStandings(league, season.results);
 
   // Careers: fold this season in.
@@ -538,11 +563,22 @@ export function completeOffseason(
   const capCuts = contractMoves.filter((m) => m.kind === "cap cut").map((m) => m.player);
   const rostered = new Set(allTeams(settled.league).flatMap((t) => t.roster.map((p) => p.id)));
   const freeAgents = freeAgentPool([...freeAgency.unsigned, ...moves.cuts.map((c) => c.player), ...capCuts, ...leftovers.map((p) => p.player)], rostered);
-  const nextLeague: League = { ...settled.league, season: next, freeAgents };
+  // (Last season's practice log has done its work in development.)
+  const settledLeague: League = {
+    ...settled.league,
+    season: next,
+    freeAgents,
+    teams: Object.fromEntries(Object.entries(settled.league.teams).map(([abbr, t]) => [abbr, t.practiceLog ? (({ practiceLog: _done, ...rest }) => rest)(t) : t])),
+  };
+  // Training camp settles the close spots on every depth chart before the new season.
+  const camp = trainingCamp(settledLeague);
+  const nextLeague = camp.league;
 
   // Close the books: every team's season finances, cash and fans.
-  // Your team (any team making its own cuts and offers) runs its own business.
-  const humans = new Set([...teamChoices(cutChoices).keys(), ...teamChoices(freeAgencyChoices).keys()]);
+  // A person's team runs its own business: any team making its own cuts and
+  // offers, and every owner's team (online, a friend who left the offseason
+  // to the AI still sets their own prices and deals).
+  const humans = new Set([...teamChoices(cutChoices).keys(), ...teamChoices(freeAgencyChoices).keys(), ...Object.keys(dynasty.owners ?? {})]);
   const books = closeSeasonBooks(league, dynasty.business ?? startLeagueBusiness(league), league.season, played.season.results, records, dynasty.lastWinPct ?? new Map(), humans);
   const finances: Record<string, SeasonFinances[]> = {};
   for (const [abbr, f] of Object.entries(books.finances)) finances[abbr] = [...(dynasty.finances?.[abbr] ?? []), f].slice(-5);
@@ -559,12 +595,14 @@ export function completeOffseason(
     season: league.season,
     champion: playoffs.champion,
     runnerUp: playoffs.runnerUp,
-    top25: playoffs.ranking.slice(0, 25).map((e) => ({
+    // Format 2: the final Top 25 comes after the championship game.
+    top25: (playoffs.roundRankings?.championship ?? playoffs.ranking).slice(0, 25).map((e) => ({
       rank: e.rank,
       team: e.team,
       record: `${e.record.wins}-${e.record.losses}${e.record.ties ? `-${e.record.ties}` : ""}`,
     })),
-    divisionWinners: standings.map((d) => d.teams[0]!.team),
+    // Format 2: the title games crown the champions; otherwise first place does.
+    divisionWinners: playoffs.titleGames ? playoffs.titleGames.map((g) => g.summary.winner!) : standings.map((d) => d.teams[0]!.team),
     awards,
     topPicks: draft.picks.slice(0, 10).map((p) => ({ pick: p.overall, team: p.team, player: fullName(p.player), position: p.player.position })),
     notableRetirements: [...retired.retirees]
@@ -579,10 +617,11 @@ export function completeOffseason(
   };
 
   return {
-    dynasty: {
+    // (Owners' upgrades and every stadium go back on their teams: the offseason rebuilds rosters and teams.)
+    dynasty: syncVenues(syncUpgrades({
       league: nextLeague,
       history: [...dynasty.history, record],
-      careers,
+      careers: keptCareers(careers, nextLeague),
       slotOrder: Object.fromEntries(standings.map((d) => [d.division, d.teams.map((t) => t.team)])),
       staffPool: staff.pool,
       staffCareers: staff.careers,
@@ -594,7 +633,10 @@ export function completeOffseason(
       hofVotes: [...(dynasty.hofVotes ?? []), vote].slice(-5),
       business: books.business,
       finances,
-    },
+      // Owners bank the season's XP (games, calls, titles, awards, and their players' growth).
+      camp: camp.battles,
+      ...(dynasty.owners ? { owners: bankOwners(dynasty.owners, league.season, { results: played.season.results, playoffs, awards }, league, s.developed) } : {}),
+    })),
     log: { retirees: retired.retirees, draft: draft.picks, contractMoves, staffChanges: staff.changes },
   };
 }

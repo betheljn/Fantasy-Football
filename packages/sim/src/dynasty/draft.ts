@@ -1,4 +1,5 @@
 // The draft: 7 rounds, every team picking from its own scouting board.
+import { allLeanings } from "./recruiting.ts";
 import type { Position } from "../model/positions.ts";
 import { playerOverall, type Player, type PlayerId } from "../model/player.ts";
 import { buildDepthChart, type Team } from "../model/team.ts";
@@ -34,6 +35,8 @@ export interface DraftPick {
   /** Where the consensus board had him, and where this team's own board did. */
   publicRank: number;
   teamRank: number;
+  /** He leaned to this team as a recruit (he chose it). */
+  recruit?: boolean;
 }
 
 export interface DraftResult {
@@ -77,6 +80,9 @@ export interface DraftOptions {
    */
   choose?: Record<string, (board: BoardEntry[]) => PlayerId>;
 }
+
+/** How recruiting moves AI draft boards: a prospect leaning elsewhere is worth this much less (at full strength), one leaning to you this much more. */
+export const RECRUIT_DRAFT = { elsewhereDiscount: 0.2, ownBoost: 0.05 };
 
 /**
  * Run the draft. Each team takes the best fit among the top of its own board:
@@ -125,6 +131,13 @@ export function* draftSteps(
   // A team's estimates don't change during the draft, so neither does the order
   // of its board: sort it once, then skip whoever is gone at each pick.
   const fullBoards = new Map<string, BoardEntry[]>();
+  // Recruiting: a prospect leaning elsewhere is marked down (he may not want to come), one leaning here up.
+  const leanings = allLeanings(scouting);
+  const leanFactor = (team: string, id: PlayerId) => {
+    const l = leanings.get(id);
+    if (!l) return 1;
+    return l.team === team ? 1 + RECRUIT_DRAFT.ownBoost * l.strength : 1 - RECRUIT_DRAFT.elsewhereDiscount * l.strength;
+  };
   const fullBoard = (team: string) => {
     let b = fullBoards.get(team);
     if (!b) fullBoards.set(team, (b = teamBoard(scouting, draftClass, team)));
@@ -164,7 +177,7 @@ export function* draftSteps(
           const seenOverall = e.overall + insight * (playerOverall(truth) - e.overall);
           const seenPotential = e.potential + insight * (truth.potential - e.potential);
           const judged = style.overallShare * seenOverall + (1 - style.overallShare) * seenPotential + evaluationError(teamObj, truth.id);
-          return judged * POSITION_VALUE[pos] * boost * (1 + rng.normal(0, 0.02));
+          return judged * POSITION_VALUE[pos] * boost * (1 + rng.normal(0, 0.02)) * leanFactor(team, truth.id);
         };
         // Consider the top of the board, plus the best player at any empty position.
         // Each candidate is scored once, so the random variety can't contradict itself.
@@ -184,7 +197,9 @@ export function* draftSteps(
       const counts = drafted.get(team)!;
       counts.set(p.player.position, (counts.get(p.player.position) ?? 0) + 1);
       const jersey = pickJersey(rng, p.player.position, new Set(roster.map((x) => x.jersey)));
-      const player: Player = { ...p.player, jersey };
+      // A recruit drafted by the program he leaned to chose it.
+      const recruit = leanings.get(p.player.id)?.team === team;
+      const player: Player = { ...p.player, jersey, ...(recruit ? { recruitedBy: team } : {}) };
       roster.push(player);
       picks.push({
         round,
@@ -195,6 +210,7 @@ export function* draftSteps(
         player,
         publicRank: p.boardRank,
         teamRank: chosen.rank,
+        ...(recruit ? { recruit: true } : {}),
       });
     }
   }

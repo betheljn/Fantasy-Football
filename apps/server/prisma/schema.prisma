@@ -25,11 +25,14 @@ model League {
   weekHours  Int      @default(24)
   /** When the coming week is played if not everyone has readied up (null in the lobby). */
   deadline   DateTime?
+  /** Paused by the commissioner: the deadline doesn't run and nothing plays on its own. */
+  paused     Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   members    Member[]
   save       LeagueSave?
   offers     TradeOffer[]
+  messages   ChatMessage[]
 }
 
 model Member {
@@ -44,6 +47,8 @@ model Member {
   isCommissioner Boolean  @default(false)
   /** Ready for the next week to be played. */
   ready          Boolean  @default(false)
+  /** Handed to the AI by the commissioner: the AI makes their calls, and nobody waits on them. */
+  away           Boolean  @default(false)
   joinedAt       DateTime @default(now())
 
   @@unique([leagueId, team])
@@ -77,4 +82,23 @@ model TradeOffer {
   updatedAt DateTime @updatedAt
 
   @@index([leagueId, status])
+}
+
+/// The league's chat: friends' messages and the league's own posts (a week
+/// played, a trade between friends, a title). Kept so history loads when you
+/// open the league; sent live to everyone connected.
+model ChatMessage {
+  id        String    @id @default(cuid())
+  leagueId  String
+  league    League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  /// Who wrote it (null: the league's own post).
+  memberId  String?
+  /// "chat" (a friend's message) or "post" (the league's).
+  kind      String    @default("chat")
+  body      String
+  createdAt DateTime  @default(now())
+  /// Removed by its writer or the commissioner (the body is cleared).
+  removedAt DateTime?
+
+  @@index([leagueId, createdAt])
 }

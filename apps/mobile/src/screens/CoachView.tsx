@@ -1,12 +1,22 @@
 // Coach your own game: the field plays out each snap, then the call bar
 // asks for the next call (offense, defense, a timeout, or the try after a
 // touchdown). The coaches' call is always picked to start, so one tap runs
-// it; change the play, personnel or coverage first if you like. The sim
-// decides every outcome; this screen only passes your calls in.
+// it; change the play, personnel or coverage first if you like. In the play
+// duel (rules 4) the call bar is a call sheet: a card per concept, and after
+// each snap the reveal of both calls. The sim decides every outcome; this
+// screen only passes your calls in.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import {
   COVERAGES,
+  DEFENSE_CONCEPTS,
+  DEFENSE_CONCEPT_INFO,
+  OFFENSE_CONCEPTS,
+  OFFENSE_CONCEPT_INFO,
+  revealCall,
+  filmStudy,
+  type DefenseConcept,
+  type OffenseConcept,
   formatClock,
   formatDownDistance,
   halfSecondsLeft,
@@ -14,6 +24,8 @@ import {
   pregameEdge,
   winChances,
   type CoachCall,
+  type DefenseFocus,
+  type OffenseFocus,
   type CoachedGame,
   type Coverage,
   type DefensePackage,
@@ -48,15 +60,28 @@ interface Props {
   onCall: () => void;
   /** At the final whistle. */
   finish: { label: string; onPress: () => void };
+  /** Your team (default: the coached team). In a duel you may be either side. */
+  team?: string;
+  /** A duel: the game isn't over, the next call is your friend's ("Waiting on Sam's call"). */
+  waiting?: string | null;
+  /** A duel, while waiting: the snap at hand. */
+  waitingAt?: { situation: GamePrompt["situation"]; offense: string; defense: string } | null;
+  /** A duel: hand your calls to your coaches (the server does it). */
+  onHand?: (until: "drive" | "half" | "game") => void;
 }
 
-export function CoachView({ game, home, away, title, onCall, finish }: Props) {
+export function CoachView({ game, home, away, title, onCall, finish, team, waiting, waitingAt, onHand }: Props) {
   const t = useTheme();
   const s = styles(t);
   // The game object changes in place; this counts the calls so the screen redraws.
   const [, setTick] = useState(0);
   const [camera, setCamera] = useState<"top" | "tv">("top");
   const who = useMemo(() => lookupFor(home, away), [home, away]);
+  // Short names for the call bar (an injury's replacements).
+  const nameOf = useMemo(() => {
+    const m = new Map([...home.roster, ...away.roster].map((pl) => [pl.id, `${pl.firstName.charAt(0)}. ${pl.lastName}`]));
+    return (id: string) => m.get(id) ?? id;
+  }, [home, away]);
   const cache = useRef(new Map<number, PreparedPlay | null>());
   const sofar = game.sofar;
   const plays = useMemo(() => prepareGame(sofar, who, cache.current), [sofar, who]);
@@ -64,7 +89,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
   // Mid-game, the latest play looks on to the coming snap (who has the ball, and where).
   const prompt = game.prompt;
   const wp = useMemo(() => {
-    if (!prompt) return winChances(sofar, edge);
+    if (!prompt) return waitingAt ? winChances(sofar, edge, { team: waitingAt.offense, yardline: waitingAt.situation.yardline }) : winChances(sofar, edge);
     const last = sofar.plays.at(-1)?.event;
     const next =
       prompt.kind === "offense" || prompt.kind === "defense"
@@ -73,10 +98,10 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
           ? { team: prompt.team, yardline: 25 }
           : { team: last?.offense ?? prompt.team, yardline: prompt.situation.yardline };
     return winChances(sofar, edge, next);
-  }, [sofar, edge, prompt]);
+  }, [sofar, edge, prompt, waitingAt]);
   const pb = usePlayback(plays, true);
   const play = pb.play;
-  const over = !game.prompt;
+  const over = !game.prompt && !waiting;
   // The field may still be catching up to the game: show the score as of the play on it.
   const caughtUp = !play || (pb.pos === plays.length - 1 && pb.done);
   const revealed = !play ? -1 : caughtUp ? sofar.plays.length - 1 : pb.done ? play.index : play.index - 1;
@@ -89,6 +114,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
     onCall();
   };
   const hand = (what: "drive" | "half" | "game") => {
+    if (onHand) return onHand(what);
     if (what === "drive") game.autoDrive();
     else if (what === "half") game.autoHalf();
     else while (game.prompt) game.answer();
@@ -113,9 +139,9 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       <Scoreboard
         game={sofar}
         score={over && caughtUp ? game.result!.score : score}
-        possession={over && caughtUp ? null : caughtUp && p ? offenseOf(p) : (play?.offense ?? null)}
-        status={over && caughtUp ? `Final${game.result!.overtime ? " OT" : ""}` : caughtUp && p ? clockLine(p) : play ? play.clock : title}
-        sub={over && caughtUp ? title : caughtUp && p ? downLine(p) : play?.situation || " "}
+        possession={over && caughtUp ? null : caughtUp && p ? offenseOf(p) : caughtUp && waitingAt ? waitingAt.offense : (play?.offense ?? null)}
+        status={over && caughtUp ? `Final${game.result!.overtime ? " OT" : ""}` : caughtUp && p ? clockLine(p) : caughtUp && waitingAt ? clockOf(waitingAt.situation) : play ? play.clock : title}
+        sub={over && caughtUp ? title : caughtUp && p ? downLine(p) : caughtUp && waitingAt ? formatDownDistance(waitingAt.situation, waitingAt.offense, waitingAt.defense) : play?.situation || " "}
       />
       <WinBar game={sofar} home={chance} />
 
@@ -131,6 +157,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
               defense={uniform(play.defense, play.defense === home.abbr)}
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               colorsOf={teamColors}
+              weather={sofar.conditions && !sofar.conditions.dome ? sofar.conditions : null}
             />
           ) : (
             <FieldView
@@ -143,6 +170,8 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               midfield={{ abbr: home.abbr, color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim }}
               colorsOf={teamColors}
+              weather={sofar.conditions && !sofar.conditions.dome ? sofar.conditions : null}
+              stadium={{ color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim, steep: home.venue?.stands === "steep", roofed: !!sofar.conditions?.dome }}
             />
           )
         ) : (
@@ -155,6 +184,7 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       <Text style={s.caption} numberOfLines={2}>
         {play ? (pb.done ? play.caption : "…") : ""}
       </Text>
+      {play && pb.done ? <Reveal event={sofar.plays[play.index]?.event} team={team ?? coachedTeam(game)} theme={t} /> : null}
 
       <View style={s.controls}>
         <Small label={`${pb.speed}×`} onPress={pb.cycleSpeed} theme={t} />
@@ -162,7 +192,13 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
       </View>
 
       <ScrollView style={s.bar} contentContainerStyle={{ padding: 12, gap: 10 }}>
-        {p && !caughtUp ? (
+        {waiting && caughtUp ? (
+          <View style={{ alignItems: "center", gap: 10, paddingVertical: 16 }}>
+            <Text style={s.head}>{waiting}</Text>
+            <Text style={s.coach}>Neither of you sees the other's call until the snap.</Text>
+            {onHand ? <Small label="Coaches: the rest of the game" onPress={() => hand("game")} theme={t} /> : null}
+          </View>
+        ) : (p || waiting) && !caughtUp ? (
           // The next call waits for the field, so it doesn't give the play away.
           <View style={{ alignItems: "center", gap: 8, paddingVertical: 12 }}>
             <Text style={s.coach}>The play's on…</Text>
@@ -170,7 +206,8 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
           </View>
         ) : p ? (
           <>
-            <CallBar key={`${p.sofar.plays.length}:${game.calls.length}`} prompt={p} onAnswer={answer} theme={t} />
+            <FilmLines prompt={p} home={home} away={away} theme={t} />
+            <CallBar key={`${p.sofar.plays.length}:${game.calls.length}`} prompt={p} onAnswer={answer} nameOf={nameOf} theme={t} />
             <View style={s.handoff}>
               <Small label="Coaches: this drive" onPress={() => hand("drive")} theme={t} />
               <Small label="This half" onPress={() => hand("half")} theme={t} />
@@ -195,9 +232,70 @@ export function CoachView({ game, home, away, title, onCall, finish }: Props) {
   );
 }
 
+/**
+ * Film study (the owner's analytics upgrade): one line with the best read
+ * (this game's film once there is some, else their playbook); tap for all of it.
+ */
+function FilmLines({ prompt: p, home, away, theme: t }: { prompt: GamePrompt; home: Team; away: Team; theme: Theme }) {
+  const [open, setOpen] = useState(false);
+  if ((p.kind !== "offense" && p.kind !== "defense") || !duelOn(p)) return null;
+  const you = p.team === home.abbr ? home : away;
+  const them = p.team === home.abbr ? away : home;
+  const look = p.kind === "offense" ? { personnel: p.formation.personnel, set: p.formation.set } : p.offense;
+  const f = filmStudy(you.upgrades?.analytics ?? 0, you, them, p.kind, p.situation, look, p.sofar.plays);
+  if (!f) return null;
+  const line = (xs: ReadonlyArray<{ label: string; share: number }>) => xs.slice(0, 3).map((x) => `${x.label} ${Math.round(x.share * 100)}%`).join(", ");
+  const lines = [
+    `Their playbook: ${line(f.playbook)}`,
+    ...(f.film ? [f.film.snaps ? `This game (${f.film.snaps}): ${line(f.film.calls)}` : "This game: nothing on film here yet"] : []),
+    ...(f.self?.snaps ? [`You, as they see you: ${line(f.self.calls)}`] : []),
+  ];
+  const best = f.film?.snaps ? lines[1]! : lines[0]!;
+  return (
+    <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityLabel={`Film study, ${f.situation}`} accessibilityHint={open ? "Show less" : "Show all of the film"} style={{ paddingVertical: 2 }}>
+      <Text style={{ color: t.text, fontSize: 12 }} numberOfLines={open ? undefined : 1}>
+        <Text style={{ color: t.accent, fontWeight: "800" }}>{`Film · ${f.situation}: `}</Text>
+        {open ? lines.join("\n") : best}
+        {!open && lines.length > 1 ? <Text style={{ color: t.muted }}> ▸</Text> : null}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** The team being coached. */
+function coachedTeam(game: CoachedGame): string {
+  return game.prompt?.team ?? game.result?.coached?.team ?? game.sofar.coached?.team ?? "";
+}
+
+/** After the snap: both calls, and whether yours won. */
+function Reveal({ event, team, theme: t }: { event: GamePrompt["sofar"]["plays"][number]["event"] | undefined; team: string; theme: Theme }) {
+  const r = event ? revealCall(event) : null;
+  if (!r || !event) return null;
+  const onOffense = event.offense === team;
+  const mine = onOffense ? OFFENSE_CONCEPT_INFO[r.offense].label : DEFENSE_CONCEPT_INFO[r.defense].label;
+  const theirs = onOffense ? DEFENSE_CONCEPT_INFO[r.defense].label : OFFENSE_CONCEPT_INFO[r.offense].label;
+  const won = r.winner === "even" ? null : (r.winner === "offense") === onOffense;
+  const color = won === null ? t.muted : won ? "#2e9d57" : "#d1453b";
+  return (
+    <View style={{ marginHorizontal: 16, marginTop: 4, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: color }} accessibilityLabel={`Your call ${mine}, theirs ${theirs}`}>
+      <Text style={{ color: t.text, fontSize: 13 }}>
+        <Text style={{ fontWeight: "800" }}>{mine}</Text>
+        <Text style={{ color: t.muted }}> vs their </Text>
+        <Text style={{ fontWeight: "800" }}>{theirs}</Text>
+        <Text style={{ color, fontWeight: "800" }}>{won === null ? " · even call" : won ? " · you won the call" : " · they won the call"}</Text>
+      </Text>
+      {r.why ? <Text style={{ color: t.muted, fontSize: 12 }}>{r.why}</Text> : null}
+    </View>
+  );
+}
+
 /** "Q2 4:12" for a pause. */
 function clockLine(p: GamePrompt): string {
-  return `${p.situation.quarter <= 4 ? `Q${p.situation.quarter}` : "OT"} ${formatClock(p.situation.clock)}`;
+  return clockOf(p.situation);
+}
+
+function clockOf(s: GamePrompt["situation"]): string {
+  return `${s.quarter <= 4 ? `Q${s.quarter}` : "OT"} ${formatClock(s.clock)}`;
 }
 
 /** Who has the ball at a pause. */
@@ -213,9 +311,11 @@ function downLine(p: GamePrompt): string {
 }
 
 /** The call waiting on you, with the coaches' call picked to start. */
-function CallBar({ prompt: p, onAnswer, theme: t }: { prompt: GamePrompt; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+function CallBar({ prompt: p, onAnswer, nameOf, theme: t }: { prompt: GamePrompt; onAnswer: (call?: CoachCall) => void; nameOf: (id: string) => string; theme: Theme }) {
   const s = styles(t);
   const where = `${clockLine(p)} · ${p.kind === "defense" ? formatDownDistance(p.situation, p.opponent, p.team) : p.kind === "offense" ? formatDownDistance(p.situation, p.team, p.opponent) : ""}`;
+  if (p.kind === "halftime") return <HalftimeBar prompt={p} onAnswer={onAnswer} theme={t} />;
+  if (p.kind === "injury") return <InjuryBar prompt={p} onAnswer={onAnswer} name={nameOf} theme={t} />;
   if (p.kind === "offense") return <OffenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "defense") return <DefenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "timeout") {
@@ -246,7 +346,61 @@ function CallBar({ prompt: p, onAnswer, theme: t }: { prompt: GamePrompt; onAnsw
   );
 }
 
-function OffenseBar({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "offense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+const duelOn = (p: GamePrompt) => (p.sofar.rules ?? 1) >= 4;
+
+function OffenseBar(props: { prompt: Extract<GamePrompt, { kind: "offense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  return duelOn(props.prompt) ? <OffenseSheet {...props} /> : <OffenseChips {...props} />;
+}
+
+/** The play duel on offense: a card per concept (the coaches' pick marked), the other calls beside them. */
+function OffenseSheet({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "offense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  const s = styles(t);
+  const scrimmageCall = (c: PlayCall) => c === "run" || c === "pass";
+  // The coaches' pick: their concept for the run or pass they'd call, else their call (a punt, a kick).
+  const coaches: OffenseConcept | PlayCall = scrimmageCall(p.suggestion) && p.concepts ? p.concepts[p.suggestion as "run" | "pass"] : p.suggestion;
+  const [pick, setPick] = useState<OffenseConcept | PlayCall>(coaches);
+  const [personnel, setPersonnel] = useState<Personnel>(p.formation.personnel);
+  const [set, setSet] = useState<OffenseSet>(p.formation.set);
+  const late = halfSecondsLeft(p.situation) <= 120;
+  const others = p.options.filter((o) => !scrimmageCall(o) && (o === p.suggestion || o === "punt" || o === "field_goal" || late));
+  const concept = (OFFENSE_CONCEPTS as readonly string[]).includes(pick) ? (pick as OffenseConcept) : null;
+  const call: PlayCall = concept ? OFFENSE_CONCEPT_INFO[concept].kind : (pick as PlayCall);
+  const same = pick === coaches && personnel === p.formation.personnel && set === p.formation.set;
+  const name = (x: OffenseConcept | PlayCall) => ((OFFENSE_CONCEPTS as readonly string[]).includes(x) ? OFFENSE_CONCEPT_INFO[x as OffenseConcept].label : PLAY_NAMES[x as PlayCall]);
+  const label = `${same ? "Snap it" : "Call it"}: ${name(pick)}${concept ? ` · ${PERSONNEL_NAMES[personnel]} ${SET_NAMES[set].toLowerCase()}` : ""}`;
+  const kinds: Array<["run" | "pass", string]> = [["run", "Runs"], ["pass", "Passes"]];
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>{where}</Text>
+      <Text style={s.coach}>
+        Coaches (●): {name(coaches)}
+        {scrimmageCall(p.suggestion) ? ` from ${PERSONNEL_NAMES[p.formation.personnel]}, ${SET_NAMES[p.formation.set].toLowerCase()}` : ""}
+      </Text>
+      {kinds.map(([kind, title]) => (
+        <View key={kind} style={{ gap: 6 }}>
+          <Text style={s.section}>{title}</Text>
+          <View style={s.cards}>
+            {OFFENSE_CONCEPTS.filter((c) => OFFENSE_CONCEPT_INFO[c].kind === kind).map((c) => (
+              <ConceptCard key={c} label={OFFENSE_CONCEPT_INFO[c].label} on={pick === c} coaches={coaches === c} onPress={() => setPick(c)} theme={t} />
+            ))}
+          </View>
+        </View>
+      ))}
+      {concept ? <Text style={s.coach}>{`${OFFENSE_CONCEPT_INFO[concept].label}: ${OFFENSE_CONCEPT_INFO[concept].note.toLowerCase()}.`}</Text> : null}
+      {others.length ? <Chips options={others.map((o) => ({ key: o, label: PLAY_NAMES[o] }))} value={pick as PlayCall} onChange={setPick} /> : null}
+      <Big label={label} onPress={() => onAnswer(same ? undefined : { call, ...(concept ? { concept, personnel, set } : {}) })} theme={t} />
+      {concept ? (
+        <>
+          <Text style={s.section}>Formation (they see it, not the call)</Text>
+          <Chips options={p.personnelOptions.map((o) => ({ key: o, label: PERSONNEL_NAMES[o] }))} value={personnel} onChange={setPersonnel} />
+          <Chips options={(["shotgun", "under_center"] as const).map((o) => ({ key: o, label: SET_NAMES[o] }))} value={set} onChange={setSet} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function OffenseChips({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "offense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
   const s = styles(t);
   const [call, setCall] = useState<PlayCall>(p.suggestion);
   const [personnel, setPersonnel] = useState<Personnel>(p.formation.personnel);
@@ -275,7 +429,60 @@ function OffenseBar({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<
   );
 }
 
-function DefenseBar({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "defense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+function DefenseBar(props: { prompt: Extract<GamePrompt, { kind: "defense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  return duelOn(props.prompt) && props.prompt.concept ? <DefenseSheet {...props} /> : <DefenseChips {...props} />;
+}
+
+/** The play duel on defense: a card per concept (the coordinator's pick marked), and the package. */
+function DefenseSheet({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "defense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  const s = styles(t);
+  const f = p.formation;
+  const coordinator = p.concept!;
+  const [pick, setPick] = useState<DefenseConcept>(coordinator);
+  const [pkg, setPkg] = useState<DefensePackage>(f.package);
+  const same = pick === coordinator && pkg === f.package;
+  const detail = (c: DefenseConcept) => {
+    const info = DEFENSE_CONCEPT_INFO[c];
+    return `${info.note}${info.blitz ? ` · ${BLITZ_NAMES[info.blitz]}` : ""}`;
+  };
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>
+        {where} · they're in {PERSONNEL_NAMES[p.offense.personnel]}, {SET_NAMES[p.offense.set].toLowerCase()}
+      </Text>
+      <Text style={s.coach}>Coordinator (●): {DEFENSE_CONCEPT_INFO[coordinator].label} from {PACKAGE_NAMES[f.package].toLowerCase()}</Text>
+      <View style={s.cards}>
+        {DEFENSE_CONCEPTS.map((c) => (
+          <ConceptCard key={c} label={DEFENSE_CONCEPT_INFO[c].label} on={pick === c} coaches={coordinator === c} onPress={() => setPick(c)} theme={t} />
+        ))}
+      </View>
+      <Text style={s.coach}>{`${DEFENSE_CONCEPT_INFO[pick].label}: ${detail(pick).charAt(0).toLowerCase()}${detail(pick).slice(1)}.`}</Text>
+      <Big label={same ? `Line up: ${DEFENSE_CONCEPT_INFO[pick].label}` : `Call it: ${DEFENSE_CONCEPT_INFO[pick].label}, ${PACKAGE_NAMES[pkg].toLowerCase()}`} onPress={() => onAnswer(same ? undefined : { concept: pick, package: pkg })} theme={t} />
+      <Text style={s.section}>Package</Text>
+      <Chips options={p.packageOptions.map((o) => ({ key: o, label: PACKAGE_NAMES[o] }))} value={pkg} onChange={setPkg} />
+    </View>
+  );
+}
+
+/** One play on the call sheet (three to a row; the coaches' pick marked with a dot). */
+function ConceptCard({ label, on, coaches, onPress, theme: t }: { label: string; on: boolean; coaches: boolean; onPress: () => void; theme: Theme }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={`${label}${coaches ? ", the coaches' pick" : ""}`}
+      style={({ pressed }) => ({ flexBasis: "31%", flexGrow: 1, height: 44, paddingHorizontal: 6, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: on ? t.accent : t.border, backgroundColor: on ? t.accent : t.card, opacity: pressed ? 0.7 : 1 })}
+    >
+      <Text style={{ color: on ? t.onAccent : t.text, fontWeight: "800", fontSize: 13, textAlign: "center" }} numberOfLines={1} adjustsFontSizeToFit>
+        {label}
+      </Text>
+      {coaches ? <View style={{ position: "absolute", top: 5, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: on ? t.onAccent : t.accent }} /> : null}
+    </Pressable>
+  );
+}
+
+function DefenseChips({ prompt: p, where, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "defense" }>; where: string; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
   const s = styles(t);
   const f = p.formation;
   const [pkg, setPkg] = useState<DefensePackage>(f.package);
@@ -347,6 +554,71 @@ const styles = (t: Theme) =>
     head: { color: t.text, fontWeight: "800", fontSize: 14 },
     coach: { color: t.muted, fontSize: 13 },
     row: { flexDirection: "row", gap: 8 },
+    cards: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    section: { color: t.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
     handoff: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", paddingTop: 4 },
     final: { color: t.text, fontWeight: "800", fontSize: 16, textAlign: "center" },
   });
+
+const DEFENSE_FOCUS: Array<{ key: DefenseFocus; label: string }> = [
+  { key: "run", label: "Stop the run" },
+  { key: "balanced", label: "Balanced" },
+  { key: "pass", label: "Stop the pass" },
+];
+const OFFENSE_FOCUS: Array<{ key: OffenseFocus; label: string }> = [
+  { key: "man", label: "Attack man" },
+  { key: "balanced", label: "Balanced" },
+  { key: "zone", label: "Attack zone" },
+];
+
+/** Halftime (rules 9): the first half's film on them, and where to lean the second half (the coaches' plan picked to start). */
+function HalftimeBar({ prompt: p, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "halftime" }>; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  const s = styles(t);
+  const [defense, setDefense] = useState<DefenseFocus>(p.suggestion.defense);
+  const [offense, setOffense] = useState<OffenseFocus>(p.suggestion.offense);
+  const pct = (x: number | null) => (x === null ? "no film" : `${Math.round(x * 100)}%`);
+  const lead = p.margin === 0 ? "tied" : `${p.margin > 0 ? "up" : "down"} ${Math.abs(p.margin)}`;
+  const theirs = { run: "focus on stopping the run", pass: "focus on stopping the pass", balanced: "stay balanced on defense" }[p.suggestion.defense];
+  const attack = { man: "attack man coverage", zone: "attack zone coverage", balanced: "stay balanced on offense" }[p.suggestion.offense];
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>Halftime, {lead}. The first half&apos;s film on them:</Text>
+      <Text style={s.coach}>
+        Their offense ran {pct(p.film.runShare)} of the time; their defense played man on {pct(p.film.manShare)} of snaps. The coaches would {theirs} and {attack}.
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>A focus helps against what it&apos;s aimed at and costs a little against the rest.</Text>
+      <View style={s.row}>
+        {DEFENSE_FOCUS.map((f) => (
+          <Choice key={f.key} label={f.label} on={defense === f.key} onPress={() => setDefense(f.key)} theme={t} />
+        ))}
+      </View>
+      <View style={s.row}>
+        {OFFENSE_FOCUS.map((f) => (
+          <Choice key={f.key} label={f.label} on={offense === f.key} onPress={() => setOffense(f.key)} theme={t} />
+        ))}
+      </View>
+      <Choice label="Start the second half" on onPress={() => onAnswer(defense === p.suggestion.defense && offense === p.suggestion.offense ? undefined : { halftime: { defense, offense } })} theme={t} />
+    </View>
+  );
+}
+
+/** One of your players was hurt (rules 10): who goes in (the next man up picked to start). */
+function InjuryBar({ prompt: p, onAnswer, name, theme: t }: { prompt: Extract<GamePrompt, { kind: "injury" }>; onAnswer: (call?: CoachCall) => void; name: (id: string) => string; theme: Theme }) {
+  const s = styles(t);
+  const [pick, setPick] = useState(p.suggestion);
+  const out = p.injury.weeks === 0 ? "out for the game" : p.injury.weeks >= 18 ? "out for the season" : `out about ${p.injury.weeks} week${p.injury.weeks === 1 ? "" : "s"}`;
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>
+        Injury: {p.position} {name(p.player)} ({p.injury.type}), {out}. Who goes in?
+      </Text>
+      <Text style={s.coach}>Next man up: {name(p.suggestion)}</Text>
+      <View style={s.row}>
+        {p.options.slice(0, 5).map((id) => (
+          <Choice key={id} label={name(id)} on={pick === id} onPress={() => setPick(id)} theme={t} />
+        ))}
+      </View>
+      <Choice label="Back to the game" on onPress={() => onAnswer(pick === p.suggestion ? undefined : { replace: pick })} theme={t} />
+    </View>
+  );
+}

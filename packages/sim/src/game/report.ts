@@ -49,15 +49,30 @@ export function changedCall(p: SnapPrompt, a: CoachCall | null): boolean {
   if (!a) return false;
   switch (p.kind) {
     case "offense":
-      return "call" in a && (a.call !== p.suggestion || (a.personnel ?? p.formation.personnel) !== p.formation.personnel || (a.set ?? p.formation.set) !== p.formation.set);
+      return (
+        "call" in a &&
+        (a.call !== p.suggestion ||
+          (a.personnel ?? p.formation.personnel) !== p.formation.personnel ||
+          (a.set ?? p.formation.set) !== p.formation.set ||
+          // The play duel: a different concept for the same run or pass.
+          (a.concept !== undefined && (a.call === "run" || a.call === "pass") && a.concept !== p.concepts?.[a.call]) ||
+          // Clock calls (rules 10).
+          a.hurry !== undefined ||
+          !!a.sideline)
+      );
     case "defense": {
-      const d = a as { package?: string; coverage?: string; blitz?: number };
-      return (d.package ?? p.formation.package) !== p.formation.package || (d.coverage ?? p.formation.coverage) !== p.formation.coverage || (d.blitz ?? p.formation.blitzers.length) !== p.formation.blitzers.length;
+      const d = a as { concept?: string; package?: string; coverage?: string; blitz?: number };
+      return (d.concept !== undefined && d.concept !== p.concept) ||
+        (d.package ?? p.formation.package) !== p.formation.package || (d.coverage ?? p.formation.coverage) !== p.formation.coverage || (d.blitz ?? p.formation.blitzers.length) !== p.formation.blitzers.length;
     }
     case "timeout":
       return "timeout" in a && a.timeout !== p.suggestion;
     case "try":
       return "try" in a && a.try !== p.suggestion;
+    case "halftime":
+      return "halftime" in a && (a.halftime.defense !== p.suggestion.defense || a.halftime.offense !== p.suggestion.offense);
+    case "injury":
+      return "replace" in a && a.replace !== p.suggestion;
   }
 }
 
@@ -77,6 +92,11 @@ export function coachingReport(home: Team, away: Team, seed: number | string, te
   for (const a of calls) {
     const p = game.prompt;
     if (!p) break;
+    // A duel: the other coach's calls play on, but they aren't yours to report.
+    if (p.team !== team) {
+      game.answer(a ?? undefined);
+      continue;
+    }
     const before = p.sofar.plays.length;
     game.answer(a ?? undefined);
     const after = game.sofar.plays.slice(before).map((x) => x.event);

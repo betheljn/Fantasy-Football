@@ -1,6 +1,7 @@
 // Team staff: head coach, coordinators, general manager, scouting director.
 // Ratings are 0-99 (50 = an average hire); tendencies are 0-99 dials.
 
+import type { CoachAbility } from "../dynasty/coaches.ts";
 export type StaffRole = "HC" | "OC" | "DC" | "GM" | "SCOUT";
 
 export const STAFF_ROLE_NAMES: Record<StaffRole, string> = {
@@ -47,6 +48,10 @@ interface StaffBase {
   readonly tenure: number;
   /** Current deal (absent when unemployed or outside the budget system). */
   readonly contract?: StaffContract;
+  /** Career XP (head coaches and coordinators level up; see dynasty/coaches.ts). */
+  readonly xp?: number;
+  /** Abilities earned (one slot at levels 3, 6 and 9). */
+  readonly abilities?: readonly CoachAbility[];
 }
 
 /** A staff deal: a flat yearly salary ($K) from `signed` through `through`. */
@@ -66,7 +71,14 @@ export interface HeadCoach extends StaffBase {
   readonly development: number;
   /** Tendency: 4th downs and two-point tries (50 = conventional). */
   readonly aggressiveness: number;
+  /** One side he calls himself (his scheme and play calling replace that coordinator's); absent = he leaves both to them. */
+  readonly calls?: HeadCoachCalls;
 }
+
+/** An offensive- or defensive-minded head coach's own play calling. */
+export type HeadCoachCalls =
+  | { readonly side: "offense"; readonly scheme: OffensiveScheme; readonly playCalling: number; readonly tempo: number }
+  | { readonly side: "defense"; readonly scheme: DefensiveScheme; readonly playCalling: number };
 
 export interface OffensiveCoordinator extends StaffBase {
   readonly role: "OC";
@@ -114,7 +126,10 @@ export interface TeamStaff {
 export function staffOverall(m: StaffMember): number {
   switch (m.role) {
     case "HC":
-      return Math.round((m.gameManagement + m.discipline + m.development) / 3);
+      // A head coach who calls a side is rated on that play calling too.
+      return m.calls
+        ? Math.round((m.gameManagement + m.discipline + m.development + m.calls.playCalling) / 4)
+        : Math.round((m.gameManagement + m.discipline + m.development) / 3);
     case "OC":
       return Math.round(m.playCalling * 0.4 + m.passingGame * 0.3 + m.runningGame * 0.3);
     case "DC":

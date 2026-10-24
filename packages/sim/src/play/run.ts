@@ -14,12 +14,15 @@ import {
   stopReasonFor,
   weightedPick,
   RULES_VERSION,
+  duel,
+  weather,
   type PlayContext,
 } from "./common.ts";
 import type { RunPlayEvent } from "./events.ts";
 import { boxDefenders, formationInfo, formationsFor, runBlockers } from "./formation.ts";
 import { runDefense } from "../model/ratings.ts";
 import { coachingEdges, offenseProfile } from "./coaching.ts";
+import { CONCEPT_EFFECT, OFFENSE_CONCEPT_INFO } from "./concepts.ts";
 
 /** Rushing yards per extra blocker (or per extra defender in the box, if negative). */
 export const RUN_NUMBERS_EDGE = 0.3;
@@ -45,7 +48,12 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   ];
   if (fullback) carriers.push([fullback, 0.14]);
   const rusher = weightedPick(rng, carriers, ([, w]) => w)[0];
-  const direction = pickDirection(rng);
+  // The duel: an inside call runs between the tackles, an outside one to the edge.
+  const call = duel(ctx);
+  const concept = call && OFFENSE_CONCEPT_INFO[call.offense].kind === "run" ? OFFENSE_CONCEPT_INFO[call.offense] : null;
+  const picked = pickDirection(rng);
+  const direction = concept?.direction === "middle" ? "middle" : concept?.direction === "edge" && picked === "middle" ? (sit.yardline % 2 === 0 ? "left" : "right") : picked;
+  const callEdge = concept ? call!.edge : 0;
 
   // Line battle: the blockers vs the defenders in the box. Quality is the average of
   // everyone involved; how many there are on each side is the separate numbers edge.
@@ -85,10 +93,10 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   // Rules 2: the field shrinks at the goal line (no room behind the defense, everyone packed in).
   const toGoal = 100 - sit.yardline;
   const goalLine = rules >= 2 && toGoal <= GOAL_LINE.within;
-  const mean = RUN_BASE + 1.0 * line + 0.9 * runner - (runBlitz ? 0.3 : 0) - (goalLine ? GOAL_LINE.squeeze : 0);
+  const mean = RUN_BASE + 1.0 * line + 0.9 * runner - (runBlitz ? 0.3 : 0) - (goalLine ? GOAL_LINE.squeeze : 0) + CONCEPT_EFFECT.runYards * callEdge;
   let yards = Math.max(-5, rng.normal(mean, goalLine ? GOAL_LINE.spread : runBlitz ? 3.8 : 3.2));
   const breakaway = clamp(
-    0.035 + 0.02 * burst + 0.01 * wiggle + 0.015 * line + 0.008 * springs - 0.01 * chase + (runBlitz ? 0.015 : 0),
+    (0.035 + 0.02 * burst + 0.01 * wiggle + 0.015 * line + 0.008 * springs - 0.01 * chase + (runBlitz ? 0.015 : 0) + CONCEPT_EFFECT.breakaway * callEdge) * weather(ctx).breakaway,
     0.01,
     0.12,
   );
@@ -98,7 +106,7 @@ export function simulateRun(rng: Rng, ctx: PlayContext): RunPlayEvent {
   const tackler = spot.touchdown ? null : pickTackler(rng, d, spot.yardsGained);
   const outOfBounds = !spot.touchdown && direction !== "middle" && spot.yardsGained > 2 && rng.chance(0.18);
 
-  const fumble = spot.touchdown || spot.safety ? null : rollFumble(rng, rusher, tackler, d, 0.011);
+  const fumble = spot.touchdown || spot.safety ? null : rollFumble(rng, rusher, tackler, d, 0.011 * weather(ctx).fumble);
   const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
 
   return {

@@ -1,5 +1,6 @@
 // Offensive decision making: what to call on each snap, when to use timeouts,
 // and what to try after a TD.
+import { conditionEffects, type GameConditions } from "../game/conditions.ts";
 import { playerOverall } from "../model/player.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
@@ -24,6 +25,8 @@ export interface CallContext {
   /** Personnel and alignment already chosen for this snap (shifts the run/pass mix). */
   personnel?: Personnel;
   set?: OffenseSet;
+  /** The weather (rules 6): kicking decisions know the wind and the cold. */
+  conditions?: GameConditions;
 }
 
 /** Seconds left in the current half (quarters 2 and 4 end a half). */
@@ -109,7 +112,7 @@ function scrimmage(rng: Rng, c: CallContext): PlayCall {
 export function callPlay(rng: Rng, c: CallContext): PlayCall {
   const s = c.situation;
   const toGoal = 100 - s.yardline;
-  const fgProb = fieldGoalProbability(kickerOf(c.offense), fieldGoalDistance(s.yardline));
+  const fgProb = fieldGoalProbability(kickerOf(c.offense), fieldGoalDistance(s.yardline), conditionEffects(c.conditions));
   const late = halfSecondsLeft(s);
   // Late in the game a field goal is only worth it if it ties or takes the lead.
   const fgHelps = !(s.quarter >= 4 && late <= 120 && c.margin < -3);

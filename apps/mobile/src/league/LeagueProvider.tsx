@@ -5,13 +5,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type CoachCall,
+  customizeTeam,
+  type TeamIdentityChoice,
   addGameToSeason,
   allTeams,
   buildDynasty,
   computeRankings,
   createSeasonStats,
   divisionStandings,
-  REGULAR_SEASON_WEEKS,
+  seasonWeeks,
   SCOUTING,
   advanceScoutingWeek,
   beginOffseason,
@@ -47,6 +49,14 @@ import {
   playGame,
   seasonSchedule,
   simulatePlayoffs,
+  postseasonStages,
+  postseasonNews,
+  titleMatchups,
+  leagueFormat,
+  CURRENT_FORMAT,
+  type ScheduledGame,
+  type BoxScore,
+  type GameResult,
   type DivisionStandings,
   type GameSummary,
   type League,
@@ -70,10 +80,31 @@ import {
   afterReview,
   answerPress,
   closeSeasonBooks,
+  priceLimits,
+  namingOffers,
   jobOffers,
   pressConference,
   seasonReview,
   startFrontOffice,
+  withOwners,
+  syncVenues,
+  renameProblem,
+  renameStadium,
+  campStories,
+  teamName,
+  practiceProblem,
+  type PracticePlan,
+  recruitingPoints,
+  newOwner,
+  syncUpgrades,
+  buyUpgrade,
+  upgradeProblem,
+  seasonXp,
+  totalXp,
+  abilityProblem,
+  chooseAbility,
+  type UpgradeTrack,
+  type CoachAbility,
   teamOwner,
   teamRatings,
   type PressConference,
@@ -125,6 +156,7 @@ import {
   judgeTrade,
   seasonWindow,
   tradesOpen,
+  tradeDeadline,
   type TradeWindow,
 } from "@dynasty/sim";
 import { buildReport } from "../dynasty/report";
@@ -132,8 +164,10 @@ import { api, type OnlineMove } from "../online/api";
 import { saveFromServer, type OnlineOffseason } from "../online/save";
 import { activeOnline, myLeagues, setActiveOnline, type MyLeague } from "../online/store";
 import { DRAFT_WEEK, logTeam, logTrades, startLog } from "../dynasty/lineups";
-import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo } from "../dynasty/save";
+import { SAVE_VERSION, type OfficeState, type OffseasonProgress, type PicksState, type RadioState, type SaveState, type SlotInfo, type TeamSetup } from "../dynasty/save";
 import { closeSlot, deleteSlot, freeSlot, loadSlot, readIndex, touchSlot, writeProgress, writeSlot, type SlotIndex } from "../dynasty/slots";
+import { setTeamLooks } from "../field/colors";
+import { startingDynasty } from "../dynasty/setup";
 
 export const PLAYOFF_ROUND_COUNT = 4;
 /** Scouting points you get each week (as every team does). */
@@ -180,7 +214,13 @@ export interface DynastyControls {
   /** Back to the save list (this dynasty stays saved). */
   closeDynasty: () => void;
   newDynasty: () => void;
-  chooseTeam: (abbr: string, role?: "owner" | "gm") => void;
+  /** A new dynasty's setup in progress (saved so a fantasy draft survives closing the app). */
+  setup: TeamSetup | null;
+  saveSetup: (setup: TeamSetup | null) => void;
+  /** Take over your team as set up (with the league the fantasy draft made, if there was one) and open the first season. */
+  beginDynasty: (setup: TeamSetup, drafted?: League) => void;
+  /** Solo: give your team a new look (name, logo, colors) at any time. */
+  restyleTeam: (identity: TeamIdentityChoice) => void;
   /** Play the spring season now (from the offseason report). */
   playSpring: () => void;
   /** Pick the spring champion before it's played (one pick a year). */
@@ -192,6 +232,8 @@ export interface DynastyControls {
   answerPress: (choice: number) => void;
   /** Play the coming week (with the calls of the game you just coached, if given). */
   playWeek: (coached?: { game: string; calls: Array<CoachCall | null> }) => void;
+  /** The same week, with the "Simulating" card shown while it plays (a week is most of a second on a phone). */
+  simWeek: () => void;
   /** Your game this week, coached so far (null if you haven't started coaching it). */
   coaching: { game: string; calls: Array<CoachCall | null> } | null;
   /** Save your calls in the game you're coaching (null clears them: the coaches take the whole game). */
@@ -215,6 +257,10 @@ export interface DynastyControls {
   /** Your points for the coming week, and changing them (+/- points on a prospect). */
   scoutPlan: SaveState["scoutPlan"];
   assignScouting: (prospect: string, delta: number) => void;
+  /** Your standing recruiting plan (points a week per prospect; empty: your staff recruits), and the week's points. */
+  recruitPlan: SaveState["scoutPlan"];
+  recruitPoints: number;
+  assignRecruiting: (prospect: string, delta: number) => void;
   /** Your pick on the clock during the draft. */
   draftTurn: DraftTurn | null;
   draftPick: (prospect: string) => void;
@@ -235,9 +281,21 @@ export interface DynastyControls {
   /** Your depth chart is locked: you have picks on your own players this week. */
   depthLocked: boolean;
   setDepthChart: (pos: Position, ids: string[]) => void;
+  /** Your week's practice (null: your staff plans it), whether it can change now, and setting it (null, or why not). */
+  practice: PracticePlan | null;
+  practiceLocked: boolean;
+  setPractice: (plan: PracticePlan | null) => string | null;
+  /** Buy the next tier of an owner upgrade (null, or why not). */
+  buyUpgrade: (track: UpgradeTrack) => string | null;
+  /** Your coaches can pick up new abilities now (before week 1, until your week-1 game is being coached). */
+  abilityWindow: boolean;
+  /** Give one of your coaches a new ability (null, or why not). */
+  pickAbility: (ability: CoachAbility) => string | null;
   /** Picks: your points and slates; the board for the coming week (worked out on request, with progress). */
   picks: PicksState;
   board: GameLines[] | null;
+  /** The week the board is for (a regular-season week, or championship week), or null when picks are closed. */
+  boardWeek: number | null;
   /** The board is missing your own game (it's worked out again). */
   boardNeedsOwn: boolean;
   boardProgress: number | null;
@@ -251,6 +309,8 @@ export interface DynastyControls {
   /** Your business: prices (before the first home game), stadium projects, naming rights. Each returns what stopped it, if anything. */
   setPrices: (ticket: number, concessions: number) => string[];
   startStadiumProject: (kind: ProjectKind, financing: "cash" | "bonds") => string[];
+  /** Name your stadium (not while a sponsor's name is on it). */
+  renameStadium: (name: string) => string[];
   acceptNamingOffer: (offer: NamingOffer) => string[];
   /** Your Hall of Fame ballot: vote for (or take back) a candidate, up to the limit. Open until the offseason. */
   toggleHofVote: (player: string) => void;
@@ -305,17 +365,46 @@ const newRadio = (): RadioState => ({ shows: [], records: emptyRecords(), last: 
 const newPicks = (): PicksState => ({ balance: SLATE_RULES.startingBalance, board: null, open: [], history: [] });
 
 /** Your game this week is missing from the board (worked out again after a depth-chart change). */
+/**
+ * The week the picks board is for: the coming regular-season week, or
+ * championship week once the regular season is over (format 2, before it's
+ * played); null when there's nothing left to pick.
+ */
+/** Your game this week is being coached: the week's practice is set (it's part of that game). */
+function practiceLocked(s: SaveState | null): boolean {
+  return !!(s?.coaching && s.coaching.calls.length > 0 && s.coaching.season === s.dynasty.league.season);
+}
+
+/** Before week 1, while your week-1 game isn't being coached: your coaches can pick up abilities. */
+function abilityWindow(s: SaveState | null, offseason: unknown): boolean {
+  return !!s?.userTeam && !offseason && !s.report && s.weeksPlayed === 0 && !(s.coaching && s.coaching.calls.length > 0);
+}
+
+function boardWeek(s: SaveState | null, schedule: Schedule | null): number | null {
+  if (!s || !schedule) return null;
+  if (s.weeksPlayed < schedule.weeks) return s.weeksPlayed + 1;
+  return leagueFormat(s.dynasty.league).divisionTitleGames && s.playoffRoundsShown === 0 ? schedule.weeks + 1 : null;
+}
+
+/** That week's games: the schedule's, or championship week's title games. */
+function weekGames(s: SaveState, schedule: Schedule, week: number): ScheduledGame[] {
+  if (week <= schedule.weeks) return schedule.games.filter((g) => g.week === week);
+  const league = s.dynasty.league;
+  return titleMatchups(league, { season: schedule.season, schedule, results: s.results, standings: divisionStandings(league, s.results) });
+}
+
 function needsOwnLines(s: SaveState | null, schedule: Schedule | null): boolean {
   const lines = boardFor(s, schedule);
-  if (!s || !schedule || !lines) return false;
-  const plays = schedule.games.some((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam));
+  const week = boardWeek(s, schedule);
+  if (!s || !schedule || !lines || week === null) return false;
+  const plays = weekGames(s, schedule, week).some((g) => isOwnGame(g, s.userTeam));
   return plays && !lines.some((l) => isOwnGame(l.game, s.userTeam));
 }
 
 /** The board for the coming week, if it's been worked out. */
 function boardFor(s: SaveState | null, schedule: Schedule | null): GameLines[] | null {
   const b = s?.picks?.board;
-  return b && schedule && b.season === schedule.season && b.week === s!.weeksPlayed + 1 ? b.lines : null;
+  return b && schedule && b.season === schedule.season && b.week === boardWeek(s, schedule) ? b.lines : null;
 }
 
 export function LeagueProvider({ children }: { children: ReactNode }) {
@@ -469,6 +558,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         let ready = loaded && !loaded.dynasty.league.freeAgents ? { ...loaded, dynasty: { ...loaded.dynasty, league: ensureFreeAgents(loaded.dynasty.league) } } : loaded;
         // Saves from before owners: you own the team.
         if (ready?.userTeam && !ready.office) ready = { ...ready, office: startFrontOffice("owner") };
+        // Saves from before owner progress: you start earning XP now.
+        if (ready?.userTeam) ready = { ...ready, dynasty: syncVenues(withOwners(ready.dynasty, [ready.userTeam])) };
         setState(ready);
         checkpointRef.current = p;
         setRestoring(p);
@@ -512,6 +603,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
 
   const dynasty = state?.dynasty ?? null;
   const league = dynasty?.league ?? null;
+  // Team colors, logos and short names come from the league; set them before its screens draw.
+  useMemo(() => setTeamLooks(league ? Object.values(league.teams) : []), [league?.teams]);
   const schedule = useMemo(() => (dynasty ? seasonSchedule(dynasty) : null), [dynasty]);
   const results = state?.results;
   const standings = useMemo(() => (league && results ? divisionStandings(league, results) : []), [league, results]);
@@ -617,8 +710,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
   const tradeWindow = useMemo((): TradeWindow | null => {
     // (Online, trading closes when the league's offseason opens.)
     if (!state?.userTeam || !league || offseason || staffStep || state.report || busy || online?.offseason) return null;
-    if (!seasonOver) return tradesOpen(state.weeksPlayed) ? seasonWindow(league, state.weeksPlayed) : null;
-    if (playoffs && state.playoffRoundsShown >= PLAYOFF_ROUND_COUNT) return draftWeekWindow(league, draftOrder(playoffs));
+    if (!seasonOver) return tradesOpen(state.weeksPlayed, tradeDeadline(league)) ? seasonWindow(league, state.weeksPlayed) : null;
+    if (playoffs && state.playoffRoundsShown >= postseasonStages(league).length) return draftWeekWindow(league, draftOrder(playoffs));
     return null;
   }, [online?.offseason, state?.userTeam, state?.report, state?.weeksPlayed, state?.playoffRoundsShown, league, offseason, staffStep, busy, seasonOver, playoffs]);
 
@@ -640,7 +733,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     : offseason ? "resign"
     : !state.userTeam ? "choose"
     : !seasonOver ? "season"
-    : state.playoffRoundsShown < PLAYOFF_ROUND_COUNT ? "playoffs"
+    : state.playoffRoundsShown < postseasonStages(state.dynasty.league).length ? "playoffs"
     : "complete";
 
   /** Play one week of the regular season onto a state (mutates its stats), and a week of scouting. */
@@ -661,7 +754,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const office: OfficeState = s.office ?? startFrontOffice("owner");
     const startRating = ranked[idx]?.ovr ?? 60;
     const nextOffice: OfficeState = { ...office, ...(office.startRating !== undefined ? { lastStartRating: office.startRating } : {}), startRating, expectedWins: Math.round((5 + 10 * (1 - idx / Math.max(1, ranked.length - 1))) * 10) / 10 };
-    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups, office: nextOffice };
+    // Training camp settled the close spots before the season: its stories open the season's news.
+    const camp = s.dynasty.camp ? campStories(s.dynasty.camp, before.season, (abbr) => teamName(before.teams[abbr]!), s.userTeam) : [];
+    return { ...s, dynasty: { ...s.dynasty, league: talks.league }, trades: [...s.trades, ...talks.trades], lineups, office: nextOffice, ...(camp.length ? { news: [...(s.news ?? []), ...camp] } : {}) };
   };
 
   const playOneWeek = (s: SaveState, sched: Schedule): SaveState => {
@@ -674,7 +769,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const coached = mine && s.coaching ? { game: mine.id, team: s.userTeam, calls: s.coaching.calls } : undefined;
     const week_ = playWeek(s.dynasty.league, sched, week, (g) => addGameToSeason(s.stats, g), coached);
     const collection = collectWeek(s.collection ?? startCollection(s.dynasty.recordBook), s.dynasty.league, sched.season, week_.games, s.userTeam);
-    const news = injuryNews(s.dynasty.league, week_.games.flatMap((g) => g.result.injuries), week);
+    const news = injuryNews(s.dynasty.league, [...week_.games.flatMap((g) => g.result.injuries), ...week_.practiceInjuries], week);
     // Settle this week's slates, then the weekly top-up.
     const before = s.picks ?? newPicks();
     const due = before.open.filter((x) => x.week === week && x.season === sched.season);
@@ -707,7 +802,9 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = scouting ?? createScouting(league, draftClass);
       // Your points if you assigned any; otherwise your scouts pick (as they do for every other team).
       const choices = s.scoutPlan.length > 0 ? { [s.userTeam]: s.scoutPlan } : {};
-      scouting = current.week < REGULAR_SEASON_WEEKS ? advanceScoutingWeek(current, league, draftClass, choices) : current;
+      // Your recruiting plan stands week to week (none: your staff recruits for you).
+      const recruiting = s.recruitPlan?.length ? { [s.userTeam]: s.recruitPlan } : {};
+      scouting = current.week < seasonWeeks(current) ? advanceScoutingWeek(current, league, draftClass, choices, recruiting) : current;
     }
     const dynasty = { ...s.dynasty, league };
     const allResults = [...s.results, ...played];
@@ -718,15 +815,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     const rivals = rivalries(league.seed);
     const rivalryBefore = [...(s.dynasty.rivalryGames ?? []), ...rivalryGames(rivals, s.results, sched.season)];
     const rivalryStories = rivalryNews(league, rivals, rivalryBefore, rivalryGames(rivals, played, sched.season));
-    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam, careers: s.dynasty.careers }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
+    const stories = [...weeklyNews({ league, schedule: sched, season: sched.season, week, games: week_.games, results: allResults, before: rankBefore, after: rankAfter, stats: s.stats, injuries: news, trades: talks.trades, userTeam: s.userTeam, careers: s.dynasty.careers, told: s.news ?? [] }), ...rivalryStories].sort((a, b) => b.importance - a.importance);
     const national = nationalFeed(stories);
     // Rivalry results always make the paper, whatever else happened.
     const kept = [...new Set([...national, ...rivalryStories, ...localFeed(stories, s.userTeam)])];
     // Regular season over: the playoffs are decided now, on these rosters.
-    const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }) : undefined;
+    // Championship week's box scores are kept for settling its picks when it's shown.
+    const titleBoxes: Record<string, BoxScore> = {};
+    const onTitleGame = (g: GameResult) => void (titleBoxes[`${sched.season}-title-${g.away}@${g.home}`] = buildBoxScore(g));
+    const final = week === sched.weeks ? simulatePlayoffs(league, { season: sched.season, schedule: sched, results: allResults, standings: divisionStandings(league, allResults) }, { onTitleGame }) : undefined;
     // A coached game is done once its week is played.
     const { coaching: _played, ...rest } = s;
-    return { ...rest, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final } : {}) };
+    return { ...rest, dynasty, weeksPlayed: week, results: allResults, scouting, scoutPlan: [], trades: [...s.trades, ...talks.trades], lineups, injuryNews: [...(s.injuryNews ?? []), ...news], moves: [...(s.moves ?? []), ...ai.moves], picks, radio, collection, news: [...(s.news ?? []), ...kept], ...(final ? { playoffs: final, titleBoxes } : {}) };
   };
 
   /** The season as played, for the offseason. */
@@ -783,7 +883,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       setOffers(new Map());
       setOffseason(null);
       checkpointRef.current = null;
-      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], trades: [], playoffs: null, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
+      persist({ ...s, dynasty: after, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report, scouting: null, scoutPlan: [], recruitPlan: [], trades: [], playoffs: null, titleBoxes: undefined, lineups: undefined, injuryNews: [], moves: [], news: [], radio: newRadio(), collection: undefined, hofVote: undefined }, true);
       // Clear the checkpoint only after the new season is saved.
       checkpoint(null);
       setBusy(null);
@@ -947,20 +1047,40 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
           setTimeout(step, 0);
           return;
         }
-        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: r.value, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [], trades: [] }, true);
+        // New dynasties play the current season shape.
+        const built = { ...r.value, league: { ...r.value.league, format: CURRENT_FORMAT } };
+        persist({ version: SAVE_VERSION, seed, userTeam: "", dynasty: built, weeksPlayed: 0, results: [], stats: createSeasonStats(), playoffRoundsShown: 0, report: null, scouting: null, scoutPlan: [], trades: [] }, true);
         setBusy(null);
       };
       setTimeout(step, 50);
     },
-    chooseTeam: (abbr, role = "owner") => {
-      if (state) persist(openSeason({ ...state, userTeam: abbr, office: startFrontOffice(role) }), true);
+    setup: state?.setup ?? null,
+    saveSetup: (setup) => {
+      if (!state) return;
+      const { setup: _old, ...rest } = state;
+      persist(setup ? { ...rest, setup } : rest);
+    },
+    restyleTeam: (identity) => {
+      if (!state?.userTeam || online) return;
+      const league = customizeTeam(state.dynasty.league, state.userTeam, identity);
+      persist({ ...state, dynasty: { ...state.dynasty, league } }, true);
+    },
+    beginDynasty: (setup, drafted) => {
+      if (!state) return;
+      const { setup: _done, ...rest } = state;
+      const base = startingDynasty(state.dynasty, setup);
+      const dynasty = drafted ? { ...base, league: drafted } : base;
+      persist(openSeason({ ...rest, dynasty: syncVenues(withOwners(dynasty, [setup.team])), userTeam: setup.team, office: startFrontOffice(setup.role) }), true);
     },
     press: pressNow(state),
     takeJob: (abbr) => {
       const s = stateRef.current;
       if (!s?.fired || !s.fired.offers.includes(abbr)) return;
       // A new team, a new owner: start fresh with them, then on with the offseason.
-      const next: SaveState = { ...s, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
+      // Your XP and level go with you.
+      const { [s.userTeam]: yours, ...others } = s.dynasty.owners ?? {};
+      const dynasty = syncUpgrades({ ...s.dynasty, owners: { ...others, [abbr]: yours ?? newOwner() } });
+      const next: SaveState = { ...s, dynasty, userTeam: abbr, fired: undefined, office: { ...startFrontOffice("gm"), reviews: s.office?.reviews ?? [] } };
       setState(next);
       stateRef.current = next;
       beginOffseasonFlow(next);
@@ -976,6 +1096,17 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (!state || !schedule || seasonOver) return;
       const s = coached ? { ...state, coaching: { season: schedule.season, ...coached } } : state;
       persist(playOneWeek(s, schedule), true);
+    },
+    simWeek: () => {
+      if (!state || !schedule || seasonOver) return;
+      setBusy("simming");
+      setProgress(0);
+      // Let the card paint before the week's work.
+      setTimeout(() => {
+        const s = stateRef.current;
+        if (s) persist(playOneWeek(s, schedule), true);
+        setBusy(null);
+      }, 30);
     },
     coaching: state?.coaching && schedule && state.coaching.season === schedule.season ? { game: state.coaching.game, calls: state.coaching.calls } : null,
     saveCoaching: (game, calls) => {
@@ -1008,7 +1139,32 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       })();
     },
     playPlayoffRound: () => {
-      if (state && seasonOver) persist({ ...state, playoffRoundsShown: Math.min(PLAYOFF_ROUND_COUNT, state.playoffRoundsShown + 1) });
+      if (!state || !seasonOver || !playoffs || !schedule) return;
+      const league = state.dynasty.league;
+      const stages = postseasonStages(league);
+      const stage = stages[state.playoffRoundsShown];
+      if (!stage) return;
+      // The stage in the news: the national feed and your own.
+      const stories = postseasonNews(league, schedule.season, playoffs, stage, state.userTeam);
+      const kept = [...new Set([...nationalFeed(stories), ...localFeed(stories, state.userTeam)])];
+      let next: SaveState = { ...state, playoffRoundsShown: state.playoffRoundsShown + 1, news: [...(state.news ?? []), ...kept] };
+      // Championship week: its slates and the hosts' picks are settled.
+      if (stage === "titles" && playoffs.titleGames) {
+        const week = schedule.weeks + 1;
+        const boxes = new Map(playoffs.titleGames.filter((g) => state.titleBoxes?.[g.summary.id]).map((g) => [g.summary.id, { summary: g.summary, box: state.titleBoxes![g.summary.id]! }]));
+        const before = state.picks ?? newPicks();
+        const due = before.open.filter((x) => x.week === week && x.season === schedule.season);
+        const settled = due.map((x) => settleSlate(x, boxes));
+        const onAir = (state.radio?.shows ?? []).find((x) => x.season === schedule.season && x.week === week);
+        const graded = onAir ? gradeHostPicks(onAir.picks, boxes) : [];
+        const radioBefore = state.radio ?? newRadio();
+        next = {
+          ...next,
+          picks: { ...before, balance: before.balance + settled.reduce((n, x) => n + x.payout, 0), board: null, open: before.open.filter((x) => !due.includes(x)), history: [...before.history, ...settled] },
+          radio: { ...radioBefore, records: addToRecords(radioBefore.records, graded), last: graded },
+        };
+      }
+      persist(next);
     },
     startOffseason: () => {
       if (!state || !schedule || !playoffs) return;
@@ -1081,7 +1237,25 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const current = state.scoutPlan.find((a) => a.prospect === prospect)?.points ?? 0;
       const points = Math.max(0, Math.min(current + delta, current + (SCOUT_POINTS - used)));
       const rest = state.scoutPlan.filter((a) => a.prospect !== prospect);
-      persist({ ...state, scoutPlan: points > 0 ? [...rest, { prospect, points }] : rest });
+      const next = points > 0 ? [...rest, { prospect, points }] : rest;
+      persist({ ...state, scoutPlan: next });
+      // Online, this week's points go to the server (private to you; spent when the week is played).
+      if (online) sendMove({ kind: "scout", plan: next });
+    },
+    recruitPlan: state?.recruitPlan ?? [],
+    recruitPoints: state?.userTeam ? recruitingPoints(state.dynasty.league.teams[state.userTeam]) : 0,
+    assignRecruiting: (prospect, delta) => {
+      if (!state?.userTeam) return;
+      const plan = state.recruitPlan ?? [];
+      const max = recruitingPoints(state.dynasty.league.teams[state.userTeam]);
+      const used = plan.reduce((n, a) => n + a.points, 0);
+      const current = plan.find((a) => a.prospect === prospect)?.points ?? 0;
+      const points = Math.max(0, Math.min(current + delta, current + (max - used)));
+      const rest = plan.filter((a) => a.prospect !== prospect);
+      const next = points > 0 ? [...rest, { prospect, points }] : rest;
+      persist({ ...state, recruitPlan: next });
+      // Online, the plan lives on the server (private to you; it stands until you change it).
+      if (online) sendMove({ kind: "recruit", plan: next });
     },
     draftTurn,
     draftPick: (prospect) => stepDraft(prospect),
@@ -1114,6 +1288,45 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     // Not during the playoffs (they're computed from the league as it stood) or the offseason (which has its own copy).
     canEditDepthChart: !!state?.userTeam && !offseason && !state?.report && !seasonOver && !depthLocked,
     depthLocked,
+    practice: (state?.userTeam && state.dynasty.league.teams[state.userTeam]?.practice) || null,
+    practiceLocked: practiceLocked(state),
+    setPractice: (plan) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      if (practiceLocked(s)) return "Your game this week is under way: practice is set until it's played.";
+      if (plan) {
+        const problem = practiceProblem(plan);
+        if (problem) return problem;
+      }
+      const league = s.dynasty.league;
+      const team = league.teams[s.userTeam]!;
+      const { practice: _old, ...rest } = team;
+      const updated = plan ? { ...rest, practice: plan } : rest;
+      persist({ ...s, dynasty: { ...s.dynasty, league: { ...league, teams: { ...league.teams, [s.userTeam]: updated } } } }, true);
+      if (online) sendMove({ kind: "practice", plan });
+      return null;
+    },
+    buyUpgrade: (track) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      const live = totalXp(seasonXp(s.userTeam, { results: s.results, playoffs: s.playoffs ?? null }));
+      const problem = upgradeProblem(s.dynasty.owners?.[s.userTeam], track, live);
+      if (problem) return problem;
+      persist({ ...s, dynasty: buyUpgrade(s.dynasty, s.userTeam, track, live) }, true);
+      if (online) sendMove({ kind: "upgrade", track });
+      return null;
+    },
+    abilityWindow: abilityWindow(state, offseason),
+    pickAbility: (ability) => {
+      const s = stateRef.current;
+      if (!s?.userTeam) return "No team";
+      if (!abilityWindow(s, offseason)) return "Coaches pick up new abilities before the season starts (until your week-1 game is under way).";
+      const problem = abilityProblem(s.dynasty.league.teams[s.userTeam], ability);
+      if (problem) return problem;
+      persist({ ...s, dynasty: { ...s.dynasty, league: chooseAbility(s.dynasty.league, s.userTeam, ability) } }, true);
+      if (online) sendMove({ kind: "ability", ability });
+      return null;
+    },
     setDepthChart: (pos, ids) => {
       if (!state || offseason || !state.userTeam || seasonOver || depthLocked) return;
       const league = state.dynasty.league;
@@ -1129,16 +1342,20 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     picks: state?.picks ?? newPicks(),
     board: boardFor(state, schedule),
     boardNeedsOwn: needsOwnLines(state, schedule),
+    // Online, the league posts a board for regular-season weeks only (the playoffs are played all at once).
+    boardWeek: online && schedule && state && state.weeksPlayed >= schedule.weeks ? null : boardWeek(state, schedule),
     boardProgress,
     loadBoard: () => {
       const s = stateRef.current;
-      if (!s || !schedule || seasonOver || !s.userTeam || boardJob.current) return;
+      const week = boardWeek(s, schedule);
+      // Online, the league works the board out (it comes with the save).
+      if (!s || !schedule || week === null || !s.userTeam || boardJob.current || online) return;
       const existing = boardFor(s, schedule);
       const own = needsOwnLines(s, schedule);
       if (existing && !own) return;
-      const week = s.weeksPlayed + 1;
-      // The whole board, or just your game again (after a depth-chart change).
-      const games = existing ? boardGames(s.dynasty.league, schedule, week, s.userTeam).filter((g) => isOwnGame(g, s.userTeam)) : boardGames(s.dynasty.league, schedule, week, s.userTeam);
+      // The whole board (championship week: all ten title games), or just your game again (after a depth-chart change).
+      const all = week <= schedule.weeks ? boardGames(s.dynasty.league, schedule, week, s.userTeam) : weekGames(s, schedule, week);
+      const games = existing ? all.filter((g) => isOwnGame(g, s.userTeam)) : all;
       const steps = linesSteps(s.dynasty.league, games, undefined, s.userTeam);
       const token = {};
       boardJob.current = token;
@@ -1147,7 +1364,8 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         if (boardJob.current !== token) return;
         const r = steps.next();
         if (!r.done) {
-          setBoardProgress(r.value);
+          // In 2% steps: the same value skips a re-render (a step is one simulation).
+          setBoardProgress(Math.floor(r.value * 50) / 50);
           setTimeout(step, 0);
           return;
         }
@@ -1155,7 +1373,7 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         setBoardProgress(null);
         const now = stateRef.current;
         // Only if nothing moved on meanwhile (the week wasn't played).
-        if (!now || now.weeksPlayed + 1 !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
+        if (!now || boardWeek(now, schedule) !== week || now.dynasty.league.season !== s.dynasty.league.season) return;
         const p = now.picks ?? newPicks();
         const lines = existing && p.board ? [...r.value, ...p.board.lines] : r.value;
         // The radio show for the week is written off the board (once).
@@ -1179,12 +1397,19 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
     },
     placeSlate: (picks, stake) => {
       const s = stateRef.current;
-      if (!s || !schedule || !boardFor(s, schedule)) return ["The board isn't open."];
+      const week = boardWeek(s, schedule);
+      if (!s || !schedule || week === null || !boardFor(s, schedule)) return ["The board isn't open."];
       const p = s.picks ?? newPicks();
-      const ownGames = new Set(schedule.games.filter((g) => g.week === s.weeksPlayed + 1 && isOwnGame(g, s.userTeam)).map((g) => g.id));
+      const ownGames = new Set(weekGames(s, schedule, week).filter((g) => isOwnGame(g, s.userTeam)).map((g) => g.id));
       const problems = slateProblems(picks, stake, p.balance, s.userTeam, ownGames);
       if (problems.length > 0) return problems;
-      const slate: Slate = { id: `${schedule.season}-${s.weeksPlayed + 1}-${p.history.length + p.open.length + 1}`, season: schedule.season, week: s.weeksPlayed + 1, picks, stake };
+      const slate: Slate = { id: `${schedule.season}-${week}-${p.history.length + p.open.length + 1}`, season: schedule.season, week, picks, stake };
+      if (online) {
+        // Online, the league places it (checked again against its board); shown here meanwhile.
+        setState({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } });
+        sendMove({ kind: "slate", picks: picks.map((x) => ({ prop: x.prop.id, side: x.side, ...(x.via ? { via: x.via } : {}) })), stake });
+        return [];
+      }
       persist({ ...s, picks: { ...p, balance: p.balance - stake, open: [...p.open, slate] } }, true);
       return [];
     },
@@ -1195,8 +1420,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const all = s.dynasty.business ?? startLeagueBusiness(league);
       const b = all[s.userTeam]!;
       if (homeGates(league.teams[s.userTeam]!, b, s.results, 0.5).length > 0) return ["Prices are set for the season once the first home game is played. Change them in the offseason."];
-      if (ticket < 20 || ticket > 400 || concessions < 5 || concessions > 100) return ["That price is out of bounds."];
+      const lim = priceLimits(league.seed, league.season);
+      if (ticket < lim.ticket[0] || ticket > lim.ticket[1] || concessions < lim.concessions[0] || concessions > lim.concessions[1]) return ["That price is out of bounds."];
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: { ...b, ticketPrice: ticket, concessionPrice: concessions } } } }, true);
+      if (online) sendMove({ kind: "prices", ticket, concessions });
       return [];
     },
     startStadiumProject: (kind, financing) => {
@@ -1208,6 +1435,18 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       if (problems.length > 0) return problems;
       const next = startProject(b, kind, s.userTeam, financing, s.dynasty.league.season);
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: next } } }, true);
+      if (online) sendMove({ kind: "build", project: kind, financing });
+      return [];
+    },
+    renameStadium: (name) => {
+      const s = stateRef.current;
+      if (!s || !s.userTeam) return ["Not now."];
+      const all = s.dynasty.business ?? startLeagueBusiness(s.dynasty.league);
+      const b = all[s.userTeam]!;
+      const problem = renameProblem(b, name, s.dynasty.league.season);
+      if (problem) return [problem];
+      persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: renameStadium(b, name, s.dynasty.league.season) } } }, true);
+      if (online) sendMove({ kind: "rename", name });
       return [];
     },
     acceptNamingOffer: (offer) => {
@@ -1217,6 +1456,10 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
       const b = all[s.userTeam]!;
       if (!namingAvailable(b, s.dynasty.league.season)) return ["The stadium already carries a sponsor's name."];
       persist({ ...s, dynasty: { ...s.dynasty, business: { ...all, [s.userTeam]: acceptNaming(b, offer, s.dynasty.league.season) } } }, true);
+      if (online) {
+        const at = namingOffers(s.dynasty.league.seed, s.userTeam, s.dynasty.league.season).findIndex((o) => o.sponsor === offer.sponsor && o.perYear === offer.perYear && o.years === offer.years);
+        if (at >= 0) sendMove({ kind: "naming", offer: at });
+      }
       return [];
     },
     toggleHofVote: (id) => {

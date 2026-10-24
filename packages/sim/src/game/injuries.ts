@@ -50,6 +50,8 @@ export interface Injury {
   type: string;
   /** Games he'll miss after this one (0 = just the rest of this game; SEASON_ENDING = out for the season). */
   weeks: number;
+  /** Hurt in practice during the week, not in a game. */
+  practice?: boolean;
 }
 
 /** A player's current injury (on the player, between games). */
@@ -136,7 +138,14 @@ export class InjuryTracker {
   /** Each player in the game, and his team. */
   private readonly players = new Map<PlayerId, { player: Player; team: string }>();
 
-  constructor(seed: string, teams: Record<string, Team>) {
+  /** Multiplies every injury chance (the field: turf is harder on bodies). */
+  private readonly rate: number;
+
+  /** Injuries not yet answered (rules 10: a coach picks who goes in): where each hurt player stood on the depth chart. */
+  private fresh: Array<{ injury: Injury; position: Position; slot: number }> = [];
+
+  constructor(seed: string, teams: Record<string, Team>, rate = 1) {
+    this.rate = rate;
     this.rng = new Rng(`${seed}:injuries`);
     this.teams = { ...teams };
     for (const [abbr, t] of Object.entries(teams)) for (const p of t.roster) this.players.set(p.id, { player: p, team: abbr });
@@ -151,16 +160,34 @@ export class InjuryTracker {
       const abbr = who.team;
       const team = this.teams[abbr]!;
       const p = who.player;
-      if (!this.rng.chance(chance(base, p))) continue;
+      if (!this.rng.chance(chance(base, p) * this.rate)) continue;
       if (count(team, p.position) <= GAME_MIN[p.position]) continue; // nobody left to replace him: he plays through it
       const s = severity(this.rng);
       const injury: Injury = { player: id, team: abbr, type: s.type, weeks: s.weeks };
       hurt.push(injury);
       this.all.push(injury);
+      const slot = team.depthChart[p.position].indexOf(id);
+      if (slot >= 0) this.fresh.push({ injury, position: p.position, slot });
       this.teams[abbr] = sideline(team, id);
       this.players.delete(id);
     }
     return hurt;
+  }
+
+  /** A team's injuries since it was last asked (and forgets them). */
+  takeFresh(team: string): Array<{ injury: Injury; position: Position; slot: number }> {
+    const mine = this.fresh.filter((f) => f.injury.team === team);
+    this.fresh = this.fresh.filter((f) => f.injury.team !== team);
+    return mine;
+  }
+
+  /** Put `id` in the depth-chart slot a hurt player left (the rest move down). */
+  replace(team: string, position: Position, slot: number, id: PlayerId): void {
+    const t = this.teams[team]!;
+    const list = t.depthChart[position].filter((x) => x !== id);
+    if (!t.depthChart[position].includes(id)) return;
+    list.splice(Math.min(slot, list.length), 0, id);
+    this.teams[team] = { ...t, depthChart: { ...t.depthChart, [position]: list } };
   }
 }
 
@@ -290,6 +317,8 @@ export interface InjuryNews {
   type: string;
   weeks: number;
   starter: boolean;
+  /** Hurt in practice. */
+  practice?: boolean;
 }
 
 /** This week's injuries that matter (a starter or a good player, out at least a week), worst first. */
@@ -304,7 +333,7 @@ export function injuryNews(league: League, injuries: readonly Injury[], week: nu
     const starter = rank >= 0 && rank < BASE_STARTERS[p.position];
     const ovr = playerOverall(p);
     if (!starter && ovr < 70) continue;
-    news.push({ week, team: t.abbr, player: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, overall: ovr, type: i.type, weeks: i.weeks, starter });
+    news.push({ week, team: t.abbr, player: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, overall: ovr, type: i.type, weeks: i.weeks, starter, ...(i.practice ? { practice: true } : {}) });
   }
   return news.sort((a, b) => b.weeks - a.weeks || b.overall - a.overall);
 }

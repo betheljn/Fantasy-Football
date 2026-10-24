@@ -72,7 +72,9 @@ describe("coached games", () => {
     const { prompts } = coach("pause", HOME.abbr, () => undefined);
     for (const p of prompts) expect(p.team).toBe(HOME.abbr);
     const kinds = new Set(prompts.map((p) => p.kind));
-    expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try"]));
+    // (An injury call comes up only when one of your starters gets hurt.)
+    kinds.delete("injury");
+    expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try", "halftime"]));
     for (const p of prompts) if (p.kind === "offense") expect(p.options).toContain(p.suggestion);
     // Timeouts come up only late in a half (or when the head coach would call one), with the clock running and one to spend.
     for (const p of prompts.filter((x) => x.kind === "timeout")) {
@@ -216,7 +218,9 @@ describe("coached games", () => {
     const report = coachingReport(HOME, AWAY, "report", HOME.abbr, result.coached!.calls);
     expect(report.calls).toBe(result.coached!.calls.length);
     expect(report.changed).toBe(result.coached!.calls.filter((c) => c !== null).length);
-    expect(report.fourthDowns.tried).toBe(report.changed);
+    // Every gamble is a try, unless a pre-snap foul meant no play.
+    expect(report.fourthDowns.tried).toBeGreaterThan(0);
+    expect(report.fourthDowns.tried).toBeLessThanOrEqual(report.changed);
     expect(report.offense.coaches.plays).toBeGreaterThan(30);
     // Leaving everything to the coaches changes nothing.
     const none = coachingReport(HOME, AWAY, "report", HOME.abbr, coach("report", HOME.abbr, () => undefined).result.coached!.calls);

@@ -1,4 +1,6 @@
 // Standings and tiebreakers, computed purely from game results.
+import type { PracticePlan } from "../game/practice.ts";
+import type { GameConditions } from "../game/conditions.ts";
 import type { PlayerId } from "../model/player.ts";
 import { hashString } from "../rng.ts";
 import type { League } from "./league.ts";
@@ -9,6 +11,8 @@ import type { CoachCall } from "../drive/drive.ts";
 export interface CoachedCalls {
   team: string;
   calls: Array<CoachCall | null>;
+  /** A duel between friends: the other team, also coached (its answers are in `calls`, in the order the game asked). */
+  rival?: string;
 }
 
 /** The outcome of one scheduled game: all standings need. */
@@ -31,6 +35,12 @@ export interface GameSummary {
   rules?: number;
   /** A game a person coached: the team and its calls (replay with simulateGame's coach/calls options). */
   coached?: CoachedCalls;
+  /** The weather and crowd it was played in (rules 6; replay with simulateGame's conditions option). */
+  conditions?: GameConditions;
+  /** Both teams' practice for it (replay with simulateGame's practice option). */
+  practice?: Record<string, PracticePlan>;
+  /** The play duel (rules 4): calls each team won and lost, as [won, lost, won on offense]. */
+  calls?: Record<string, [number, number, number?]>;
 }
 
 export interface WLT {

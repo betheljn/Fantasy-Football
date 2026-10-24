@@ -9,6 +9,7 @@ import { ARCHETYPES, type Archetype } from "./archetypes.ts";
 export const MENTAL_GROWTH_PER_YEAR = 0.8;
 import { DEV_TRAIT_CEILING, rollDevTrait } from "./devtrait.ts";
 import { FIRST_NAMES, LAST_NAMES, NICKNAMES, STATES } from "./names.ts";
+import { pickHomeState } from "./regions.ts";
 
 /** How many players of each position a generated 72-man roster carries. */
 export const ROSTER_TEMPLATE: Record<Position, number> = {
@@ -160,6 +161,8 @@ interface PlayerGenInput {
   age?: number;
   /** Fixed talent level, before position shaping; otherwise drawn around talentMean. */
   talent?: number;
+  /** How good he'll become, if known (draft prospects): his home region follows it. */
+  ceiling?: number;
 }
 
 export function generatePlayer(rng: Rng, input: PlayerGenInput): Player {
@@ -192,6 +195,8 @@ export function generatePlayer(rng: Rng, input: PlayerGenInput): Player {
   ratings.playRecognition = clampRating(ratings.playRecognition + experience);
 
   const [firstName, lastName] = pickName(rng, input.usedNames);
+  // Where he grew up follows regional talent (his own stream: nothing else changes).
+  const home = pickHomeState(input.id, { position, ratings }, input.ceiling ?? talent - ageAdj);
   return createPlayer({
     id: input.id,
     firstName,
@@ -201,6 +206,7 @@ export function generatePlayer(rng: Rng, input: PlayerGenInput): Player {
     jersey: input.jersey,
     ratings,
     archetype: archetype.name,
+    home,
   });
 }
 

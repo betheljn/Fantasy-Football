@@ -1,5 +1,6 @@
 // Player personas and mood. A persona (home state and what he cares about) is
-// derived from the player's id, so it never changes and needs no storage.
+// derived from the player's id (and his stored home state, if he has one), so
+// it never changes.
 // Mood is how happy he is with a team right now: it decides whether he'll
 // re-sign, and which free agent offer he takes.
 import { STATES } from "../gen/names.ts";
@@ -29,20 +30,23 @@ export interface Persona {
 /** A player's persona, the same every time for the same id. */
 const personaCache = new Map<string, Persona>();
 
-export function persona(player: Pick<Player, "id">): Persona {
-  const cached = personaCache.get(player.id);
+export function persona(player: Pick<Player, "id"> & { home?: string }): Persona {
+  // Ids repeat across leagues; the home state tells their players apart.
+  const key = player.home ? `${player.id}|${player.home}` : player.id;
+  const cached = personaCache.get(key);
   if (cached) return cached;
-  const value = makePersona(player.id);
+  const value = makePersona(player.id, player.home);
   if (personaCache.size > 100_000) personaCache.clear();
-  personaCache.set(player.id, value);
+  personaCache.set(key, value);
   return value;
 }
 
-function makePersona(id: string): Persona {
+function makePersona(id: string, home?: string): Persona {
   const rng = new Rng(`persona:${id}`);
-  // Talent isn't tied to population: every state produces players equally,
-  // so small states get hometown recruits too.
-  const homeState = STATES[rng.int(0, STATES.length - 1)]![1];
+  // A player's own home state (regional talent); older players get one from
+  // their id, every state alike. Drawn either way so the rest stays the same.
+  const drawn = STATES[rng.int(0, STATES.length - 1)]![1];
+  const homeState = home ?? drawn;
   // Everyone cares about money; the rest varies a lot from player to player.
   const raw: Record<Priority, number> = {
     money: 1 + rng.next() * 1.5,

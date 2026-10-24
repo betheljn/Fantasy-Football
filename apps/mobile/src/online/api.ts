@@ -1,7 +1,7 @@
 // Talking to the online-leagues server (apps/server). The server runs the sim
 // for online leagues; the app only asks it for things and shows the answers.
 import Constants from "expo-constants";
-import type { CoachCall, FreeAgentOffer, Position, StaffSlot, TradeProposal, TradeVerdict } from "@dynasty/sim";
+import type { StadiumDesign, ProjectKind, PracticePlan, CoachAbility, UpgradeTrack, DuelView, CoachBuild, CoachCall, FreeAgentOffer, Position, SkillGroup, StaffSlot, TeamIdentityChoice, TradeProposal, TradeVerdict } from "@dynasty/sim";
 import { Platform } from "react-native";
 
 /**
@@ -23,6 +23,12 @@ export interface OnlineMember {
   team: string | null;
   isCommissioner: boolean;
   ready: boolean;
+  /** Handed to the AI by the commissioner (nobody waits on them). */
+  away?: boolean;
+  /** Their team's look and coach are set (lobby). */
+  setUp?: boolean;
+  /** Their skill groups and the region their program lands in (lobby). */
+  program?: { groups: SkillGroup[]; region: string | null };
 }
 
 export interface OnlineTeam {
@@ -35,6 +41,23 @@ export interface OnlineTeam {
   losses: number;
   ties: number;
   claimedBy: string | null;
+  /** How the team looks (in the lobby, as its friend set it up). */
+  nickname: string;
+  tag: string;
+  logo: string;
+  colors?: { primary: string; trim: string };
+  /** The head coach its friend built (lobby). */
+  coach?: string;
+  /** A friend's program (lobby): its region. */
+  program?: string;
+}
+
+/** Your team's look and head coach, sent from the lobby. */
+export interface OnlineSetup {
+  identity: TeamIdentityChoice;
+  coach: CoachBuild;
+  /** Your stadium's design (built when the league starts). */
+  stadium?: StadiumDesign;
 }
 
 export type OffseasonStage = "staff" | "hire" | "resign" | "draft" | "freeagency" | "cuts";
@@ -61,6 +84,8 @@ export interface OnlineLeague {
   saveVersion: number;
   weekHours: number;
   deadline: string | null;
+  /** Paused by the commissioner: nothing plays until it's picked back up. */
+  paused?: boolean;
   next: NextStep | null;
   /** In the offseason: friends who've made their call for the open stage. */
   madeCall: string[];
@@ -106,7 +131,19 @@ export type OnlineMove =
   | { kind: "sign"; player: string }
   | { kind: "trade"; proposal: TradeProposal }
   /** Your calls so far in your game this week (empty: leave it to your coaches). */
-  | { kind: "coach"; game: string; calls: Array<CoachCall | null> };
+  | { kind: "coach"; game: string; calls: Array<CoachCall | null> }
+  | { kind: "upgrade"; track: UpgradeTrack }
+  | { kind: "ability"; ability: CoachAbility }
+  | { kind: "recruit"; plan: Array<{ prospect: string; points: number }> }
+  | { kind: "practice"; plan: PracticePlan | null }
+  | { kind: "scout"; plan: Array<{ prospect: string; points: number }> }
+  | { kind: "build"; project: ProjectKind; financing: "cash" | "bonds" }
+  | { kind: "rename"; name: string }
+  | { kind: "prices"; ticket: number; concessions: number }
+  /** Sell the naming rights: this season's offer at that place in the list. */
+  | { kind: "naming"; offer: number }
+  /** A slate on the coming week's board: prop ids and sides (the league's board sets the lines). */
+  | { kind: "slate"; picks: Array<{ prop: string; side: "over" | "under"; via?: { host: string; fade: boolean } }>; stake: number };
 
 /** Your call for the offseason stage that's open (send it again to change it). */
 export type OffseasonChoice =
@@ -123,6 +160,44 @@ export interface MoveAnswer {
   verdict?: TradeVerdict;
   saveVersion: number;
 }
+
+/** Your duel this week (a game against a friend), as the server lets you see it. */
+export interface OnlineDuel extends DuelView {
+  game: string;
+  home: string;
+  away: string;
+  week: number;
+  /** Calls you handed to your coaches, if any. */
+  handoff: { until: "drive" | "half" | "game"; at: number } | null;
+}
+
+/** A message in the league's chat: a friend's, or the league's own post. */
+export interface ChatMessage {
+  id: string;
+  kind: "chat" | "post";
+  memberId: string | null;
+  /** The writer's name (null for the league's posts). */
+  author: string | null;
+  /** Empty once removed. */
+  body: string;
+  removed: boolean;
+  createdAt: string;
+}
+
+/** What arrives over the live connection. */
+export type ChatEvent = { type: "ready" } | { type: "message"; message: ChatMessage } | { type: "removed"; id: string } | { type: "error"; error: string };
+
+/** The commissioner's tools. */
+export type CommissionerAction =
+  | { action: "pause" }
+  | { action: "resume" }
+  | { action: "extend"; hours: number }
+  | { action: "away"; memberId: string }
+  | { action: "back"; memberId: string }
+  | { action: "remove"; memberId: string };
+
+/** The league's live connection (WebSocket), on the same server. */
+export const liveUrl = (id: string) => `${serverUrl().replace(/^http/, "ws")}/leagues/${id}/live`;
 
 /** A trade one friend offered another. */
 export interface TradeOffer {
@@ -161,9 +236,17 @@ export const api = {
   join: (inviteCode: string, displayName: string) => call<Joined>("POST", "/join", { inviteCode, displayName }),
   league: (id: string, token: string) => call<OnlineLeague>("GET", `/leagues/${id}`, undefined, token),
   claim: (id: string, token: string, team: string | null) => call<OnlineLeague>("POST", `/leagues/${id}/claim`, { team }, token),
+  setup: (id: string, token: string, setup: OnlineSetup | null) => call<OnlineLeague>("POST", `/leagues/${id}/setup`, { setup }, token),
+  mySetup: (id: string, token: string) => call<{ setup: OnlineSetup | null; team: string | null; region: string | null }>("GET", `/leagues/${id}/setup`, undefined, token),
+  program: (id: string, token: string, groups: SkillGroup[] | null) => call<OnlineLeague>("POST", `/leagues/${id}/program`, { groups }, token),
+  region: (id: string, token: string, memberId: string, region: string) => call<OnlineLeague>("POST", `/leagues/${id}/region`, { memberId, region }, token),
   start: (id: string, token: string) => call<OnlineLeague>("POST", `/leagues/${id}/start`, {}, token),
   ready: (id: string, token: string, ready: boolean) => call<{ advanced: AdvanceSummary | null; league: OnlineLeague }>("POST", `/leagues/${id}/ready`, { ready }, token),
   advance: (id: string, token: string) => call<{ advanced: AdvanceSummary; league: OnlineLeague }>("POST", `/leagues/${id}/advance`, {}, token),
+  chat: (id: string, token: string, before?: string) => call<{ messages: ChatMessage[]; more: boolean }>("GET", `/leagues/${id}/chat${before ? `?before=${encodeURIComponent(before)}` : ""}`, undefined, token),
+  sendChat: (id: string, token: string, body: string) => call<{ message: ChatMessage }>("POST", `/leagues/${id}/chat`, { body }, token),
+  removeChat: (id: string, token: string, messageId: string) => call<{ removed: boolean }>("POST", `/leagues/${id}/chat/${messageId}/remove`, {}, token),
+  commissioner: (id: string, token: string, action: CommissionerAction) => call<{ done: boolean; deadline?: string }>("POST", `/leagues/${id}/commissioner`, action, token),
   move: (id: string, token: string, move: OnlineMove) => call<MoveAnswer>("POST", `/leagues/${id}/moves`, { move }, token),
   offseason: (id: string, token: string, choice: OffseasonChoice) =>
     call<{ done: boolean; problems: string[]; saveVersion: number }>("POST", `/leagues/${id}/offseason`, { choice }, token),
@@ -172,6 +255,9 @@ export const api = {
     call<{ sent: boolean; problems: string[]; offer?: TradeOffer }>("POST", `/leagues/${id}/offers`, { proposal }, token),
   answerOffer: (id: string, token: string, offerId: string, action: "accept" | "decline" | "withdraw") =>
     call<{ offer: TradeOffer; problems: string[]; saveVersion?: number }>("POST", `/leagues/${id}/offers/${offerId}`, { action }, token),
+  duel: (id: string, token: string) => call<{ duel: OnlineDuel | null }>("GET", `/leagues/${id}/duel`, undefined, token),
+  duelCall: (id: string, token: string, at: number, coachCall: CoachCall | null) => call<{ duel: OnlineDuel }>("POST", `/leagues/${id}/duel/call`, { at, call: coachCall }, token),
+  duelHand: (id: string, token: string, until: "drive" | "half" | "game") => call<{ duel: OnlineDuel }>("POST", `/leagues/${id}/duel/hand`, { until }, token),
   games: (id: string, token: string, week?: number) =>
     call<{ season: number; week: number; games: OnlineGame[] }>("GET", `/leagues/${id}/games${week ? `?week=${week}` : ""}`, undefined, token),
 };

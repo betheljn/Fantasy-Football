@@ -1,8 +1,9 @@
 // Small shared building blocks for list-style screens.
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps, ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
-import { teamColor, teamColors } from "../field/colors";
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
+import { teamColor, teamColors, teamLogoId, teamShort } from "../field/colors";
+import { badgeImage } from "../logos/render";
 import { radius, space, typo, useTheme } from "../theme";
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -27,17 +28,30 @@ export function LinkRow({ onPress, children, label }: { onPress: () => void; chi
 }
 
 /**
- * A team's mark: a dot in its color when small, and at 18 and up a badge in
- * its colors with its initials.
+ * A team's mark: a dot in its color when small, and at 18 and up its logo
+ * (a badge in its colors with its initials until a league is loaded).
  */
 export function Swatch({ abbr, size = 10 }: { abbr: string; size?: number }) {
   if (size < 18) return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: teamColor(abbr) }} />;
   const c = teamColors(abbr);
+  const logo = teamLogoId(abbr);
+  if (logo) return <LogoBadge logo={logo} primary={c.primary} trim={c.trim} size={size} label={teamShort(abbr)} />;
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.primary, borderWidth: Math.max(2, size / 14), borderColor: c.trim, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ color: c.onPrimary, fontWeight: "900", fontSize: size * 0.34, letterSpacing: 0.5 }}>{abbr}</Text>
+      <Text style={{ color: c.onPrimary, fontWeight: "900", fontSize: size * 0.34, letterSpacing: 0.5 }}>{teamShort(abbr)}</Text>
     </View>
   );
+}
+
+/** A logo in given colors (for previews before they're a team's). */
+export function LogoBadge({ logo, primary, trim, size, label }: { logo: string; primary: string; trim: string; size: number; label?: string }) {
+  const uri = badgeImage(logo, primary, trim);
+  if (!uri) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: primary, borderWidth: Math.max(2, size / 14), borderColor: trim }} accessibilityLabel={label} />
+    );
+  }
+  return <Image source={{ uri }} style={{ width: size, height: size }} accessibilityLabel={label} />;
 }
 
 export const TeamBadge = Swatch;

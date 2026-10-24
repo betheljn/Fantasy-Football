@@ -1,13 +1,16 @@
 # Football Dynasty Game — Project Guide
 
 ## What this is
-A phone-first football management and dynasty game. Players run one team in a
-league of 50 fictional teams (one per US state), draft and develop players, hire
-coaches, GMs, and scouts, and chase championships across many seasons.
+A phone-first football management and dynasty game. Players run one program in a
+league of 50 fictional teams in ten regions (each region turns out its own kind
+of talent), draft and develop players, hire coaches, GMs, and scouts, and chase
+championships across many seasons.
 Games are simulated and shown as a 2D top-down field plus a play-by-play feed.
 
 This is NOT a real-world fantasy football or NFL projection tool.
 Never use real leagues, teams, players, or logos (no "NFL", no real team names).
+Generic nicknames (Tigers, Lions, Bears) are fine on their own; never a name
+that points at one real team (49ers, 76ers) or a real team's city + name.
 All players and teams are generated.
 
 ## Tech stack (do not change without asking)
@@ -32,14 +35,22 @@ All players and teams are generated.
 - Standard football rules: 4 downs, 10 yards, 4 quarters, touchdowns,
   field goals, punts, turnovers
 - 50 teams in 2 conferences of 5 divisions (5 teams each)
-- 20-game regular season over 22 weeks: two byes per team, one in weeks 5-11
-  and one in weeks 12-18
+- Each division is a region with a talent core (three skill groups); players
+  have home states, and the best at a group mostly come from its regions
+- Leagues record their season format (old saves keep theirs). New leagues
+  (format 2): 15 games (4 division, 6 conference, 5 non-conference) over 16
+  weeks with one bye (weeks 5-12), trade deadline after week 8. Format 1 (from
+  before): 20 games over 22 weeks, two byes, deadline after week 11
 - Weekly rankings 1-25 from a computed formula: 100 x win pct + 2 x strength
   rating (capped scoring margin + strength of schedule); preseason prior from
   roster strength fades over the first 5 games
-- 16-team playoff: the 10 division winners (automatic bids) + the 6 highest-ranked
-  other teams, all seeded 1-16 by final ranking. Fixed bracket (1v16, 8v9, ...),
-  higher seed hosts, neutral-site championship, no ties
+- Format 2 championship week: each division's top two meet (first place
+  hosts); the winners are division champions with the automatic bids
+- 16-team playoff: the 10 division champions (automatic bids) + the 6
+  highest-ranked other teams, all seeded 1-16 by ranking (format 2: the ranking
+  after championship week). Fixed bracket (1v16, 8v9, ...), higher seed hosts,
+  neutral-site championship, no ties. Format 2 re-ranks after each round; the
+  final poll has the champion No. 1 and the runner-up No. 2
 - ~50 Madden-style attributes per player, position archetypes, hidden potential
   and development traits (Normal / Impact / Star / Elite)
 - Offseason: retirements, development, 450-prospect draft class scouted by each
@@ -295,6 +306,238 @@ Texture on the systems already there.
 1. Re-signing talks: holdouts and counteroffers
 2. Captains and morale swings during the season
 3. Career milestones in the news and on the radio show
+
+### Milestone 19: your start (done)
+Onboarding for a new dynasty: make the team yours, build your head coach,
+then a fantasy draft. The AI still runs the other 49 teams.
+Decided: the whole league redrafts; logos are drawn in Skia; you build your
+own head coach (not pick from candidates).
+1. Sim: team identity: pick your state, then a city name, nickname, 2-4
+   letter short name, colors and a logo from a library of 70 (each a
+   nickname and an emblem; a new league hands out 50, the other 20 are
+   classic generic names like Tigers and Lions); no two teams share a
+   name or logo (taking one trades yours to its holder)
+2. App: the 70 logos drawn in Skia, shown everywhere a team is; the team
+   setup screen (state, name, logo list, colors, city and short name, role)
+3. Build your head coach: offensive-, defensive-minded or balanced, schemes,
+   tendencies and a rating budget; it drives play calling and development
+   through the existing staff rules
+4. Sim: fantasy draft: every rostered player into one pool, a snake draft for
+   all 50 teams, step by step like the rookie draft; you pick your first 10,
+   25 or all rounds, the AI the rest; then depth charts and contracts
+   re-fitted to the hard cap
+5. App: the draft screen and the whole flow wired together
+   (team, coach, draft length and your draft slot, draft, first season);
+   the draft is saved pick by pick and resumes; "players needed" grades
+   the roster A+ to F (overall, each position, team traits like pass rush
+   and coverage), each the average player score on a curve against the
+   league (average is a C), with the positions most needed first
+
+Follow-ups also done: online, each friend makes their claimed team theirs
+from the lobby (look and coach, checked on the server, made when the league
+starts; a friend's name, logo or short name is off limits).
+
+### Milestone 20: regions and your program (done)
+The league stops being "pick a state". Each division is a region with a
+talent core, and you build a new program there.
+Decided: regions are the 10 divisions; your program replaces one of the
+region's five (league stays at 50) with a fresh roster; no state is named,
+only the region's states; you create the name, logo, colors and more.
+1. Sim: regional talent: each region has a core of skill groups (e.g.
+   Southeast speed and elusiveness, Great Lakes/North/Plains big men up
+   front); players get a home region and generated players, draft classes
+   and free agents lean to their region's core (stars can still come from
+   anywhere); existing saves keep their players as they are
+2. Sim: skill groups and your program: rank your top 3 skill groups, the
+   best-fit region is yours; a fresh roster built mostly from local talent
+   plus players from other regions; your program's market is its region
+3. App: onboarding reworked: skill groups, your region and why, then your
+   program's name, logo, colors and other options, your head coach, the
+   fantasy draft (optional), first season
+4. Online: friends pick skill groups in the lobby instead of claiming states;
+   friends who fit one region share it in the order they joined (its five
+   spots, most typical market first), then go to their next-best region
+
+### Milestone 21: the new season shape (done)
+Decided: 15 games (4 division, 6 conference, 5 non-conference) over 16
+weeks with one bye; division title games (each division's top two) give the
+10 automatic bids; the 6 highest-ranked others fill the 16-team playoff;
+the Top 25 is re-ranked after the title games and after each playoff round.
+Leagues started before this keep their old format (versioned, so old saves
+and replays don't change).
+1. Sim: league format versions; the 15-game schedule
+2. Sim: championship week (division title games), bids and seeding
+3. Rankings after title games and each playoff round; news, radio, picks
+4. App and server: the new calendar, championship week, playoff picture
+
+### Milestone 22: the play duel (the core of the game) (done)
+Playing, not watching: before each snap you and the opponent each pick a
+call; the matchup of the calls, the players' ratings and a little engine
+randomness decide the play.
+Decided: you call the plays by default (hand any of them, or the game, to
+your coach); both sides see formations, never the call; your head coach's
+scheme is your playbook and their play design sets how well each play is
+drawn up, so a coach who doesn't fit your philosophy costs you.
+1. Sim: playbook concepts (offense: inside/outside run, draw, screen,
+   quick, intermediate, deep shot, play action; defense: base, run blitz,
+   pass blitz, man press, Cover 2/3/4) and the counter table feeding the run
+   and pass engines; deterministic; old replays unchanged (rules versions)
+2. Sim: the AI opponent: calls by situation, scheme and coach quality, and
+   learns your tendencies during a game
+3. Sim: the reveal and the duel recap (calls won and lost, why)
+4. App: the call sheet (concept cards before each snap, the reveal after)
+5. Online: games between friends become real duels
+   5a. Sim: a game both teams' coaches call (one list of calls in the order
+       the game asks); each coach sees the calls up to the last play, never
+       the other's call before making their own
+   5b. Server: the duel call by call (your view, your call, hand a drive, a
+       half or the game to your coaches); roster moves wait while a duel is
+       under way; the week plays it, the coaches calling anything left
+   5c. App: the duel screen (your call, waiting on your friend, the reveal)
+
+### Milestone 23: owner and coach progression (done)
+Decided: you are the owner, and the owner is who levels up; coaches level
+too; both have upgrades that improve player growth and games.
+1. Owner XP and levels (wins, calls won, development, titles)
+2. Owner upgrades: facilities (growth), recruiting points, analytics (film
+   study: see opponent tendencies), coaching clinic; coach levels and
+   abilities; coach-philosophy fit
+   2a. Owner upgrades: a point per level, tier n costs n; facilities (player
+       growth), recruiting (scouting reach now, recruiting points later),
+       analytics (film study: their playbook, this game's film, self-scout),
+       coaching clinic (coach XP); off the field only, never in a play
+   2b. Coach XP, levels and abilities
+   2c. Coach-philosophy fit
+3. App: owner profile, upgrade tree, coach abilities
+
+### Milestone 24: recruiting (done)
+Local and outside talent: recruiting points from your coach and upgrades;
+local prospects cost less; you can recruit anywhere.
+Decided: the draft stays the only way in; recruiting builds a prospect's
+interest in your program, so you learn more about him and he's likelier to
+fall to you (other teams shy off a player leaning elsewhere); online,
+friends recruit head to head for the same prospects.
+1. Sim: interest and recruiting points: weekly points (head coach, the
+   recruiting upgrade), spent on prospects (local ones cost less), interest
+   that builds with diminishing returns and fades a little when ignored; a
+   prospect leans to the team he's warmest on; recruiting visits scout him;
+   AI teams recruit too
+2. Sim: the draft: other teams' boards mark down a prospect leaning
+   elsewhere, so recruits fall toward you; a recruit who lands with the team
+   he leaned to arrives happy
+3. App: the recruiting board (prospects, interest, local tags, spend the
+   week's points) and leanings on the draft board
+4. Online: friends' weekly recruiting calls, private until the week is
+   played, head to head for the same prospects
+
+### Milestone 25: practice and game day (done)
+Weekly practice plan (focus, intensity, injury risk, installing plays for
+the next opponent), training camp position battles, weather by region and
+week, crowd noise; shown on the field and in the feed.
+Decided: practice is installing plays for the next opponent (drawn up
+better in that game) and an intensity (harder grows players a little more,
+risks practice injuries and tired legs on game day); AI teams practice too.
+Weather and crowd noise change how games play (a new rules version, so past
+games replay unchanged); games record their conditions and practice.
+1. Sim: game-day conditions: weather by region and week (cold, rain, snow,
+   wind; none under a dome) and the home crowd's noise (from its fans and
+   attendance); their effects on passing, kicking, fumbles and the visitors'
+   false starts; recorded on each game for replays
+2. Sim: the weekly practice plan: installs, intensity, practice injuries,
+   game-day fatigue, growth over the season; AI teams' plans
+3. Sim: training camp position battles (close spots on the depth chart
+   settled in camp, a standout's small bump, camp news)
+4. App: the practice screen, conditions on the pregame, field and feed,
+   camp battles in the preseason
+5. Online: friends' weekly practice plans
+
+### Milestone 26: arenas (done)
+Design and grow your stadium (capacity, roof, surface, video board, name),
+drawn in Skia, paid for through the business engine, feeding home-field
+noise and atmosphere.
+Decided: the roof and surface change how games play (a new rules version,
+so past games replay unchanged): open, retractable (closed in rain, snow
+and cold) or domed; grass (a little slower, fewer injuries) or turf (a
+little faster, more injuries); steeper, closer stands make it louder. Drawn
+as an aerial view in Skia, on a stadium screen and around the field.
+1. Sim: the stadium's design (roof, surface, stands, capacity, video board,
+   name), its projects paid through the business engine, AI teams' choices;
+   older saves' stadiums carried over
+2. Sim: the stadium in games (rules 7): the retractable roof, surface speed
+   and injuries, the stands' noise; recorded on each game
+3. App: the aerial stadium in Skia, the stadium screen (design and build),
+   the stadium around the field on game day
+4. Online: friends build their stadiums
+
+### Milestone 27: online radio and picks (done)
+Picks and the radio show in leagues with friends (until now solo only).
+Decided: the league works the board out once a week on the server (everyone
+sees the same board and the same show); the featured games are AI against AI
+(nobody bets against a friend's team), plus overs on your own players in your
+own game; each friend keeps their own points against the house, and a
+leaderboard ranks the friends.
+1. Sim: the shared board (every friend's game for their own players, then the
+   featured AI games), each friend's view of it, slates checked against that
+   view (lines from the board, never the phone), the show with every friend's
+   game off it, and the friends' leaderboard
+2. Server: the board and the show worked out after each week is played;
+   slates placed as moves, settled when the week is played; balances,
+   history and host records per league; the leaderboard
+3. App: the picks screen, the radio show and the leaderboard online
+
+### Milestone 28: league life with friends (done)
+The social side of online leagues: talk, recaps, a commissioner's tools and
+rivalries between friends. The server stays the source of truth.
+Decided: live chat over WebSockets (@fastify/websocket on the server, React
+Native's own WebSocket on the phone), messages kept in Postgres so history
+loads when you open the league; you can delete your own messages and the
+commissioner can delete anyone's (shown as removed).
+1. Server: league chat (messages per league, newest first, paged; length
+   limits; the commissioner can delete), and automatic league posts (a week
+   played, a trade between friends, a title)
+2. Server: commissioner tools: pause the league, extend this week's deadline,
+   hand a friend's team to the AI (or back), remove a member; every action
+   posted to the league
+3. Sim and server: friends' rivalries: head-to-head records between friends,
+   a weekly league recap story everyone sees (the friends' games, the duels,
+   the picks leaderboard), friend-vs-friend lines in the news and on the show
+4. App: the league's chat and posts, commissioner controls, head-to-head on
+   team pages, and a shared league history (seasons, champions, the friends'
+   titles and records)
+
+### Milestone 29: game day depth
+More to play in your own games; the sim still decides every play, and new
+effects come in under a new rules version so past games replay unchanged.
+Decided: fatigue and rotation are automatic (players tire with snaps,
+stamina matters, the coaches rotate by the depth chart) with your override
+between snaps (keep a starter in, or rest someone); in the two-minute drill
+you get a hurry-up toggle and clock calls (spike, a sideline throw) on top of
+your call sheet and timeouts.
+1. Sim: player fatigue through a game (stamina and snaps), automatic rotation
+   by the depth chart, and your override (keep a starter in, rest a player)
+2. Sim: halftime adjustments (lean against what they've been calling, from
+   the first half's film) and momentum (a big play or turnover swings the
+   next few snaps a little)
+3. Sim: the two-minute drill and the end of the half: hurry-up, spikes,
+   out-of-bounds throws, timeouts; injuries you react to mid-game (who goes in)
+4. App: the call sheet's new choices (halftime, the hurry-up, subs), big-play
+   replays on the field, and a drive chart on the broadcast view
+
+### Milestone 30: owner choices that matter
+The owner's side as real trade-offs, not set-and-forget. Follows the long
+balance check (upgrades were tuned down; this makes them choices instead).
+To decide: whether upgrades cost money as well as points; how strongly owner
+goals and fan pressure push back on a winning but money-losing team.
+1. Sim: upgrades with running costs from the team's cash (facilities,
+   recruiting, analytics and the clinic each cost money every season), so a
+   small market chooses; a re-run of the long balance check
+2. Sim: coach contracts negotiated (years, money, a raise after a good
+   season; a coach who leaves for a better job), and owner goals each season
+   (win now, build, make money) that move the owner's trust and the fans
+3. Sim: the business as a weekly call: prices by game (a rival, a big game, a
+   losing streak), promotions, and fan mood that answers back
+4. App and server: the owner's screens (goals, budget, upgrades with their
+   running costs, coach contracts), solo and online
 
 After each step: run it, show sample output, and stop for review.
 

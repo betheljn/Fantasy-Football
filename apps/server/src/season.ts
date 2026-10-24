@@ -8,6 +8,14 @@
 // own team that week; anyone who didn't is covered by the AI (injured reserve
 // and free-agent signings, as for every AI team).
 import {
+  type Story,
+  withOwners,
+  syncVenues,
+  advanceScoutingWeek,
+  createScouting,
+  generateDraftClass,
+  seasonWeeks,
+  type ScoutingState,
   addGameToSeason,
   aiInSeasonMoves,
   aiTradeWeek,
@@ -43,6 +51,10 @@ import {
   type TradeRecord,
 } from "@dynasty/sim";
 import type { LeagueState } from "./state.ts";
+import { weekDuels } from "./duels.ts";
+import { campNews, postseasonStories, weekNews } from "./news.ts";
+import { openBoard, picksOf, settleWeek } from "./picks.ts";
+import { friendGamesOf, friendStories } from "@dynasty/sim";
 
 /** Everything played this season so far (cleared when the next season opens). */
 export interface SeasonProgress {
@@ -58,6 +70,10 @@ export interface SeasonProgress {
   covered: Array<{ week: number; teams: string[] }>;
   /** Rosters through the season, so every game replays exactly. */
   lineups: LineupLog;
+  /** Next year's draft class as every team has scouted and recruited it so far (absent: from before weekly scouting online). */
+  scouting?: ScoutingState;
+  /** The season's news: the national feed, and each friend's own stories (tagged for them; sent only to them). */
+  news?: Story[];
 }
 
 /**
@@ -100,10 +116,17 @@ const tradedIds = (trades: readonly TradeRecord[]) => new Set(trades.flatMap((t)
 
 /** A season opens: fresh progress and the AI's first round of trade talks (before week 1). */
 export function openSeason(s: LeagueState): LeagueState {
+  // Last year's recruiting plans were for last year's class.
+  const { recruiting: _plans, ...fresh } = s;
+  s = { ...fresh, dynasty: syncVenues(withOwners(s.dynasty, humanTeams(s))) };
   const league = s.dynasty.league;
   const talks = aiTradeWeek(league, seasonWindow(league, 0), humanTeams(s));
   const lineups = logTrades(startLog(league), league, talks.league, talks.trades, 1);
-  return { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups } };
+  // Training camp's stories open the season's news.
+  const news = s.dynasty.camp?.length ? campNews(league, s.dynasty.camp, [...humanTeams(s)]) : [];
+  const opened: LeagueState = { ...s, dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: 0, progress: { ...emptyProgress(), collection: startCollection(s.dynasty.recordBook), trades: talks.trades, lineups, ...(news.length ? { news } : {}) } };
+  // Week 1's board and show (last season's shows are done; the hosts' records carry on).
+  return openBoard({ ...opened, picks: { ...picksOf(opened), shows: [], last: [] } }, scheduleOf(opened), 1);
 }
 
 /**
@@ -111,6 +134,8 @@ export function openSeason(s: LeagueState): LeagueState {
  * other friends' teams are covered by the AI this time.
  */
 export function advance(s: LeagueState, ready: ReadonlySet<string>): { state: LeagueState; summary: AdvanceSummary } {
+  // Every friend is an owner, earning XP (leagues from before owners get theirs now).
+  s = { ...s, dynasty: syncVenues(withOwners(s.dynasty, humanTeams(s))) };
   const step = nextStep(s);
   if (step.kind === "week") return playNextWeek(s, ready);
   if (step.kind === "playoffs") return playPlayoffs(s);
@@ -127,10 +152,19 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   // Friends' coached games are played with their calls (anything they didn't call is their coaches').
   const coached = Object.entries(s.coaching ?? {})
     .filter(([, c]) => sched.games.some((g) => g.id === c.game && g.week === week))
-    .map(([team, c]) => ({ game: c.game, team, calls: c.calls }));
+    .map(([team, c]) => ({ game: c.game, team, calls: c.calls }) as { game: string; team: string; calls: typeof c.calls; rival?: string })
+    // Games between friends: both coaches' calls.
+    .concat(weekDuels(s, week));
+  // Scouting and recruiting for the week (friends recruit with their standing plans; everyone else on their own).
+  const cls = generateDraftClass(league0);
+  const scoutingNow = p.scouting ?? createScouting(league0, cls);
+  const recruiting = Object.fromEntries(Object.entries(s.recruiting ?? {}).filter(([team, plan]) => s.humans[team] && plan.length > 0));
+  // Friends who placed this week's scouting points spend them as placed (the rest scout on their own).
+  const scoutChoices = Object.fromEntries(Object.entries(s.scoutPlans ?? {}).filter(([team, plan]) => s.humans[team] && plan.length > 0));
+  const scouting = scoutingNow.week < seasonWeeks(scoutingNow) ? advanceScoutingWeek(scoutingNow, league0, cls, scoutChoices, recruiting) : scoutingNow;
   const played = playWeek(league0, sched, week, (g) => addGameToSeason(stats, g), coached);
   const collection = collectWeek(structuredClone(p.collection), league0, sched.season, played.games);
-  const hurt = injuryNews(league0, played.games.flatMap((g) => g.result.injuries), week);
+  const hurt = injuryNews(league0, [...played.games.flatMap((g) => g.result.injuries), ...played.practiceInjuries], week);
   // Injured reserve and signings: the AI's teams, plus friends who didn't ready up.
   const runOwn = new Set([...humanTeams(s)].filter((t) => ready.has(t)));
   const covered = [...humanTeams(s)].filter((t) => !ready.has(t)).sort();
@@ -142,6 +176,24 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
   const talks = aiTradeWeek(ai.league, seasonWindow(ai.league, week), humanTeams(s), tradedIds(p.trades));
   lineups = logTrades(lineups, ai.league, talks.league, talks.trades, week + 1);
   const games = played.games.map((g) => g.summary);
+  const news = weekNews({
+    before: league0,
+    after: talks.league,
+    schedule: sched,
+    week,
+    games: played.games,
+    resultsBefore: p.results,
+    stats,
+    injuries: hurt,
+    trades: talks.trades,
+    ...(s.dynasty.careers ? { careers: s.dynasty.careers } : {}),
+    rivalryHistory: s.dynasty.rivalryGames ?? [],
+    told: p.news ?? [],
+    friends: [...humanTeams(s)],
+  });
+  // Games between friends: the series story, and kept for the head-to-head.
+  const friendsPlayed = friendGamesOf(games, humanTeams(s), sched.season, week);
+  const friendNews = friendStories(talks.league, friendsPlayed, s.friendGames ?? []);
   const progress: SeasonProgress = {
     ...p,
     results: [...p.results, ...games],
@@ -152,16 +204,20 @@ function playNextWeek(s: LeagueState, ready: ReadonlySet<string>) {
     moves: [...p.moves, ...ai.moves],
     covered: covered.length ? [...p.covered, { week, teams: covered }] : p.covered,
     lineups,
+    scouting,
+    news: [...(p.news ?? []), ...friendNews, ...news],
   };
+  // The week's slates and the hosts' picks are settled; then next week's board and show.
+  const settled = settleWeek({ ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress, ...(friendsPlayed.length || s.friendGames ? { friendGames: [...(s.friendGames ?? []), ...friendsPlayed] } : {}) }, sched.season, week, played.games);
   return {
-    state: { ...withoutCoaching(s), dynasty: { ...s.dynasty, league: talks.league }, weeksPlayed: week, progress },
+    state: openBoard(settled, sched, week + 1),
     summary: { kind: "week" as const, season: sched.season, week, games, covered, trades: talks.trades.length, moves: ai.moves.length },
   };
 }
 
-/** The week's coached calls are used up once it's played. */
+/** The week's coached calls, duels and scouting points are used up once it's played. */
 function withoutCoaching(s: LeagueState): LeagueState {
-  const { coaching: _done, ...rest } = s;
+  const { coaching: _done, duels: _duels, scoutPlans: _scouted, ...rest } = s;
   return rest;
 }
 
@@ -173,8 +229,14 @@ function seasonResult(s: LeagueState) {
 
 function playPlayoffs(s: LeagueState) {
   const playoffs = simulatePlayoffs(s.dynasty.league, seasonResult(s));
+  const news = postseasonStories(s.dynasty.league, s.dynasty.league.season, playoffs, [...humanTeams(s)]);
+  // Friends meeting in championship week or the playoffs count in their series too.
+  const post = [...(playoffs.titleGames ?? []).map((g) => g.summary), ...playoffs.games.map((g) => g.summary)];
+  const weeks = scheduleOf(s).weeks;
+  const friendsPlayed = post.flatMap((g, i) => friendGamesOf([g], humanTeams(s), s.dynasty.league.season, weeks + 1 + (i < (playoffs.titleGames?.length ?? 0) ? 0 : 1)));
+  const friendNews = friendStories(s.dynasty.league, friendsPlayed, s.friendGames ?? []);
   return {
-    state: { ...s, progress: { ...s.progress, playoffs } },
+    state: { ...s, progress: { ...s.progress, playoffs, news: [...(s.progress.news ?? []), ...news, ...friendNews] }, ...(friendsPlayed.length ? { friendGames: [...(s.friendGames ?? []), ...friendsPlayed] } : {}) },
     summary: { kind: "playoffs" as const, season: s.dynasty.league.season, champion: playoffs.champion, runnerUp: playoffs.runnerUp },
   };
 }
@@ -182,7 +244,7 @@ function playPlayoffs(s: LeagueState) {
 /** The season as played, for the offseason (the same every stage, so it always works out the same). */
 export function playedSeason(s: LeagueState): PlayedSeason {
   const p = s.progress;
-  return { season: seasonResult(s), stats: p.stats, playoffs: p.playoffs!, trades: p.trades, collection: p.collection };
+  return { season: seasonResult(s), stats: p.stats, playoffs: p.playoffs!, trades: p.trades, collection: p.collection, ...(p.scouting ? { scouting: p.scouting } : {}) };
 }
 
 /** Draft week ends (the AI's last trades) and the offseason opens: friends' staff calls are due first. */

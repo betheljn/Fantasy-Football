@@ -3,7 +3,7 @@
 // back better (yours are highlighted: worth a look on your depth chart).
 import { Stack, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SPRING_RULES, type SpringSeason } from "@dynasty/sim";
+import { teamPlace, SPRING_RULES, type SpringSeason } from "@dynasty/sim";
 import { Card, SectionTitle, Swatch } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme, type Theme } from "../theme";
@@ -30,7 +30,7 @@ export default function SpringScreen() {
       <Stack.Screen options={{ title: `${spring.season} spring season` }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Champion s={spring} theme={t} />
-        <Breakouts s={spring} userTeam={userTeam} state={(a) => league.teams[a]?.state ?? a} theme={t} />
+        <Breakouts s={spring} userTeam={userTeam} state={(a) => (league.teams[a] ? teamPlace(league.teams[a]!) : a)} theme={t} />
         <Standings s={spring} theme={t} />
         <Card>
           <SectionTitle>Results</SectionTitle>

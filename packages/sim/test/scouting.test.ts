@@ -113,7 +113,8 @@ describe("AI scouting and team boards", () => {
     const focused = Object.keys(SEASON.focus["TX"]!);
     expect(focused.length).toBeGreaterThan(5);
     const total = Object.values(SEASON.focus["TX"]!).reduce((s, x) => s + x, 0);
-    expect(total).toBe(SCOUTING.pointsPerWeek * REGULAR_SEASON_WEEKS);
+    // Every scouting point, plus the looks its recruiting visits gave.
+    expect(total).toBeGreaterThanOrEqual(SCOUTING.pointsPerWeek * REGULAR_SEASON_WEEKS);
     const err = (ids: string[]) => {
       const es = CLASS.prospects.filter((p) => ids.includes(p.player.id)).map((p) => Math.abs(scoutingReport(SEASON, "TX", p).overall.estimate - playerOverall(p.player)));
       return es.reduce((s, x) => s + x, 0) / es.length;

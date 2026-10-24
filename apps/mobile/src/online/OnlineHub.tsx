@@ -4,12 +4,13 @@
 // Team tab; the league in the League tab.
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { IR_MIN_WEEKS, STAGE_CHOICE_KEY } from "@dynasty/sim";
+import { teamName, IR_MIN_WEEKS, STAGE_CHOICE_KEY } from "@dynasty/sim";
 import { Card, Icon, NavGroup, NavRow, Swatch, type IconName } from "../components/ui";
 import { useDynasty, useLeague } from "../league/LeagueProvider";
 import { useTheme } from "../theme";
 import { OnlineLeagueView, STAGE_NAMES } from "./OnlineLeague";
 import { useOffers } from "./offers";
+import { StoryCard } from "../components/story";
 
 export function OnlineHub() {
   const t = useTheme();
@@ -27,6 +28,13 @@ export function OnlineHub() {
   const open = d.canMakeMoves ? 72 - team.roster.length : 0;
   const off = me.offseason;
   const madeCall = off ? !!off.choices[STAGE_CHOICE_KEY[off.stage]]?.[me.team] : false;
+  // The latest headlines (your own first among the week's biggest).
+  const news = d.save?.news ?? [];
+  const latest = news.length ? Math.max(...news.map((x) => x.week)) : 0;
+  const headlines = news
+    .filter((x) => x.week === latest)
+    .sort((a, b) => Number(b.teams.includes(userTeam)) - Number(a.teams.includes(userTeam)) || b.importance - a.importance)
+    .slice(0, 3);
   const items: Array<{ key: string; icon: IconName; title: string; detail: string; go: string }> = [];
   // Your game this week, if it's against an AI team: coach it (the league plays it with your calls).
   const next = d.canMakeMoves ? schedule.games.find((g) => g.week === weeksPlayed + 1 && (g.home === userTeam || g.away === userTeam)) : undefined;
@@ -34,6 +42,10 @@ export function OnlineHub() {
   if (next && opp && !me.humans[opp]) {
     const started = d.coaching?.game === next.id;
     items.push({ key: "coach", icon: "american-football-outline", title: started ? "Keep coaching your game" : `Coach your game ${next.home === userTeam ? "vs" : "at"} ${opp}`, detail: started ? "Your calls so far are with the league" : "Make the calls; the league plays it with them when the week is played", go: `/coach/${next.id}` });
+  }
+  // Against a friend: a duel, both of you calling every snap.
+  if (next && opp && me.humans[opp]) {
+    items.push({ key: "duel", icon: "flash-outline", title: `Duel ${next.home === userTeam ? "vs" : "at"} ${opp}`, detail: "You both call every snap; neither sees the other's call. Your coaches finish anything left when the week is played", go: `/coach/${next.id}` });
   }
   if (off && !madeCall) items.push({ key: "call", icon: "clipboard-outline", title: `Offseason: ${STAGE_NAMES[off.stage]}`, detail: "Make your call, or the AI makes it when the stage closes", go: "/offseason" });
   if (off && madeCall) items.push({ key: "call", icon: "checkmark-done-outline", title: `Offseason: ${STAGE_NAMES[off.stage]}`, detail: "Your call is in. Change it until the stage closes", go: "/offseason" });
@@ -46,7 +58,7 @@ export function OnlineHub() {
         <Swatch abbr={userTeam} size={18} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontSize: 20, fontWeight: "800" }}>
-            {team.state} {team.nickname}
+            {teamName(team)}
           </Text>
           <Text style={{ color: t.muted, fontSize: 13 }}>
             {me.name} · online · {league.season}
@@ -71,6 +83,17 @@ export function OnlineHub() {
           items.map((x, i) => <NavRow key={x.key} icon={x.icon} title={x.title} detail={x.detail} badge={x.key === "offers" ? String(waiting) : undefined} onPress={() => router.push(x.go as never)} last={i === items.length - 1} />)
         )}
       </NavGroup>
+      {headlines.length ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: t.muted, fontWeight: "700", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, marginLeft: 4 }}>Around the league</Text>
+          {headlines.map((s, i) => (
+            <StoryCard key={s.id} s={s} lead={i === 0} mine={s.teams.includes(userTeam)} theme={t} />
+          ))}
+          <Text onPress={() => router.push("/news")} style={{ color: t.accent, fontWeight: "700", textAlign: "center", paddingVertical: 6 }}>
+            All the headlines
+          </Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

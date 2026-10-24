@@ -1,12 +1,16 @@
 import type { Player } from "../model/player.ts";
 import type { Rng } from "../rng.ts";
 import {
+  RULES_VERSION,
+  TEMPO,
   avg,
   buildTurnover,
   fumbleTurnover,
   HOME_FIELD,
   clamp,
+  duel,
   edge,
+  weather,
   exponential,
   pickDirection,
   pickTackler,
@@ -20,6 +24,7 @@ import type { IncompleteReason, PassPlayEvent } from "./events.ts";
 import { assignCoverage, COVERAGES, formationInfo, formationsFor, type Coverage } from "./formation.ts";
 import { coverageSkill, passBlocking, passRushing, routeRunning } from "../model/ratings.ts";
 import { coachingEdges, offenseProfile } from "./coaching.ts";
+import { CONCEPT_EFFECT, OFFENSE_CONCEPT_INFO } from "./concepts.ts";
 
 type Band = "screen" | "short" | "intermediate" | "deep";
 const BAND_NAMES: Band[] = ["screen", "short", "intermediate", "deep"];
@@ -117,11 +122,18 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const blitzBite = extraRushers * clamp(1 - 0.35 * hot, 0.4, 1.6);
   const extraBlockers = Math.max(0, o.tes.length - 1) + (o.rbs.length - 1);
   const home = ctx.homeField ?? 0;
-  // Play action from under center on early downs freezes the second level.
-  const playAction = f.offense.set === "under_center" && sit.down <= 2 ? edge(q.playAction) : null;
+  // The duel: the offense's concept sets the depth (and play action, a quick release); the matchup gives an edge.
+  const call = duel(ctx);
+  const wx = weather(ctx);
+  const concept = call && OFFENSE_CONCEPT_INFO[call.offense].kind === "pass" ? OFFENSE_CONCEPT_INFO[call.offense] : null;
+  const callEdge = concept ? call!.edge : 0;
+  // Play action from under center on early downs freezes the second level (a play-action call sells it from anywhere).
+  const playAction = concept?.playAction || (f.offense.set === "under_center" && sit.down <= 2) ? edge(q.playAction) : null;
   const sackRate = clamp(
     (0.062 - 0.025 * line - 0.012 * hot - HOME_FIELD.sackRate * home + 0.018 * blitzBite - 0.006 * extraBlockers + (playAction !== null ? 0.004 : 0)) *
-      clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5), // slippery QBs escape
+      clamp(1 - 0.35 * edge(q.breakSack), 0.5, 1.5) * // slippery QBs escape
+      (concept?.sackFactor ?? 1) -
+      CONCEPT_EFFECT.sack * callEdge,
     0.015,
     0.2,
   );
@@ -130,7 +142,7 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
     // Unblocked blitzers get home more often than their pass-rush rating suggests.
     const sacker = weightedPick(rng, d.rushers, (p) => passRushing(p.ratings) * (p.position === "DL" ? 1 : 1.3));
     const spot = spotBall(sit, -Math.max(1, Math.round(rng.normal(6.5, 2.2))));
-    const fumble = spot.safety ? null : rollFumble(rng, qb, sacker, d, 0.12);
+    const fumble = spot.safety ? null : rollFumble(rng, qb, sacker, d, 0.12 * weather(ctx).fumble);
     const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
     return {
       ...base,
@@ -171,7 +183,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   // Uncovered receivers are still tackled by someone: the nearest underneath defender.
   const nearest = r.cover ?? pickTackler(rng, d, 5);
 
-  const band = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0, offenseProfile(ctx.offense).deep);
+  const picked = pickBand(rng, r.receiver, edge(q.throwPower), d.coverage, extraRushers > 0, offenseProfile(ctx.offense).deep);
+  const band: Band = concept?.band ?? picked;
   const spec = BANDS[band];
   const airYards = Math.min(spec.air(rng), sit.yardline >= 100 ? 0 : 100 - sit.yardline);
 
@@ -187,6 +200,8 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const contested =
     sep >= 0 ? 0 : band === "deep" ? 0.03 * edge((t.spectacularCatch + t.jumping - (r.cover?.ratings.jumping ?? 50) + 50) / 2) : 0.03 * edge(t.catchInTraffic);
 
+  // A throw to the sideline (rules 10): to stop the clock.
+  const sideline = (ctx.rules ?? RULES_VERSION) >= 10 && !!ctx.tempo?.sideline;
   const completion = clamp(
     spec.completion +
       COVERAGE_COMPLETION[d.coverage][band] +
@@ -197,8 +212,13 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
       contested -
       pressurePenalty +
       paBoost +
+      CONCEPT_EFFECT.completion * callEdge +
       HOME_FIELD.completion * home +
-      coachingEdges(ctx.offense, ctx.defense).completion,
+      coachingEdges(ctx.offense, ctx.defense).completion +
+      // The weather: everything a little harder in wind, rain and snow, deep balls most.
+      wx.completion -
+      (sideline ? TEMPO.sidelineCompletion : 0) +
+      (band === "deep" ? wx.deepCompletion : band === "intermediate" ? wx.deepCompletion / 3 : 0),
     0.1,
     0.93,
   );
@@ -270,7 +290,9 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
 
   // Completion: add yards after the catch, with the odd broken tackle for a big gain.
   // No deep help (Cover 0) or an uncovered receiver means more room to run.
-  let yac = band === "screen" ? Math.max(0, rng.normal(5, 3)) : Math.max(0, rng.normal(3, 2));
+  // The duel: the right call (a screen into a blitz) leaves room to run; the wrong one runs into a wall.
+  let yac = Math.max(0, (band === "screen" ? rng.normal(5, 3) : rng.normal(3, 2)) + CONCEPT_EFFECT.yac * callEdge * (band === "screen" || band === "short" ? 1.5 : 1) + wx.yac);
+  if (sideline) yac *= TEMPO.sidelineYac;
   const openField = (shell.deepSafeties === 0 ? 0.04 : 0) + (r.cover ? 0 : 0.04) - 0.01 * shell.deepSafeties;
   const moves = edge((t.elusiveness + t.speed + t.jukeMove + t.breakTackle) / 4);
   const breakRate = clamp(0.045 + 0.03 * moves + 0.02 * sep + openField - 0.015 * edge(nearest.ratings.tackle), 0.02, 0.2);
@@ -279,9 +301,10 @@ export function simulatePass(rng: Rng, ctx: PlayContext): PassPlayEvent {
   const spot = spotBall(sit, airYards + yac);
   const yardsAfterCatch = spot.yardsGained - airYards;
   const tackler = spot.touchdown ? null : rng.chance(0.6) ? nearest : pickTackler(rng, d, spot.yardsGained);
-  const outOfBounds =
-    !spot.touchdown && direction !== "middle" && r.receiver.position === "WR" && rng.chance(0.22);
-  const fumble = spot.touchdown ? null : rollFumble(rng, r.receiver, tackler, d, 0.006);
+  const outOfBounds = sideline
+    ? !spot.touchdown && rng.chance(TEMPO.sidelineOut)
+    : !spot.touchdown && direction !== "middle" && r.receiver.position === "WR" && rng.chance(0.22);
+  const fumble = spot.touchdown ? null : rollFumble(rng, r.receiver, tackler, d, 0.006 * wx.fumble);
   const turnover = fumble?.lost ? fumbleTurnover(rng, fumble, d.all, spot.endYardline) : null;
 
   return {

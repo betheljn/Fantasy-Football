@@ -15,21 +15,20 @@
 // per bye week, and put at least three weeks between division rematches
 // (see placeGames).
 import { Rng } from "../rng.ts";
+import { FORMATS, leagueFormat, type LeagueFormat } from "./format.ts";
 import type { League } from "./league.ts";
 
-export const REGULAR_SEASON_WEEKS = 22;
-export const GAMES_PER_TEAM = 20;
-export const HOME_GAMES_PER_TEAM = 10;
+// The original (format 1) season, for code and saves from before formats.
+export const REGULAR_SEASON_WEEKS = FORMATS[1].weeks;
+export const GAMES_PER_TEAM = FORMATS[1].gamesPerTeam;
+export const HOME_GAMES_PER_TEAM = FORMATS[1].homeGames.max;
 /** Each team gets one bye in each of these windows (1-indexed weeks, inclusive). */
-export const BYE_WINDOWS: ReadonlyArray<{ first: number; last: number }> = [
-  { first: 5, last: 11 },
-  { first: 12, last: 18 },
-];
+export const BYE_WINDOWS: ReadonlyArray<{ first: number; last: number }> = FORMATS[1].byeWindows;
 export const BYES_PER_TEAM = BYE_WINDOWS.length;
 /** Teams off in any one bye week (inclusive range). */
-export const BYES_PER_WEEK = { min: 4, max: 10 };
+export const BYES_PER_WEEK = FORMATS[1].byesPerWeek;
 /** The two meetings of division rivals are at least this many weeks apart. */
-export const REMATCH_GAP = 3;
+export const REMATCH_GAP = FORMATS[1].rematchGap;
 
 export type GameKind = "division" | "conference" | "interconference";
 
@@ -62,6 +61,7 @@ interface Matchup {
  * in slot order (e.g. last season's finish); by default the league order is used.
  */
 export function buildMatchups(league: League, season = league.season, slotOrder?: Record<string, string[]>): Matchup[] {
+  if (leagueFormat(league).version === 2) return buildMatchups15(league, season, slotOrder);
   const rng = new Rng(`matchups:${league.seed}:${season}`);
   const slots = (name: string, teams: string[]) => slotOrder?.[name] ?? teams;
   const division: Matchup[] = [];
@@ -147,13 +147,80 @@ function orientEvenly(rng: Rng, pairs: Array<[string, string, GameKind]>): Match
   return out;
 }
 
+/**
+ * Format 2: 15 games a team.
+ *   division         4  once against each division rival (2 home, 2 away)
+ *   conference       6  the same slot in each other division, plus the next
+ *                       slot in the two divisions next to yours on a ring of
+ *                       the conference's five (the ring changes each season)
+ *   non-conference   5  one team from each division of the other conference,
+ *                       the slot pairing rotating each season
+ * Home games: 7 or 8 each (the 11 outside the division are split as evenly as
+ * an odd number allows).
+ */
+function buildMatchups15(league: League, season: number, slotOrder?: Record<string, string[]>): Matchup[] {
+  const rng = new Rng(`matchups15:${league.seed}:${season}`);
+  const slots = (name: string, teams: string[]) => slotOrder?.[name] ?? teams;
+  const division: Matchup[] = [];
+  const pairs: Array<[string, string, GameKind]> = [];
+  // Ring step: 1 or 2 (both make a 5-cycle through the conference's divisions).
+  const step = 1 + (season % 2);
+  for (const conf of league.conferences) {
+    const divs = conf.divisions.map((d) => slots(d.name, d.teams));
+    for (const teams of divs) {
+      // A 5-team round robin where everyone hosts the next two slots: two home, two away each.
+      const flip = season % 2 === 1;
+      for (let i = 0; i < 5; i++) {
+        for (const k of [1, 2]) {
+          const [h, a] = [teams[i]!, teams[(i + k) % 5]!];
+          division.push(flip ? { home: a, away: h, kind: "division" } : { home: h, away: a, kind: "division" });
+        }
+      }
+    }
+    for (let d = 0; d < 5; d++) {
+      for (let e = d + 1; e < 5; e++) {
+        const ring = (e - d) % 5 === step || (d - e + 5) % 5 === step;
+        for (let p = 0; p < 5; p++) {
+          pairs.push([divs[d]![p]!, divs[e]![p]!, "conference"]);
+          if (ring) pairs.push([divs[d]![p]!, divs[e]![(p + 1) % 5]!, "conference"]);
+        }
+      }
+    }
+  }
+  const [east, west] = league.conferences as [League["conferences"][number], League["conferences"][number]];
+  const shift = season % 5;
+  for (let i = 0; i < east.divisions.length; i++) {
+    for (let j = 0; j < west.divisions.length; j++) {
+      const e = slots(east.divisions[i]!.name, east.divisions[i]!.teams);
+      const w = slots(west.divisions[j]!.name, west.divisions[j]!.teams);
+      for (let p = 0; p < 5; p++) pairs.push([e[p]!, w[(p + shift + i) % 5]!, "interconference"]);
+    }
+  }
+  return [...division, ...orientBalanced(rng, pairs)];
+}
+
+/**
+ * Like orientEvenly, for teams with an odd number of these games: pair them
+ * up through a stand-in team, orient evenly, and drop the stand-in's games,
+ * so everyone's home count is within one of their away count.
+ */
+function orientBalanced(rng: Rng, pairs: Array<[string, string, GameKind]>): Matchup[] {
+  const STAND_IN = "\u0000";
+  const degree = new Map<string, number>();
+  for (const [a, b] of pairs) for (const t of [a, b]) degree.set(t, (degree.get(t) ?? 0) + 1);
+  const odd = [...degree.entries()].filter(([, n]) => n % 2 === 1).map(([t]) => t).sort();
+  const withStandIn: Array<[string, string, GameKind]> = [...pairs, ...odd.map((t): [string, string, GameKind] => [t, STAND_IN, "conference"])];
+  return orientEvenly(rng, withStandIn).filter((m) => m.home !== STAND_IN && m.away !== STAND_IN);
+}
+
 export function generateSchedule(league: League, opts: { season?: number; slotOrder?: Record<string, string[]> } = {}): Schedule {
   const season = opts.season ?? league.season;
+  const f = leagueFormat(league);
   const matchups = buildMatchups(league, season, opts.slotOrder);
   const teams = Object.keys(league.teams).sort();
   for (let attempt = 0; attempt < 10; attempt++) {
     const rng = new Rng(`schedule:${league.seed}:${season}:${attempt}`);
-    const weeks = placeGames(rng, matchups, teams);
+    const weeks = placeGames(rng, matchups, teams, f);
     if (!weeks) continue;
     const games = matchups
       .map((m, i) => ({ id: `${season}-W${weeks[i]}-${m.away}@${m.home}`, week: weeks[i]!, ...m }))
@@ -162,9 +229,9 @@ export function generateSchedule(league: League, opts: { season?: number; slotOr
     for (const t of teams) {
       const played = new Set(games.filter((g) => g.home === t || g.away === t).map((g) => g.week));
       byes[t] = [];
-      for (let w = 1; w <= REGULAR_SEASON_WEEKS; w++) if (!played.has(w)) byes[t].push(w);
+      for (let w = 1; w <= f.weeks; w++) if (!played.has(w)) byes[t].push(w);
     }
-    return { season, weeks: REGULAR_SEASON_WEEKS, games, byes };
+    return { season, weeks: f.weeks, games, byes };
   }
   throw new Error("Could not build a schedule");
 }
@@ -178,14 +245,14 @@ export function generateSchedule(league: League, opts: { season?: number; slotOr
  * through one team, and swaps the weeks of every game on the chain; it never
  * double-books anyone. Returns each game's week, or null if a phase didn't finish.
  */
-function placeGames(rng: Rng, games: Matchup[], teams: string[]): number[] | null {
+function placeGames(rng: Rng, games: Matchup[], teams: string[], f: LeagueFormat): number[] | null {
   const idx = new Map(teams.map((t, i) => [t, i]));
   const H = games.map((g) => idx.get(g.home)!);
   const A = games.map((g) => idx.get(g.away)!);
-  const week = solveClashFree(rng, H, A, teams.length);
+  const week = solveClashFree(rng, H, A, teams.length, f.weeks);
   if (!week) return null;
-  const board = new WeekBoard(week, H, A, teams.length);
-  if (!arrangeByes(rng, board, teams.length)) return null;
+  const board = new WeekBoard(week, H, A, teams.length, f.weeks);
+  if (!arrangeByes(rng, board, teams.length, f)) return null;
 
   // Each division game's rematch (same two teams, other venue).
   const twin = games.map(() => -1);
@@ -197,16 +264,15 @@ function placeGames(rng: Rng, games: Matchup[], teams: string[]): number[] | nul
     if (j === undefined) first.set(key, i);
     else [twin[i], twin[j]] = [j, i];
   });
-  if (!spreadRematches(rng, board, twin, H)) return null;
+  if (f.rematchGap > 0 && !spreadRematches(rng, board, twin, H, f)) return null;
   return Array.from(board.week);
 }
 
-/** Which bye window a week is in, or -1. */
-const windowOf = (w: number) => BYE_WINDOWS.findIndex((b) => w >= b.first && w <= b.last);
+/** Which of a format's bye windows a week is in, or -1. */
+const windowIn = (f: LeagueFormat, w: number) => f.byeWindows.findIndex((b) => w >= b.first && w <= b.last);
 
 /** Tabu search: move double-booked games to the week that clashes least. */
-function solveClashFree(rng: Rng, H: number[], A: number[], T: number, maxIter = 100_000): Int16Array | null {
-  const W = REGULAR_SEASON_WEEKS;
+function solveClashFree(rng: Rng, H: number[], A: number[], T: number, W: number, maxIter = 100_000): Int16Array | null {
   const n = H.length;
   const cell = (t: number, w: number) => t * (W + 1) + w;
   const occ = new Int16Array(T * (W + 1));
@@ -291,14 +357,16 @@ function solveClashFree(rng: Rng, H: number[], A: number[], T: number, maxIter =
 class WeekBoard {
   readonly week: Int16Array;
   readonly at: Int32Array;
+  readonly weeks: number;
   private readonly H: number[];
   private readonly A: number[];
 
-  constructor(week: Int16Array, H: number[], A: number[], T: number) {
+  constructor(week: Int16Array, H: number[], A: number[], T: number, weeks: number) {
     this.week = week;
     this.H = H;
     this.A = A;
-    this.at = new Int32Array(T * (REGULAR_SEASON_WEEKS + 1)).fill(-1);
+    this.weeks = weeks;
+    this.at = new Int32Array(T * (weeks + 1)).fill(-1);
     week.forEach((w, i) => {
       this.at[this.cell(H[i]!, w)] = i;
       this.at[this.cell(A[i]!, w)] = i;
@@ -306,7 +374,7 @@ class WeekBoard {
   }
 
   private cell(t: number, w: number): number {
-    return t * (REGULAR_SEASON_WEEKS + 1) + w;
+    return t * (this.weeks + 1) + w;
   }
 
   gameAt(t: number, w: number): number {
@@ -315,7 +383,7 @@ class WeekBoard {
 
   byesOf(t: number): number[] {
     const out: number[] = [];
-    for (let w = 1; w <= REGULAR_SEASON_WEEKS; w++) if (this.gameAt(t, w) < 0) out.push(w);
+    for (let w = 1; w <= this.weeks; w++) if (this.gameAt(t, w) < 0) out.push(w);
     return out;
   }
 
@@ -362,11 +430,11 @@ class WeekBoard {
  * changes the byes of the two teams at the ends of the chain, so the cost
  * change is cheap to compute.
  */
-function arrangeByes(rng: Rng, board: WeekBoard, T: number, maxIter = 50_000): boolean {
-  const W = REGULAR_SEASON_WEEKS;
-  const teamCost = (byes: number[]) => BYE_WINDOWS.reduce((c, _, k) => c + (byes.some((w) => windowOf(w) === k) ? 0 : 10), 0);
+function arrangeByes(rng: Rng, board: WeekBoard, T: number, f: LeagueFormat, maxIter = 50_000): boolean {
+  const W = f.weeks;
+  const teamCost = (byes: number[]) => f.byeWindows.reduce((c, _, k) => c + (byes.some((w) => windowIn(f, w) === k) ? 0 : 10), 0);
   const weekCost = (w: number, n: number) =>
-    windowOf(w) < 0 ? n : Math.max(0, BYES_PER_WEEK.min - n) + Math.max(0, n - BYES_PER_WEEK.max);
+    windowIn(f, w) < 0 ? n : Math.max(0, f.byesPerWeek.min - n) + Math.max(0, n - f.byesPerWeek.max);
   const offCount = new Array<number>(W + 1).fill(0);
   for (let t = 0; t < T; t++) for (const w of board.byesOf(t)) offCount[w]!++;
   const total = () => {
@@ -408,9 +476,9 @@ function arrangeByes(rng: Rng, board: WeekBoard, T: number, maxIter = 50_000): b
  * Separate division rematches by swapping chains between two weeks. Only closed
  * chains are used (every team in them plays both weeks), so no bye moves.
  */
-function spreadRematches(rng: Rng, board: WeekBoard, twin: number[], home: number[], maxIter = 20_000): boolean {
-  const W = REGULAR_SEASON_WEEKS;
-  const tooClose = (g: number) => twin[g]! >= 0 && Math.abs(board.week[g]! - board.week[twin[g]!]!) < REMATCH_GAP;
+function spreadRematches(rng: Rng, board: WeekBoard, twin: number[], home: number[], f: LeagueFormat, maxIter = 20_000): boolean {
+  const W = f.weeks;
+  const tooClose = (g: number) => twin[g]! >= 0 && Math.abs(board.week[g]! - board.week[twin[g]!]!) < f.rematchGap;
   const closeIn = (gs: Iterable<number>) => {
     let n = 0;
     for (const g of gs) if (tooClose(g)) n++;

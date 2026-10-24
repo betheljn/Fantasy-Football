@@ -1,7 +1,7 @@
 // How coaches show up on the field. Every effect here is exactly neutral for
 // a team without staff, and quality effects are measured from an average hire,
 // so coaching shifts results between teams rather than across the league.
-import type { DefensiveScheme, OffensiveScheme } from "../model/staff.ts";
+import type { DefensiveCoordinator, DefensiveScheme, OffensiveCoordinator, OffensiveScheme, TeamStaff } from "../model/staff.ts";
 import type { Team } from "../model/team.ts";
 import type { Personnel } from "./formation.ts";
 
@@ -56,24 +56,48 @@ export const DEFENSE_PROFILES: Record<DefensiveScheme, DefenseProfile> = {
   Multiple: NEUTRAL_DEFENSE,
 };
 
+const callerCache = new WeakMap<TeamStaff, { oc: OffensiveCoordinator; dc: DefensiveCoordinator }>();
+
+/**
+ * Who calls each side: the coordinators, unless the head coach calls one
+ * himself. Then his scheme, play calling (and tempo) are used for that side;
+ * the coordinator still coaches the unit (passing, running, coverage).
+ */
+export function playCallers(staff: TeamStaff): { oc: OffensiveCoordinator; dc: DefensiveCoordinator } {
+  let c = callerCache.get(staff);
+  if (!c) {
+    const calls = staff.hc.calls;
+    c = {
+      oc: calls?.side === "offense" ? { ...staff.oc, scheme: calls.scheme, playCalling: calls.playCalling, tempo: calls.tempo } : staff.oc,
+      dc: calls?.side === "defense" ? { ...staff.dc, scheme: calls.scheme, playCalling: calls.playCalling } : staff.dc,
+    };
+    callerCache.set(staff, c);
+  }
+  return c;
+}
+
+const offenseCaller = (team: Team | undefined) => (team?.staff ? playCallers(team.staff).oc : undefined);
+const defenseCaller = (team: Team | undefined) => (team?.staff ? playCallers(team.staff).dc : undefined);
+
 export function offenseProfile(team: Team | undefined): OffenseProfile {
-  const oc = team?.staff?.oc;
+  const oc = offenseCaller(team);
   return oc ? OFFENSE_PROFILES[oc.scheme] : NEUTRAL_OFFENSE;
 }
 
 export function defenseProfile(team: Team | undefined): DefenseProfile {
-  const dc = team?.staff?.dc;
+  const dc = defenseCaller(team);
   return dc ? DEFENSE_PROFILES[dc.scheme] : NEUTRAL_DEFENSE;
 }
 
 /**
- * Small edges from coordinator quality: offensive play calling and unit
+ * Small edges from coordinator quality: offensive play calling (the head
+ * coach's, if he calls that side) and unit
  * coaching against the defensive coordinator's. `run` is added to the run
  * line battle (about yards per carry); `completion` to completion odds.
  */
 export function coachingEdges(offense: Team, defense: Team): { run: number; completion: number } {
-  const oc = offense.staff?.oc;
-  const dc = defense.staff?.dc;
+  const oc = offenseCaller(offense);
+  const dc = defenseCaller(defense);
   const ocRun = oc ? staffEdge(oc.runningGame) + 0.5 * staffEdge(oc.playCalling) : 0;
   const ocPass = oc ? staffEdge(oc.passingGame) + 0.5 * staffEdge(oc.playCalling) : 0;
   const dcRun = dc ? staffEdge(dc.runDefense) + 0.5 * staffEdge(dc.playCalling) : 0;
@@ -96,10 +120,11 @@ export function disciplineFactor(team: Team | undefined): number {
 /** Chance a head coach misses the right moment for a timeout (0 for average or better). */
 export function clockMistakeChance(team: Team | undefined): number {
   const hc = team?.staff?.hc;
+  if (hc?.abilities?.includes("clock_manager")) return 0;
   return hc ? Math.max(0, Math.min(0.3, (STAFF_AVERAGE - hc.gameManagement) / 100)) : 0;
 }
 
 /** An up-tempo coordinator plays fast even when the game situation doesn't demand it. */
 export function playsUpTempo(team: Team | undefined): boolean {
-  return (team?.staff?.oc.tempo ?? 0) >= 65;
+  return (offenseCaller(team)?.tempo ?? 0) >= 65;
 }

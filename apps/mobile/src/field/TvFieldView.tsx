@@ -10,7 +10,7 @@ import { StyleSheet, View } from "react-native";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import { FIELD_WIDTH, HASHES } from "@dynasty/sim";
 import type { PreparedActor, PreparedPlay } from "../game/playback";
-import { Banner, Confetti, type EndZone, type TeamColors } from "./FieldView";
+import { Banner, Confetti, Precipitation, type EndZone, type TeamColors } from "./FieldView";
 import { sampleAt } from "./sample";
 
 interface Props {
@@ -22,6 +22,8 @@ interface Props {
   defense: TeamColors;
   endZones: { left: EndZone; right: EndZone };
   colorsOf: (abbr: string) => { primary: string; trim: string; onPrimary: string };
+  /** Rain or snow falling across the shot (wind slants the rain). */
+  weather?: { precip: "none" | "rain" | "snow"; wind: number } | null;
 }
 
 const STANDS = "#151b22";
@@ -106,7 +108,7 @@ function groundBand(path: SkPathBuilder, cam: Cam, x0: number, x1: number) {
   path.close();
 }
 
-export function TvFieldView({ play, time, width, height, offense, defense, endZones, colorsOf }: Props) {
+export function TvFieldView({ play, time, width, height, offense, defense, endZones, colorsOf, weather }: Props) {
   const ball = play.ball;
   const dir = play.direction;
   const focal = (width * 0.95 * BACK) / FIELD_WIDTH;
@@ -201,6 +203,7 @@ export function TvFieldView({ play, time, width, height, offense, defense, endZo
           <Figure key={a.id} actor={a} cam={cam} time={time} colors={a.side === "offense" ? offense : defense} play={play} />
         ))}
         <TvBall play={play} cam={cam} time={time} />
+        {weather && weather.precip !== "none" ? <Precipitation kind={weather.precip} wind={weather.wind} time={time} width={width} height={height} /> : null}
       </Canvas>
       {play.outcome.touchdown && bannerColors ? <Confetti time={time} end={play.duration} width={width} height={height} colors={[bannerColors.primary, bannerColors.trim, "#ffffff"]} /> : null}
       {banner && bannerColors ? <Banner time={time} end={play.duration} text={banner.text} abbr={banner.team} colors={bannerColors} /> : null}

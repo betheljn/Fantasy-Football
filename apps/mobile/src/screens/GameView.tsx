@@ -6,12 +6,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { coachingReport, lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
+import { coachingReport, duelRecap, lookupFor, pregameEdge, winChances, type GameResult, type Team } from "@dynasty/sim";
 import { Segmented } from "../components/ui";
 import { BoxScoreView } from "../components/BoxScoreView";
 import { FieldView } from "../field/FieldView";
 import { TvFieldView } from "../field/TvFieldView";
-import { teamColors, uniform } from "../field/colors";
+import { teamColors, uniform, teamShort } from "../field/colors";
 import { usePlayback } from "../field/usePlayback";
 import { buildFeed, type FeedRow } from "../game/feed";
 import { boxScoreAfter, lineScoreAfter, scoreAfter } from "../game/live";
@@ -22,6 +22,19 @@ import { Leaders, Pregame, Recap, Scoreboard, WinBar, type GameContext } from ".
 type Tab = "preview" | "plays" | "leaders" | "box" | "recap";
 
 /** Watch one finished game (the sim has already decided it; this only replays it). */
+/** Whose calls a coached game's report is about: yours in a duel between friends, else the coached team. */
+function reportTeam(game: GameResult, mine?: string): string {
+  const c = game.coached!;
+  return c.rival && mine === c.rival ? c.rival : c.team;
+}
+
+/** In a duel, the other coach (the report replays their calls too). */
+function rivalOf(game: GameResult, mine?: string): { rival?: string } {
+  const c = game.coached!;
+  if (!c.rival) return {};
+  return { rival: reportTeam(game, mine) === c.team ? c.rival : c.team };
+}
+
 export function GameView({ game, home, away, context, finish, startAtEnd }: { game: GameResult; home: Team; away: Team; context?: GameContext; finish?: { label: string; onPress: () => void }; startAtEnd?: boolean }) {
   const theme = useTheme();
   const s = styles(theme);
@@ -36,9 +49,13 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
 
   // A game you coached: how your calls went (worked out when the recap opens).
   const report = useMemo(
-    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, game.coached.team, game.coached.calls, game.rules !== undefined ? { rules: game.rules } : {}) : null),
+    () => (tab === "recap" && game.coached ? coachingReport(home, away, game.seed, reportTeam(game, context?.mine), game.coached.calls, { ...(game.rules !== undefined ? { rules: game.rules } : {}), ...(game.conditions ? { conditions: game.conditions } : {}), ...(game.practice ? { practice: game.practice } : {}), ...rivalOf(game, context?.mine) }) : null),
     [tab, game, home, away],
   );
+
+  // The play duel, for your team (the one you coached, or yours if it's playing).
+  const duelTeam = (game.coached ? reportTeam(game, context?.mine) : undefined) ?? (context?.mine && (context.mine === game.home || context.mine === game.away) ? context.mine : undefined);
+  const duel = useMemo(() => (tab === "recap" && duelTeam ? duelRecap(game, duelTeam) : null), [tab, game, duelTeam]);
 
   const pb = usePlayback(plays);
   // Coming straight from a game you just played: open on the final whistle.
@@ -83,10 +100,11 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
         <View style={[s.play, item.big && s.big, item.scoring && s.scoring, current && s.current]}>
           <View style={s.playHead}>
             <Text style={s.clock}>{item.clock}</Text>
-            <Text style={s.team}>{item.team}</Text>
+            <Text style={s.team}>{teamShort(item.team)}</Text>
             {item.situation ? <Text style={s.situation}>{item.situation}</Text> : null}
           </View>
           <Text style={s.playText}>{item.text}</Text>
+          {item.calls ? <Text style={s.calls}>{item.calls}</Text> : null}
           {item.scoring ? <Text style={s.scoreText}>{item.score}</Text> : null}
         </View>
       </Pressable>
@@ -126,6 +144,7 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
               defense={uniform(play.defense, play.defense === game.home)}
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               colorsOf={teamColors}
+              weather={game.conditions && !game.conditions.dome ? game.conditions : null}
             />
           ) : (
             <FieldView
@@ -138,6 +157,8 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
               endZones={{ left: endZone(leftOwner), right: endZone(rightOwner) }}
               midfield={{ abbr: home.abbr, color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim }}
               colorsOf={teamColors}
+              weather={game.conditions && !game.conditions.dome ? game.conditions : null}
+              stadium={{ color: teamColors(home.abbr).primary, trim: teamColors(home.abbr).trim, steep: home.venue?.stands === "steep", roofed: !!game.conditions?.dome }}
             />
           )}
         </View>
@@ -174,11 +195,11 @@ export function GameView({ game, home, away, context, finish, startAtEnd }: { ga
       <View style={s.bottom}>
         {tab === "preview" ? (
           <ScrollView>
-            <Pregame home={home} away={away} context={context} chance={wp.pregame} />
+            <Pregame home={home} away={away} context={context} chance={wp.pregame} {...(game.conditions ? { conditions: game.conditions } : {})} {...(game.practice ? { practice: game.practice } : {})} />
           </ScrollView>
         ) : tab === "recap" && box ? (
           <ScrollView>
-            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} report={report} />
+            <Recap game={game} box={box} who={who} chances={wp.after} pregame={wp.pregame} feed={feed} width={winW} onPlay={jumpTo} onPlayer={(id) => router.push(`/player/${id}`)} finish={finish} report={report} duel={duel} />
           </ScrollView>
         ) : tab === "leaders" && box ? (
           <ScrollView>
@@ -248,5 +269,6 @@ const styles = (t: Theme) =>
     team: { fontSize: 12, fontWeight: "700", color: t.text },
     situation: { fontSize: 12, color: t.muted },
     playText: { fontSize: 14, color: t.text, lineHeight: 19 },
+    calls: { fontSize: 12, color: t.muted, marginTop: 2 },
     scoreText: { marginTop: 3, fontSize: 12, fontWeight: "700", color: t.score },
   });

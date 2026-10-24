@@ -12,6 +12,7 @@ import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "r
 import { FIELD_WIDTH, HASHES } from "@dynasty/sim";
 import type { PreparedActor, PreparedPlay } from "../game/playback";
 import { sampleAt } from "./sample";
+import { teamShort } from "./colors";
 
 export interface TeamColors {
   fill: string;
@@ -39,6 +40,10 @@ interface Props {
   midfield: { abbr: string; color: string; trim: string };
   /** Each team's colors, for the play's banner and confetti. */
   colorsOf: (abbr: string) => { primary: string; trim: string; onPrimary: string };
+  /** Rain or snow falling over the field (wind slants the rain). */
+  weather?: { precip: "none" | "rain" | "snow"; wind: number } | null;
+  /** The home stadium around the field: its stands in the home colors (deeper when steep), and a roof overhead. */
+  stadium?: { color: string; trim: string; steep: boolean; roofed: boolean } | null;
 }
 
 const GRASS = "#2f7d3b";
@@ -51,7 +56,7 @@ const GOALPOST = "#f5d90a";
 /** Yards of sideline shown beyond each edge of the field. */
 const MARGIN = 2.5;
 
-export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf }: Props) {
+export function FieldView({ play, time, width, height, offense, defense, endZones, midfield, colorsOf, weather, stadium }: Props) {
   const scale = width / (FIELD_WIDTH + MARGIN * 2); // px per yard
   const halfView = height / 2 / scale;
   const ball = play.ball;
@@ -143,6 +148,8 @@ export function FieldView({ play, time, width, height, offense, defense, endZone
           ))}
           <Ball play={play} time={time} scale={scale} />
         </Group>
+        {weather && weather.precip !== "none" ? <Precipitation kind={weather.precip} wind={weather.wind} time={time} width={width} height={height} /> : null}
+        {stadium ? <Stands {...stadium} width={width} height={height} /> : null}
       </Canvas>
       <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, overlayStyle]}>
         {numbers}
@@ -276,7 +283,7 @@ export function Banner({ time, end, text, abbr, colors }: { time: SharedValue<nu
   const big = text === "TOUCHDOWN" || text === "PICK SIX" || text === "SCOOP AND SCORE";
   return (
     <Animated.View style={[styles.banner, { backgroundColor: colors.primary, borderLeftColor: colors.trim }, style]}>
-      <Text style={[styles.bannerTeam, { color: colors.onPrimary }]}>{abbr}</Text>
+      <Text style={[styles.bannerTeam, { color: colors.onPrimary }]}>{teamShort(abbr)}</Text>
       <Text style={[styles.bannerText, { color: colors.onPrimary, fontSize: big ? 20 : 15 }]}>{text}</Text>
     </Animated.View>
   );
@@ -325,3 +332,49 @@ const styles = StyleSheet.create({
   bannerTeam: { fontWeight: "800", fontSize: 12, opacity: 0.85 },
   bannerText: { fontWeight: "900", letterSpacing: 1 },
 });
+
+/** Rain streaks (slanted by the wind) or snowflakes falling over the field, moving with the play clock. */
+export function Precipitation({ kind, wind, time, width, height }: { kind: "rain" | "snow"; wind: number; time: SharedValue<number>; width: number; height: number }) {
+  // The same flakes every time (a fixed scatter), drawn twice so the fall wraps around.
+  const drops = useMemo(() => {
+    const out: Array<{ x: number; y: number; s: number }> = [];
+    let h = 0x9e3779b9;
+    const next = () => ((h = (Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) | 0) >>> 0) / 4294967296;
+    for (let i = 0; i < (kind === "snow" ? 70 : 90); i++) out.push({ x: next() * width, y: next() * height, s: 0.6 + next() * 0.8 });
+    return out;
+  }, [kind, width, height]);
+  const speed = kind === "snow" ? 40 : 260;
+  const slant = kind === "rain" ? Math.min(0.6, wind / 40) : 0;
+  // Straight down (the streaks' slant shows the wind; a sideways drift would leave one side bare).
+  const fall = useDerivedValue(() => [{ translateY: (time.value * speed) % height }]);
+  const shapes = (dy: number) =>
+    drops.map((d, i) =>
+      kind === "snow" ? (
+        <Circle key={`${dy}-${i}`} cx={d.x} cy={d.y + dy} r={1.6 * d.s} color="rgba(255,255,255,0.75)" />
+      ) : (
+        <Line key={`${dy}-${i}`} p1={vec(d.x, d.y + dy)} p2={vec(d.x - 6 * slant * d.s, d.y + dy + 9 * d.s)} color="rgba(210,225,255,0.6)" strokeWidth={1.3} />
+      ),
+    );
+  return (
+    <Group transform={fall}>
+      {shapes(0)}
+      {shapes(-height)}
+    </Group>
+  );
+}
+
+/** The home stands along both sides of the shot, and a roof's soft light when it's indoors. */
+function Stands({ color, trim, steep, roofed, width, height }: { color: string; trim: string; steep: boolean; roofed: boolean; width: number; height: number }) {
+  const band = steep ? 9 : 6;
+  return (
+    <Group>
+      {[0, height - band].map((y) => (
+        <Group key={y}>
+          <Rect x={0} y={y} width={width} height={band} color={color} opacity={0.9} />
+          <Rect x={0} y={y === 0 ? band - 1.5 : y} width={width} height={1.5} color={trim} />
+        </Group>
+      ))}
+      {roofed ? <Rect x={0} y={0} width={width} height={height} color="rgba(255,255,255,0.06)" /> : null}
+    </Group>
+  );
+}

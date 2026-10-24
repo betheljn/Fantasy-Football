@@ -1,7 +1,8 @@
 // Trades between friends: one sends an offer, the other accepts or declines
 // (or the sender takes it back). Accepting makes the trade if it still works
 // by the sim's rules then; open offers expire when trading closes.
-import type { TradeProposal } from "@dynasty/sim";
+import { teamName, type TradeProposal } from "@dynasty/sim";
+import { leaguePost } from "./chat.ts";
 import type { FastifyInstance } from "fastify";
 import { changeLeague } from "./advance.ts";
 import { fail, requireMember } from "./auth.ts";
@@ -81,7 +82,15 @@ export function offerRoutes(app: FastifyInstance, db: Db) {
       const t = offer.proposal as unknown as TradeProposal;
       const r = await changeLeague(db, member.leagueId, (state) => {
         const m = acceptFriendTrade(state, t);
-        return { state: m.state, result: m.problems };
+        // Who went where, for the league's post (from the league before the trade).
+        const league = state.dynasty.league;
+        const who = (abbr: string, ids: readonly string[]) => ids.map((id) => league.teams[abbr]?.roster.find((p) => p.id === id)).filter((p) => p !== undefined).map((p) => `${p.position} ${p.firstName} ${p.lastName}`);
+        const side = (from: string, to: string, ids: readonly string[], picks: readonly string[] = []) => {
+          const parts = [...who(from, ids), ...(picks.length ? [`${picks.length} pick${picks.length === 1 ? "" : "s"}`] : [])];
+          return parts.length ? `${teamName(league.teams[to]!)} get ${parts.join(", ")}` : null;
+        };
+        const post = [side(t.from, t.to, t.give, t.givePicks), side(t.to, t.from, t.get, t.getPicks)].filter(Boolean).join("; ");
+        return { state: m.state, result: { problems: m.problems, post } };
       }).catch(async (e: unknown) => {
         await move("accepting", "open");
         throw e;
@@ -90,8 +99,10 @@ export function offerRoutes(app: FastifyInstance, db: Db) {
         await move("accepting", "open");
         return fail(reply, 409, "The league is busy (a week may be being played): try again");
       }
-      await move("accepting", r.result.length ? "failed" : "accepted", r.result[0] ?? null);
-      return { offer: await current(), problems: r.result, saveVersion: r.version };
+      const problems = r.result.problems;
+      await move("accepting", problems.length ? "failed" : "accepted", problems[0] ?? null);
+      if (!problems.length) await leaguePost(db, member.leagueId, `Trade: ${r.result.post}.`);
+      return { offer: await current(), problems, saveVersion: r.version };
     },
   );
 }

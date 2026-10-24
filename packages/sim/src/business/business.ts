@@ -10,6 +10,9 @@
 // sponsors and media, the national TV deal and revenue sharing; expenses are
 // payroll, staff, stadium operations and debt. After each season the fan base
 // moves with the results.
+import { VIDEO_BOARD_MAX, designProblem, designedStadium, stadiumNameProblem, covered, type StadiumDesign, roofOf, standsOf, surfaceOf, videoBoardOf, type Roof, type Stands, type Surface } from "./stadium.ts";
+import { REGION_CLIMATE } from "../game/conditions.ts";
+import { regionOf } from "../gen/regions.ts";
 import { Rng } from "../rng.ts";
 import type { League } from "../league/league.ts";
 import type { Team } from "../model/team.ts";
@@ -29,8 +32,15 @@ export const BUSINESS_RULES = {
   homeGames: 10,
   /** National TV deal, the same for every team: this share of the season's salary cap (it grows as the league does). */
   nationalMedia: 0.9,
-  /** Share of local revenue pooled and split evenly. */
+  /** Share of local revenue pooled and split among the teams... */
   sharing: 0.4,
+  /**
+   * ...by market: a small market's check is this much bigger than an even
+   * split, a large market's smaller (the pool stays the same). Without it, a
+   * 25-season check had half the small markets losing money every year (they
+   * pay the same cap floor on far less local revenue).
+   */
+  sharingWeight: { small: 1.5, mid: 1, large: 0.5 } as Record<MarketSize, number>,
   /** Ticket and concession prices most teams charge ($ per fan). */
   baseTicket: 95,
   baseConcessions: 30,
@@ -45,16 +55,23 @@ export interface Stadium {
   capacity: number;
   /** Amenities: suites, video board, comfort (0-100). */
   quality: number;
+  /** A full dome (kept in step with `roof`: true only for a dome). */
   dome: boolean;
   /** Owed on the stadium ($K). */
   debt: number;
+  /** The design (absent in older saves: read with stadium.ts's roofOf, surfaceOf, standsOf, videoBoardOf). */
+  roof?: Roof;
+  surface?: Surface;
+  stands?: Stands;
+  /** Video board level, 0-3. */
+  videoBoard?: number;
   /** Levels of luxury suites (premium revenue every season). */
   suites?: number;
   /** A company's name on the stadium: what it pays a season, and through when. */
   naming?: { sponsor: string; perYear: number; through: number };
 }
 
-export type ProjectKind = "expand" | "videoBoard" | "suites" | "dome";
+export type ProjectKind = "expand" | "videoBoard" | "suites" | "dome" | "retractable" | "turf" | "grass" | "steep";
 
 /** A stadium project under way: done in time for next season. */
 export interface StadiumProject {
@@ -143,7 +160,7 @@ export function attendance(b: TeamBusiness, keen: number, econ = 1): number {
   const demand = (regionalDraw * keen + b.fans.dieHard * 0.1 + b.fans.casual * 0.035 * keen) * 1000;
   const price = Math.pow((baseTicket * econ) / b.ticketPrice, elasticity);
   // A better stadium draws a few more (and a dome never gets rained out); so do happy fans.
-  const comfort = 1 + (b.stadium.quality - 50) / 500 + (b.stadium.dome ? 0.02 : 0);
+  const comfort = 1 + (b.stadium.quality - 50) / 500 + (covered(b.stadium) ? 0.02 : 0);
   const mood = 0.9 + (0.2 * (b.mood ?? 55)) / 100;
   return Math.round(Math.min(b.stadium.capacity, demand * price * comfort * mood));
 }
@@ -199,7 +216,7 @@ export function seasonFinances(
   const suites = (b.stadium.suites ?? 0) * (2_000 + pop * 400) * (0.8 + 0.3 * keen) * econ;
   const local = tickets + concessions + merch + sponsors + localMedia + suites;
   const kept = local * (1 - BUSINESS_RULES.sharing);
-  const stadiumCosts = ((b.stadium.capacity / 1000) * 150 + b.stadium.quality * 60 + (b.stadium.dome ? 4_000 : 0)) * econ;
+  const stadiumCosts = ((b.stadium.capacity / 1000) * 150 + b.stadium.quality * 60 + (roofOf(b.stadium) === "dome" ? 4_000 : roofOf(b.stadium) === "retractable" ? 5_000 : 0) + (surfaceOf(b.stadium) === "grass" ? 800 : 0)) * econ;
   const debtService = b.stadium.debt * (BOND.interest + BOND.principal);
   const naming = b.stadium.naming && b.stadium.naming.through >= season ? b.stadium.naming.perYear : 0;
   const revenue = {
@@ -233,7 +250,7 @@ export function nextFans(f: Fans, abbr: string, winPct: number): Fans {
 }
 
 /** Each team's revenue-sharing check: an even split of the pooled local revenue. */
-export function sharingChecks(league: League, business: Record<string, TeamBusiness>, season: number, results: readonly GameSummary[], records: ReadonlyMap<string, TeamRecord>, lastWinPct: ReadonlyMap<string, number>): number {
+export function sharingChecks(league: League, business: Record<string, TeamBusiness>, season: number, results: readonly GameSummary[], records: ReadonlyMap<string, TeamRecord>, lastWinPct: ReadonlyMap<string, number>): Map<string, number> {
   let pool = 0;
   const teams = Object.values(league.teams);
   for (const t of teams) {
@@ -243,7 +260,10 @@ export function sharingChecks(league: League, business: Record<string, TeamBusin
     const local = (f.revenue.tickets + f.revenue.concessions + f.revenue.merch + f.revenue.sponsors + f.revenue.localMedia + f.revenue.suites) / (1 - BUSINESS_RULES.sharing);
     pool += local * BUSINESS_RULES.sharing;
   }
-  return pool / teams.length;
+  // Split by market weight (an even split when the weights are all 1).
+  const weight = (abbr: string) => BUSINESS_RULES.sharingWeight[marketSize(abbr)];
+  const total = teams.reduce((n, t) => n + weight(t.abbr), 0);
+  return new Map(teams.map((t) => [t.abbr, (pool * weight(t.abbr)) / total]));
 }
 
 /**
@@ -265,15 +285,31 @@ export function closeSeasonBooks(
   const finances: Record<string, SeasonFinances> = {};
   for (const t of Object.values(league.teams)) {
     const b = business[t.abbr] ?? startBusiness(t, league.seed);
-    const f = seasonFinances(league, t, b, season, results, records.get(t.abbr), lastWinPct.get(t.abbr) ?? 0.5, check);
+    const f = seasonFinances(league, t, b, season, results, records.get(t.abbr), lastWinPct.get(t.abbr) ?? 0.5, check.get(t.abbr) ?? 0);
     finances[t.abbr] = f;
-    const after = openProjects({ ...b, fans: f.fans, cash: Math.round(b.cash + f.profit), stadium: { ...b.stadium, debt: Math.round(b.stadium.debt * (1 - BOND.principal)) } }, season);
+    const after = openProjects({ ...indexPrices(b, league.seed, season), fans: f.fans, cash: Math.round(b.cash + f.profit), stadium: { ...b.stadium, debt: Math.round(b.stadium.debt * (1 - BOND.principal)) } }, season);
     // AI teams' fans feel the way the season went (yours: what you've said and done).
     const r = records.get(t.abbr);
     const pct = r ? (r.wins + 0.5 * r.ties) / Math.max(1, r.wins + r.losses + r.ties) : 0.5;
     next[t.abbr] = humans.has(t.abbr) ? after : { ...aiBusinessMoves(after, f, t, league.seed, season + 1), mood: Math.round(40 + 40 * pct) };
   }
   return { business: next, finances };
+}
+
+/**
+ * Prices carried into next season at the same real value: everything else in
+ * the books (payroll, TV, merch, sponsors) grows with the economy, so a price
+ * set once keeps pace (you can still change it).
+ */
+function indexPrices(b: TeamBusiness, leagueSeed: string, season: number): TeamBusiness {
+  const grow = economy(leagueSeed, season + 1) / economy(leagueSeed, season);
+  return { ...b, ticketPrice: Math.round(b.ticketPrice * grow), concessionPrice: Math.round(b.concessionPrice * grow) };
+}
+
+/** What a person may charge (dollars per fan), growing with the economy. */
+export function priceLimits(leagueSeed: string, season: number): { ticket: [number, number]; concessions: [number, number] } {
+  const econ = economy(leagueSeed, season);
+  return { ticket: [Math.round(20 * econ), Math.round(400 * econ)], concessions: [Math.round(5 * econ), Math.round(100 * econ)] };
 }
 
 /** Bonds: interest and the share of the debt paid down each season. */
@@ -287,6 +323,10 @@ export const PROJECTS: Record<ProjectKind, { name: string; does: string; cost: n
   videoBoard: { name: "New video board", does: "+8 amenities", cost: 15_000 },
   suites: { name: "Luxury suites", does: "+10 amenities and premium revenue every season", cost: 45_000 },
   dome: { name: "Put a dome on it", does: "A roof: a few more fans every game, never a rainout", cost: 250_000 },
+  retractable: { name: "Retractable roof", does: "Open on a fine day, closed against rain, snow and cold", cost: 320_000 },
+  turf: { name: "Lay turf", does: "A fast field (a few more big plays, a few more injuries)", cost: 6_000 },
+  grass: { name: "Grow grass", does: "A natural field (a little slower, a little kinder on the body)", cost: 9_000 },
+  steep: { name: "Steeper stands", does: "Rebuild the bowl right on top of the field: louder, 3,000 fewer seats", cost: 110_000 },
 };
 
 /** What a project costs here (cheaper to build in small states). */
@@ -298,7 +338,16 @@ export function projectCost(kind: ProjectKind, abbr: string): number {
 export function projectProblems(b: TeamBusiness, kind: ProjectKind, abbr: string, financing: "cash" | "bonds"): string[] {
   const problems: string[] = [];
   if ((b.pending ?? []).some((p) => p.kind === kind)) problems.push("That's already under way.");
-  if (kind === "dome" && b.stadium.dome) problems.push("The stadium already has a dome.");
+  if (kind === "dome" && roofOf(b.stadium) === "dome") problems.push("The stadium already has a dome.");
+  if (kind === "retractable" && roofOf(b.stadium) !== "open") problems.push("The stadium already has a roof.");
+  if (kind === "turf" && surfaceOf(b.stadium) === "turf") problems.push("The field is already turf.");
+  if (kind === "grass" && surfaceOf(b.stadium) === "grass") problems.push("The field is already grass.");
+  if (kind === "grass" && roofOf(b.stadium) === "dome") problems.push("Grass won't grow under a dome.");
+  if (kind === "steep" && standsOf(b.stadium) === "steep") problems.push("The stands are already steep.");
+  if (kind === "videoBoard" && videoBoardOf(b.stadium) >= VIDEO_BOARD_MAX) problems.push("The boards don't get any bigger.");
+  // Two projects on the same thing can't run at once (a roof and a dome, grass and turf).
+  const clash: Partial<Record<ProjectKind, ProjectKind>> = { dome: "retractable", retractable: "dome", turf: "grass", grass: "turf" };
+  if ((b.pending ?? []).some((p) => p.kind === clash[kind])) problems.push("Something else is being built there.");
   if (kind === "expand" && b.stadium.capacity >= 95_000) problems.push("The stadium can't get any bigger.");
   if (kind === "suites" && (b.stadium.suites ?? 0) >= 3) problems.push("There's no room for more suites.");
   const cost = projectCost(kind, abbr);
@@ -319,18 +368,37 @@ export function startProject(b: TeamBusiness, kind: ProjectKind, abbr: string, f
 }
 
 /** Projects started this season open for the next one. */
-function openProjects(b: TeamBusiness, season: number): TeamBusiness {
+export function openProjects(b: TeamBusiness, season: number): TeamBusiness {
   const done = (b.pending ?? []).filter((p) => p.season <= season);
   if (done.length === 0) return b;
   const st = { ...b.stadium };
   for (const p of done) {
     if (p.kind === "expand") st.capacity += 5_000;
-    if (p.kind === "videoBoard") st.quality = Math.min(100, st.quality + 8);
+    if (p.kind === "videoBoard") {
+      st.quality = Math.min(100, st.quality + 8);
+      st.videoBoard = Math.min(VIDEO_BOARD_MAX, videoBoardOf(st) + 1);
+    }
     if (p.kind === "suites") {
       st.quality = Math.min(100, st.quality + 10);
       st.suites = (st.suites ?? 0) + 1;
     }
-    if (p.kind === "dome") st.dome = true;
+    if (p.kind === "dome") {
+      st.dome = true;
+      st.roof = "dome";
+      // Under a dome, it's turf.
+      st.surface = "turf";
+    }
+    if (p.kind === "retractable") {
+      st.surface = surfaceOf(st);
+      st.roof = "retractable";
+      st.dome = false;
+    }
+    if (p.kind === "turf") st.surface = "turf";
+    if (p.kind === "grass") st.surface = "grass";
+    if (p.kind === "steep") {
+      st.stands = "steep";
+      st.capacity = Math.max(30_000, st.capacity - 3_000);
+    }
   }
   return { ...b, stadium: st, pending: (b.pending ?? []).filter((p) => p.season > season) };
 }
@@ -375,12 +443,73 @@ function aiBusinessMoves(b: TeamBusiness, f: SeasonFinances, team: Team, leagueS
   let out = b;
   const full = f.attendance / (BUSINESS_RULES.homeGames * b.stadium.capacity);
   const price = full >= 0.98 ? b.ticketPrice * 1.06 : full < 0.7 ? b.ticketPrice * 0.95 : b.ticketPrice;
-  out = { ...out, ticketPrice: Math.round(Math.max(60, Math.min(180, price))) };
+  const econ = economy(leagueSeed, next);
+  out = { ...out, ticketPrice: Math.round(Math.max(60 * econ, Math.min(180 * econ, price))) };
   if (full >= 0.98 && projectProblems(out, "expand", team.abbr, "cash").length === 0 && out.cash > projectCost("expand", team.abbr) * 2) out = startProject(out, "expand", team.abbr, "cash", next - 1);
   if (out.stadium.quality < 50 && projectProblems(out, "videoBoard", team.abbr, "cash").length === 0 && out.cash > 60_000) out = startProject(out, "videoBoard", team.abbr, "cash", next - 1);
+  // Rich teams where the weather turns bad put a roof on it (rarely: it's a big job).
+  const climate = REGION_CLIMATE[team.region ?? regionOf(team.abbr) ?? ""];
+  const roofCost = projectCost("retractable", team.abbr);
+  const roofYear = new Rng(`${leagueSeed}:${team.abbr}:${next}:roof`).chance(0.2);
+  if (climate && climate.late < 40 && roofOf(out.stadium) === "open" && out.stadium.debt === 0 && out.cash > roofCost * 0.4 && roofYear && projectProblems(out, "retractable", team.abbr, "bonds").length === 0) {
+    out = startProject(out, "retractable", team.abbr, "bonds", next - 1);
+  }
   if (namingAvailable(out, next)) {
     const best = namingOffers(leagueSeed, team.abbr, next).sort((x, y) => y.perYear - x.perYear)[0];
     if (best) out = acceptNaming(out, best, next - 1);
   }
   return out;
+}
+
+/** How loud a stadium gets, 0-1: its die-hards' share of the fan base and how many it holds (domes trap the sound). */
+export function crowdNoise(b: TeamBusiness): number {
+  const total = b.fans.casual + b.fans.dieHard;
+  const dieHard = total > 0 ? b.fans.dieHard / total : 0.38;
+  const size = (b.stadium.capacity - 45_000) / 35_000;
+  // A typical crowd (about 38% die-hards) is 0.5.
+  // A dome traps the sound; steep stands right on top of the field are louder still.
+  const roof = roofOf(b.stadium) === "dome" ? 0.1 : 0;
+  const stands = standsOf(b.stadium) === "steep" ? 0.12 : 0;
+  return Math.round(Math.max(0.1, Math.min(1, 0.5 + (dieHard - 0.38) + 0.15 * size + roof + stands)) * 100) / 100;
+}
+
+/** Put every team's stadium (dome, crowd noise) on the team, where games see it. */
+export function syncVenues<D extends { league: League; business?: Record<string, TeamBusiness> }>(dynasty: D): D {
+  const business = dynasty.business ?? startLeagueBusiness(dynasty.league);
+  let teams: Record<string, Team> | null = null;
+  for (const [abbr, t] of Object.entries(dynasty.league.teams)) {
+    const b = business[abbr];
+    if (!b) continue;
+    const venue = { dome: roofOf(b.stadium) === "dome", noise: crowdNoise(b), roof: roofOf(b.stadium), surface: surfaceOf(b.stadium), stands: standsOf(b.stadium) };
+    if (t.venue && JSON.stringify(t.venue) === JSON.stringify(venue)) continue;
+    teams ??= { ...dynasty.league.teams };
+    teams[abbr] = { ...t, venue };
+  }
+  return teams ? { ...dynasty, league: { ...dynasty.league, teams } } : dynasty;
+}
+
+/** Why the stadium can't be renamed now, or null. */
+export function renameProblem(b: TeamBusiness, name: string, season: number): string | null {
+  if (b.stadium.naming && b.stadium.naming.through >= season) return `${b.stadium.naming.sponsor} has the naming rights through ${b.stadium.naming.through}`;
+  return stadiumNameProblem(name);
+}
+
+/** Name the stadium yourself (free; not while a sponsor's name is on it). */
+export function renameStadium(b: TeamBusiness, name: string, season: number): TeamBusiness {
+  const problem = renameProblem(b, name, season);
+  if (problem) throw new Error(problem);
+  return { ...b, stadium: { ...b.stadium, name: name.trim().replace(/\s+/g, " ") } };
+}
+
+/**
+ * A new program builds its stadium to its own design (part of building the
+ * program: no cost now; a roof costs more to run every season).
+ */
+export function buildDesignedStadium<D extends { league: League; business?: Record<string, TeamBusiness> }>(dynasty: D, team: string, design: StadiumDesign): D {
+  const problem = designProblem(design);
+  if (problem) throw new Error(problem);
+  const business = dynasty.business ?? startLeagueBusiness(dynasty.league);
+  const b = business[team];
+  if (!b) throw new Error(`No business for ${team}`);
+  return syncVenues({ ...dynasty, business: { ...business, [team]: { ...b, stadium: designedStadium(b.stadium, design) } } });
 }

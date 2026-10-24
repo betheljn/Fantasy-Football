@@ -14,8 +14,15 @@ import { OVERALL_WEIGHTS, RATING_KEYS, type RatingKey } from "../model/ratings.t
 import { hashString } from "../rng.ts";
 import type { League } from "../league/league.ts";
 import { REGULAR_SEASON_WEEKS } from "../league/schedule.ts";
+import { leagueFormat } from "../league/format.ts";
+
+/** How many weeks this scouting runs: the regular season it was started in. */
+export function seasonWeeks(state: Pick<ScoutingState, "weeks">): number {
+  return state.weeks ?? REGULAR_SEASON_WEEKS;
+}
 import { draftValue, type DraftClass, type Prospect } from "./draftclass.ts";
 import { scoutingQuality } from "./frontoffice.ts";
+import { recruitingWeek, type RecruitingChoices } from "./recruiting.ts";
 
 export const SCOUTING = {
   pointsPerWeek: 12,
@@ -41,11 +48,15 @@ export interface ScoutingState {
   classSeason: number;
   /** Weeks of scouting done (0 to the regular season length). */
   week: number;
+  /** The regular season's length in weeks (absent: 22, from before league formats). */
+  weeks?: number;
   combineDone: boolean;
   /** team -> prospect -> points spent. */
   focus: Record<string, Record<PlayerId, number>>;
   /** team -> scout quality multiplier on points (1 = average staff). */
   quality: Record<string, number>;
+  /** Recruiting: team -> prospect -> his interest in the program, 0-100 (absent: from before recruiting). */
+  interest?: Record<string, Record<PlayerId, number>>;
 }
 
 export interface RangeEstimate {
@@ -73,6 +84,7 @@ export function createScouting(league: League, draftClass: DraftClass): Scouting
     seed: league.seed,
     classSeason: draftClass.season,
     week: 0,
+    weeks: leagueFormat(league).weeks,
     combineDone: false,
     focus: Object.fromEntries(teams.map((t) => [t, {}])),
     // The scouting director sets how much each point teaches the department.
@@ -82,7 +94,7 @@ export function createScouting(league: League, draftClass: DraftClass): Scouting
 
 /** A team's knowledge of a prospect, 0 to 1. */
 export function knowledge(state: ScoutingState, team: string, prospect: PlayerId): number {
-  const auto = SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / REGULAR_SEASON_WEEKS);
+  const auto = SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / seasonWeeks(state));
   const points = (state.focus[team]?.[prospect] ?? 0) * (state.quality[team] ?? 1);
   const fromFocus = 1 - Math.exp(-points / SCOUTING.pointsScale);
   return 1 - (1 - auto) * (1 - fromFocus);
@@ -104,14 +116,26 @@ function offset(base: number, index: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-const baseCache = new Map<string, number>();
+// By league and class, then team, then prospect (no key strings to build on a hit).
+const baseCache = new Map<string, Map<string, Map<PlayerId, number>>>();
+let baseCount = 0;
 function offsetBase(state: ScoutingState, team: string, prospect: PlayerId): number {
-  const key = `${state.seed}:${state.classSeason}:${team}:${prospect}`;
-  const cached = baseCache.get(key);
+  const cls = `${state.seed}:${state.classSeason}`;
+  let byTeam = baseCache.get(cls);
+  if (!byTeam) {
+    if (baseCount > 100_000) {
+      baseCache.clear();
+      baseCount = 0;
+    }
+    baseCache.set(cls, (byTeam = new Map()));
+  }
+  let byProspect = byTeam.get(team);
+  if (!byProspect) byTeam.set(team, (byProspect = new Map()));
+  const cached = byProspect.get(prospect);
   if (cached !== undefined) return cached;
-  const b = hashString(`scout:${key}`);
-  if (baseCache.size > 100_000) baseCache.clear();
-  baseCache.set(key, b);
+  const b = hashString(`scout:${cls}:${team}:${prospect}`);
+  byProspect.set(prospect, b);
+  baseCount++;
   return b;
 }
 
@@ -123,6 +147,17 @@ function range(truth: number, width: number, offset: number): RangeEstimate {
   if (low < 0) [low, high] = [0, w];
   if (high > 99) [low, high] = [99 - w, 99];
   return { low, high, estimate: (low + high) / 2, exact: false };
+}
+
+/** range(...).estimate without building the range (the same numbers). */
+function rangeEstimate(truth: number, width: number, offset: number): number {
+  const w = Math.max(0, Math.round(width));
+  if (w === 0) return truth;
+  let low = truth - Math.round(offset * w);
+  let high = low + w;
+  if (low < 0) [low, high] = [0, w];
+  if (high > 99) [low, high] = [99 - w, 99];
+  return (low + high) / 2;
 }
 
 /** Width of a range at a given knowledge level. Never quite zero until measured. */
@@ -158,39 +193,114 @@ export function scoutingReport(state: ScoutingState, team: string, prospect: Pro
  * Just the numbers a board needs (estimated overall and potential), without
  * building every attribute range: much cheaper when ranking whole classes.
  */
-const estimateCache = new WeakMap<ScoutingState, Map<string, { overall: number; potential: number; knowledge: number }>>();
+type Estimate = { overall: number; potential: number; knowledge: number };
 
-export function quickEstimate(state: ScoutingState, team: string, prospect: Prospect): { overall: number; potential: number; knowledge: number } {
-  let cache = estimateCache.get(state);
-  if (!cache) estimateCache.set(state, (cache = new Map()));
-  const key = `${team}:${prospect.player.id}`;
-  const hit = cache.get(key);
+/**
+ * One team's view of a class in one week, set up once: its estimates so far,
+ * its offsets, and what its knowledge depends on. Boards ask for every
+ * prospect for every team each week, so nothing here is looked up per prospect
+ * that could be looked up once.
+ */
+interface TeamScout {
+  estimates: Map<PlayerId, Estimate>;
+  bases: Map<PlayerId, number>;
+  cls: string;
+  team: string;
+  focus: Record<PlayerId, number> | undefined;
+  quality: number;
+  auto: number;
+  combineDone: boolean;
+}
+
+const scoutCache = new WeakMap<ScoutingState, Map<string, TeamScout>>();
+
+function teamScout(state: ScoutingState, team: string): TeamScout {
+  let byTeam = scoutCache.get(state);
+  if (!byTeam) scoutCache.set(state, (byTeam = new Map()));
+  let ts = byTeam.get(team);
+  if (ts) return ts;
+  const cls = `${state.seed}:${state.classSeason}`;
+  let byClass = baseCache.get(cls);
+  if (!byClass) {
+    if (baseCount > 100_000) {
+      baseCache.clear();
+      baseCount = 0;
+    }
+    baseCache.set(cls, (byClass = new Map()));
+  }
+  let bases = byClass.get(team);
+  if (!bases) byClass.set(team, (bases = new Map()));
+  ts = {
+    estimates: new Map(),
+    bases,
+    cls,
+    team,
+    focus: state.focus[team],
+    quality: state.quality[team] ?? 1,
+    // As in knowledge(): the same numbers, worked out once.
+    auto: SCOUTING.automaticBySeasonEnd * Math.min(1, state.week / seasonWeeks(state)),
+    combineDone: state.combineDone,
+  };
+  byTeam.set(team, ts);
+  return ts;
+}
+
+export function quickEstimate(state: ScoutingState, team: string, prospect: Prospect): Estimate {
+  const ts = teamScout(state, team);
+  const id = prospect.player.id;
+  const hit = ts.estimates.get(id);
   if (hit) return hit;
-  const value = computeEstimate(state, team, prospect);
-  cache.set(key, value);
+  const value = computeEstimate(ts, prospect);
+  ts.estimates.set(id, value);
   return value;
 }
 
-function computeEstimate(state: ScoutingState, team: string, prospect: Prospect): { overall: number; potential: number; knowledge: number } {
+function computeEstimate(ts: TeamScout, prospect: Prospect): Estimate {
   const p = prospect.player;
-  const k = knowledge(state, team, p.id);
-  const base = offsetBase(state, team, p.id);
-  const wAttr = width(SCOUTING.attributeWidth, k);
-  let sum = 0;
-  let total = 0;
-  for (const [key, index, w] of WEIGHTED[p.position]) {
-    const measured = state.combineDone && COMBINE_ATTRIBUTES.includes(key);
-    sum += (measured ? p.ratings[key] : range(p.ratings[key], wAttr, offset(base, index)).estimate) * w;
-    total += w;
+  const id = p.id;
+  // knowledge(), with the team's lookups already done.
+  const points = (ts.focus?.[id] ?? 0) * ts.quality;
+  const fromFocus = 1 - Math.exp(-points / SCOUTING.pointsScale);
+  const k = 1 - (1 - ts.auto) * (1 - fromFocus);
+  let base = ts.bases.get(id);
+  if (base === undefined) {
+    base = hashString(`scout:${ts.cls}:${ts.team}:${id}`);
+    ts.bases.set(id, base);
+    baseCount++;
   }
-  const potential = range(p.potential, width(SCOUTING.potentialWidth, k), offset(base, RATING_KEYS.length)).estimate;
-  return { overall: sum / total, potential, knowledge: k };
+  const wAttr = width(SCOUTING.attributeWidth, k);
+  const f = WEIGHTED[p.position];
+  const ratings = p.ratings;
+  let sum = 0;
+  for (let i = 0; i < f.keys.length; i++) {
+    const key = f.keys[i]!;
+    sum += (ts.combineDone && f.combine[i] ? ratings[key] : rangeEstimate(ratings[key], wAttr, offset(base, f.index[i]!))) * f.weight[i]!;
+  }
+  const potential = rangeEstimate(p.potential, width(SCOUTING.potentialWidth, k), offset(base, RATING_KEYS.length));
+  return { overall: sum / f.total, potential, knowledge: k };
 }
 
-/** Each position's overall formula as [rating, its index in RATING_KEYS, weight]. */
-const WEIGHTED = {} as Record<Position, ReadonlyArray<readonly [RatingKey, number, number]>>;
+/** Each position's overall weights, column by column: the rating, its offset index, its weight, whether the combine measures it; and the weights' total. */
+interface Weighted {
+  keys: RatingKey[];
+  index: number[];
+  weight: number[];
+  combine: boolean[];
+  total: number;
+}
+const WEIGHTED = {} as Record<Position, Weighted>;
 for (const pos of POSITIONS) {
-  WEIGHTED[pos] = (Object.entries(OVERALL_WEIGHTS[pos]) as [RatingKey, number][]).map(([key, w]) => [key, RATING_KEYS.indexOf(key), w] as const);
+  const entries = Object.entries(OVERALL_WEIGHTS[pos]) as [RatingKey, number][];
+  // The total summed in the same order as the estimate's loop always summed it.
+  let total = 0;
+  for (const [, w] of entries) total += w;
+  WEIGHTED[pos] = {
+    keys: entries.map(([key]) => key),
+    index: entries.map(([key]) => RATING_KEYS.indexOf(key)),
+    weight: entries.map(([, w]) => w),
+    combine: entries.map(([key]) => COMBINE_ATTRIBUTES.includes(key)),
+    total,
+  };
 }
 
 export interface BoardEntry {
@@ -255,8 +365,12 @@ export function advanceScoutingWeek(
   league: League,
   draftClass: DraftClass,
   choices: Record<string, Array<{ prospect: PlayerId; points: number }>> = {},
+  /** Recruiting: teams people run spend their week's points as given (everyone else recruits on its own). */
+  recruiting: RecruitingChoices = {},
 ): ScoutingState {
-  if (state.week >= REGULAR_SEASON_WEEKS) return state;
+  if (state.week >= seasonWeeks(state)) return state;
+  // Recruiting first (from where interest stood): its visits are scouting looks too.
+  const recruited = recruitingWeek(state, league, draftClass, (team, p) => quickEstimate(state, team, p), recruiting);
   const focus: ScoutingState["focus"] = {};
   for (const team of Object.keys(state.focus)) {
     const spend = choices[team] ?? aiScoutingChoices(state, league, draftClass, team);
@@ -268,9 +382,10 @@ export function advanceScoutingWeek(
       mine[prospect] = (mine[prospect] ?? 0) + p;
       left -= p;
     }
+    for (const [prospect, pts] of Object.entries(recruited.visits[team] ?? {})) mine[prospect] = (mine[prospect] ?? 0) + pts;
     focus[team] = mine;
   }
-  return { ...state, week: state.week + 1, focus };
+  return { ...state, week: state.week + 1, focus, interest: recruited.interest };
 }
 
 /** The combine: physical attributes become known exactly to everyone. */
@@ -285,6 +400,6 @@ export function scoutSeason(
   weeklyChoices: (week: number) => Record<string, Array<{ prospect: PlayerId; points: number }>> = () => ({}),
 ): ScoutingState {
   let state = createScouting(league, draftClass);
-  while (state.week < REGULAR_SEASON_WEEKS) state = advanceScoutingWeek(state, league, draftClass, weeklyChoices(state.week + 1));
+  while (state.week < seasonWeeks(state)) state = advanceScoutingWeek(state, league, draftClass, weeklyChoices(state.week + 1));
   return runCombine(state);
 }

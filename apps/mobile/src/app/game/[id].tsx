@@ -5,7 +5,7 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Text } from "react-native";
-import { ROUND_NAMES, playGame, simulateGame, withOut, type GameSummary, type League, type Team } from "@dynasty/sim";
+import { ROUND_NAMES, playGame, replayOptions, simulateGame, withOut, type GameSummary, type League, type Team } from "@dynasty/sim";
 import { replayTeams } from "../../dynasty/lineups";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { GameView } from "../../screens/GameView";
@@ -41,13 +41,21 @@ export default function GameRoute() {
       }
       const teams = teamsFor(log, league, summary);
       // Replayed under the rules it was played with (older games, the older rules).
-      const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls } : {};
-      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, rules: summary.rules ?? 1 }) };
+      // (A duel between friends has both coaches' calls.)
+      const coached = summary.coached ? { coach: summary.coached.team, calls: summary.coached.calls, ...(summary.coached.rival ? { rival: summary.coached.rival } : {}) } : {};
+      return { ...teams, title: `Week ${g.week}`, week: g.week, game: simulateGame(teams.home, teams.away, summary.seed, { ...coached, ...replayOptions(summary) }) };
+    }
+    // Championship week (format 2): a division title game.
+    const tg = playoffs?.titleGames?.find((x) => x.summary.id === id);
+    if (tg) {
+      const teams = teamsFor(log, league, tg.summary);
+      const game = simulateGame(teams.home, teams.away, tg.summary.seed, { playoff: true, ...replayOptions(tg.summary) });
+      return { ...teams, title: `${tg.division} title game`, week: 98, game };
     }
     const p = playoffs?.games.find((x) => x.summary.id === id);
     if (p) {
       const teams = teamsFor(log, league, p.summary);
-      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite, rules: p.summary.rules ?? 1 });
+      const game = simulateGame(teams.home, teams.away, p.summary.seed, { playoff: true, neutralSite: p.neutralSite, ...replayOptions(p.summary) });
       return { ...teams, title: ROUND_NAMES[p.round], week: 99, game, neutralSite: p.neutralSite };
     }
     return null;
@@ -71,7 +79,7 @@ export default function GameRoute() {
       ? {
           label: `Record it and play the rest of week ${found.week}`,
           onPress: () => {
-            d.playWeek();
+            d.simWeek();
             router.replace("/");
           },
         }
@@ -83,7 +91,7 @@ export default function GameRoute() {
         game={found.game}
         home={found.home}
         away={found.away}
-        context={{ title: found.title, records: { [found.home.abbr]: before(found.home.abbr), [found.away.abbr]: before(found.away.abbr) }, neutralSite: "neutralSite" in found ? found.neutralSite : false }}
+        context={{ title: found.title, records: { [found.home.abbr]: before(found.home.abbr), [found.away.abbr]: before(found.away.abbr) }, neutralSite: "neutralSite" in found ? found.neutralSite : false, mine: userTeam }}
         finish={finish}
         startAtEnd={final === "1"}
       />

@@ -1,6 +1,6 @@
 // What a save holds, and turning it into text and back (the sim's compact save
 // format: ratings and stat lines packed as arrays, Maps tagged).
-import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall } from "@dynasty/sim";
+import { fromSaveJson, toSaveJson, type Dynasty, type FreeAgentOffer, type GameSummary, type ScoutingState, type SeasonStats, type GameLines, type InjuryNews, type Collection, type FrontOfficeState, type GradedHostPick, type HostRecords, type RadioShow, type SettledSlate, type Slate, type Story, type InSeasonMove, type PlayoffResult, type StaffSlot, type TradeRecord, type CoachCall, type BoxScore, type CoachBuild, type SkillGroup, type TeamIdentityChoice, type StadiumDesign, type FriendGame } from "@dynasty/sim";
 import type { LineupLog } from "./lineups";
 import type { OffseasonReport } from "./report";
 
@@ -31,10 +31,14 @@ export interface SaveState {
   scouting: ScoutingState | null;
   /** Your scouting points for the coming week (empty = your scouts choose). */
   scoutPlan: ScoutAssignment[];
+  /** Your recruiting: points a week on each prospect, standing until you change it (empty: your staff recruits). */
+  recruitPlan?: ScoutAssignment[];
   /** Trades made this season (yours and the AI's), oldest first. */
   trades: TradeRecord[];
   /** The playoffs, decided when the regular season ends (null before). */
   playoffs?: PlayoffResult | null;
+  /** Championship week's box scores (kept to settle its picks when it's shown). */
+  titleBoxes?: Record<string, BoxScore>;
   /** Rosters through the season, so past games replay exactly. */
   lineups?: LineupLog;
   /** Injuries that made news this season (starters and good players out a week or more). */
@@ -57,6 +61,27 @@ export interface SaveState {
   fired?: { offers: string[]; verdict: string };
   /** Your game this week, coached so far: your calls (the week plays it with them; the coaches make the rest). */
   coaching?: { season: number; game: string; calls: Array<CoachCall | null> };
+  /** A new dynasty being set up (until its first season opens): your team, its look and coach, and the fantasy draft so far. */
+  setup?: TeamSetup;
+  /** Online: every friend's points and settled slates (the picks leaderboard). */
+  friendsPicks?: Array<{ team: string; balance: number; history: SettledSlate[] }>;
+  /** Online: every game between two friends' teams, every season (the head-to-head series). */
+  friendGames?: FriendGame[];
+}
+
+export interface TeamSetup {
+  /** Your top three skill groups: your program, in the region they fit (absent: a state team, from before programs). */
+  groups?: SkillGroup[];
+  /** The region your program was placed in (drawn at random; absent: the best fit for your groups, from before). */
+  region?: string;
+  team: string;
+  role: "owner" | "gm";
+  identity: TeamIdentityChoice;
+  coach: CoachBuild;
+  /** Your stadium as you designed it (absent: the one the program came with). */
+  stadium?: StadiumDesign;
+  /** The fantasy draft: rounds you pick, your first-round slot, and your picks so far (absent = no draft). */
+  draft?: { rounds: number; slot: number; picks: string[] };
 }
 
 export interface OfficeState extends FrontOfficeState {
@@ -145,6 +170,10 @@ export function deserializeProgress(text: string | null): OffseasonProgress | nu
 export interface SlotInfo {
   slot: number;
   team: string;
+  /** The team as it's shown (its name and look; a program never shows its state). */
+  name?: string;
+  logo?: string;
+  colors?: { primary: string; trim: string };
   season: number;
   /** Where the dynasty is, e.g. "Week 6", "Playoffs", "Offseason". */
   stage: string;

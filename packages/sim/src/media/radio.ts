@@ -95,9 +95,10 @@ const describe = (p: Prop, side: PickSide, home: string, away: string) =>
   p.kind === "spread" ? sideLabel(p, side, home, away) : p.kind === "total" ? `${side} ${p.line} total points` : `${p.name} ${side} ${p.line} ${PROP_STAT_NAMES[p.stat!]}`;
 
 /** Each host's picks for the week, by personality; one pick per game per host. */
-export function hostPicks(board: readonly GameLines[], stats: SeasonStats, own?: string): HostPick[] {
-  // Your own game stays off the show's board, as it's off yours.
-  const games = board.filter((g) => !own || (g.game.home !== own && g.game.away !== own));
+export function hostPicks(board: readonly GameLines[], stats: SeasonStats, own?: string | ReadonlySet<string>): HostPick[] {
+  // Your own game stays off the show's board, as it's off yours (online: every friend's game).
+  const off = typeof own === "string" ? new Set([own]) : (own ?? new Set<string>());
+  const games = board.filter((g) => !off.has(g.game.home) && !off.has(g.game.away));
   const props = games.flatMap((g) => g.props.map((p) => ({ p, g })));
   const take = (role: HostRole, ranked: Array<{ p: Prop; side: PickSide; reason: string }>): HostPick[] => {
     const used = new Set<string>();
@@ -178,6 +179,7 @@ const REACT: Record<Story["kind"], Voice> = {
   performance: { numbers: ["Put that stat line in a frame.", "That's a top-percentile game by any measure."], hottake: ["MVP. I'm calling it. Again.", "Give that man the keys to the state."], veteran: ["Give the offensive line some credit for that one."] },
   streak: { numbers: ["Streaks regress. Eventually.", "The underlying numbers mostly back it up."], hottake: ["They are not losing again this year. Write it down.", "Rock bottom has a basement and they found it."], veteran: ["Winning is a habit. So is losing."] },
   milestone: { numbers: ["Round numbers are arbitrary. I still love them.", "Put that number next to the all-time list and it holds up."], hottake: ["Hall of Fame. Right now. Skip the waiting period.", "Nobody talks about him enough. I talk about him the right amount."], veteran: ["Numbers like that take years of Sundays. Respect.", "Longevity is a skill. Ask my knees."] },
+  camp: { numbers: ["Camp numbers are noise. Mostly. I'll take the bump in his ratings though.", "Two players within three points: that's a coin flip with pads on."], hottake: ["Best decision that staff will make all year. Book it.", "If he can't win the job in camp, he never deserved it."], veteran: ["Camp battles make you. You go to bed thinking about the other guy.", "Winning the job in August is the easy part. Keeping it is the hard part."] },
   lockerroom: { numbers: ["Players-only meetings don't show up in the box score. I checked.", "Team chemistry is real. I just can't measure it yet."], hottake: ["That captain should get a statue. Today.", "Meetings! Love a meeting. Win a game first."], veteran: ["When the captain talks, you listen. That's how it worked for us.", "That room belongs to the players. Good teams know it."] },
   rankings: { numbers: ["The formula giveth.", "The ranking model has spoken."], hottake: ["Finally the rankings caught up to what I've been saying for weeks."], veteran: ["Rankings in October don't play in January."] },
   injury: { numbers: ["That's a real hit to their projections.", "Next man up is about six points worse, by my numbers."], hottake: ["Season's over. I'm sorry. It is.", "That's devastating. I need a minute."], veteran: ["Tough break. I've been there. Rehab is lonely."] },
@@ -189,8 +191,23 @@ const REACT: Record<Story["kind"], Voice> = {
     hottake: ["That kid is starting by week three. Book it.", "Spring legend. Fall legend. Same thing.", "If he's not on the field opening day, somebody should be fired."],
     veteran: ["Spring ball is where you find out who wants it. That one wants it.", "I came up through the spring league. That's how you earn it.", "Practice-squad guys play for their lives in the spring. You can tell."],
   },
+  friends: {
+    numbers: ["I don't have a model for friendship. I do have one for that defense, and it's not kind.", "Head-to-head records are small samples. Small samples are the fun ones."],
+    hottake: ["That's bragging rights for a YEAR. Frame the box score.", "Somebody's group chat is on fire right now.", "That's not a win, that's a statement."],
+    veteran: ["You never forget the ones against your buddies. Never.", "Games against people you know are the hardest ones to sleep after."],
+  },
   rivalry: { numbers: ["Rivalry games run about four points closer than you'd expect. I checked."], hottake: ["That trophy belongs in one place and everybody knows where."], veteran: ["Throw the records out in a rivalry game. I've lived it."] },
   preview: { numbers: [""], hottake: [""], veteran: [""] },
+  title: {
+    numbers: ["Division title games are closer than the regular-season gap suggests. Rematches tighten up.", "Home teams win these about sixty percent of the time. That's what the season was for."],
+    hottake: ["Champions! Now go win four more and we'll talk.", "Second place showing up and taking the crown? THAT's a playoff team."],
+    veteran: ["Nothing like a title game in your own building. I can still hear it.", "You beat a team twice in a year, it gets personal. That one was personal."],
+  },
+  playoff: {
+    numbers: ["Single elimination. The best team wins the title maybe a quarter of the time.", "The seeds held this round. The bracket math says that won't last."],
+    hottake: ["Bracket's busted! Everybody's bracket! Mine's fine.", "One and done, baby. That's why we love it."],
+    veteran: ["Playoff football is a different sport. Ask anybody who's played it.", "Win and you're in the history books. Lose and you're on the couch."],
+  },
 };
 
 const BRAG: Voice = {
@@ -226,6 +243,10 @@ export interface RadioShowInput {
   records: HostRecords;
   /** Your team: off the show's board, as it's off yours. */
   own?: string;
+  /** Online: every friend's team (their games stay off the show, as they're off the board). */
+  friends?: ReadonlySet<string>;
+  /** Online: this week's games between friends, one line each ("X at Y. X lead the series 3-1."). */
+  friendPreviews?: readonly string[];
 }
 
 /** Write this week's show. */
@@ -265,8 +286,14 @@ export function radioShow(input: RadioShowInput): RadioShow {
     }
   }
 
+  // Online: this week's games between friends (off the board, never off the air).
+  for (const [i, text] of (input.friendPreviews ?? []).entries()) {
+    const role = HOST_ROLES[(i + 1) % 3]!;
+    line(role, `${i === 0 ? say(key("friends"), ["Circle this one:", "The one everybody in this league is talking about:", "Bragging rights on the line:"]) : "And"} ${text}`);
+  }
+
   // This week's picks.
-  const picks = hostPicks(input.board, input.stats, input.own);
+  const picks = hostPicks(input.board, input.stats, input.friends ?? input.own);
   const homeAway = new Map(input.board.map((g) => [g.game.id, g.game]));
   for (const role of HOST_ROLES) {
     const mine = picks.filter((p) => p.host === role);

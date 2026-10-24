@@ -1,6 +1,8 @@
 // Friends' offseason calls in an online league: one call per stage (staff,
 // hires, re-signings, the draft board, free agency, cuts), changeable until
 // the stage closes. Anyone without a call when it closes is left to the AI.
+import { newsFor } from "./news.ts";
+import { picksForMember } from "./picks.ts";
 import { STAGE_CHOICE_KEY, type FreeAgentOffer, type PlayerId, type StaffSlot, type StagedChoices } from "@dynasty/sim";
 import type { FastifyInstance } from "fastify";
 import { changeLeague } from "./advance.ts";
@@ -43,6 +45,27 @@ export function recordChoice(s: LeagueState, team: string, c: OffseasonChoice): 
 
 /** The save as one friend may see it: other friends' calls for the open stage are theirs alone. */
 export function forMember(s: LeagueState, team: string | null): LeagueState {
+  // Each friend's own news (their recap, their preview) is theirs alone.
+  if (s.progress.news?.some((x) => x.for && x.for !== team)) s = { ...s, progress: { ...s.progress, news: newsFor(s.progress.news, team) } };
+  // Each friend's scouting points are theirs alone too.
+  if (s.scoutPlans && Object.keys(s.scoutPlans).some((t) => t !== team)) {
+    const mine = team ? s.scoutPlans[team] : undefined;
+    const { scoutPlans: _all, ...rest } = s;
+    s = mine ? { ...rest, scoutPlans: { [team!]: mine } } : rest;
+  }
+  // Each friend's recruiting plan is theirs alone (what it did shows in the interest once a week is played).
+  if (s.recruiting && Object.keys(s.recruiting).some((t) => t !== team)) {
+    const mine = team ? s.recruiting[team] : undefined;
+    const { recruiting: _all, ...rest } = s;
+    s = mine ? { ...rest, recruiting: { [team!]: mine } } : rest;
+  }
+  // Each friend's open slates are theirs alone (everyone's points and settled slates are on the leaderboard).
+  if (s.picks) s = { ...s, picks: picksForMember(s.picks, team) };
+  // Duels are shown call by call (GET /duel), never whole.
+  if (s.duels) {
+    const { duels: _duels, ...rest } = s;
+    s = rest;
+  }
   // Other friends' coaching calls are theirs alone.
   if (s.coaching && Object.keys(s.coaching).some((t) => t !== team)) {
     const mine = team ? s.coaching[team] : undefined;

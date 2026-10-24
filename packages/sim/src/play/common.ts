@@ -1,17 +1,34 @@
 import type { Player } from "../model/player.ts";
+import { practiceEdge, type PracticePlan } from "../game/practice.ts";
+import { conditionEffects, type ConditionEffects, type GameConditions } from "../game/conditions.ts";
 import type { Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
 import type { Direction, Fumble, Situation, StopReason, Turnover } from "./events.ts";
 import type { DefenseFormation, Formations } from "./formation.ts";
+import { conceptMatchup, type PlayConcepts } from "./concepts.ts";
+import { playDesignEdge } from "../dynasty/coaches.ts";
 
 /** Everything a single play needs. Plays never mutate this. */
 /**
  * The rules games are played under. Games record theirs so past games replay
  * exactly after the sim is retuned: 1 = the original run game; 2 = a real
  * fullback in two-back sets and tougher goal-line runs; 3 = blocked field
- * goals can be scooped and returned.
+ * goals can be scooped and returned; 4 = the play duel: both sides call a
+ * concept before each snap, and the matchup of the calls shapes the play;
+ * 5 = philosophy fit: each side's scheme draws its core calls up better and
+ * the calls it doesn't believe in worse; 6 = game-day conditions: weather
+ * (wind, rain, snow, cold) and the home crowd's noise; 7 = the stadium: a
+ * retractable roof closes against the weather, and turf is faster and harder
+ * on bodies than grass; 8 = fatigue: players tire with snaps (stamina
+ * matters), a tired player is a step slower, and the coaches rotate the tired
+ * out by the depth chart; 9 = the game's flow: halftime adjustments (each
+ * side leans its second half against the first half's film) and momentum (a
+ * big play swings the next few snaps a little); 10 = clock calls and
+ * injuries you answer: no-huddle (no substitutions, a small edge, faster
+ * tiring), a throw to the sideline (stops the clock more often, completes a
+ * little less), and choosing who replaces a hurt player.
  */
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 10;
 
 export interface PlayContext {
   offense: Team;
@@ -23,6 +40,49 @@ export interface PlayContext {
   formations?: Formations;
   /** The rules version (default: the current one). */
   rules?: number;
+  /** The play duel's calls (used from rules 4): the offense's concept and the defense's. */
+  concepts?: PlayConcepts;
+  /** The weather and crowd (played from rules 6). */
+  conditions?: GameConditions;
+  /** Both teams' practice for this game (installs, intensity), by team. */
+  practice?: Readonly<Record<string, PracticePlan>>;
+  /** The game's flow (rules 9): the offense's edge from the halftime plans and momentum. */
+  swing?: number;
+  /** Clock calls (rules 10): no-huddle (the defense isn't set), and a throw to the sideline. */
+  tempo?: { hurry?: boolean; sideline?: boolean };
+}
+
+/** Clock calls (rules 10): what no-huddle gives the offense, and what a sideline throw trades for stopping the clock. */
+export const TEMPO = {
+  /** The defense can't change its call or its players: a small edge to the offense. */
+  hurryEdge: 0.05,
+  /** No breathers between snaps: everyone on the field tires this much faster. */
+  hurryFatigue: 1.15,
+  /** A sideline throw: a little harder to complete, most catches end out of bounds, and little after the catch. */
+  sidelineCompletion: 0.05,
+  sidelineOut: 0.7,
+  sidelineYac: 0.4,
+} as const;
+
+/** What the conditions do to this play (neutral before rules 6, or without conditions). */
+export function weather(ctx: Pick<PlayContext, "conditions" | "rules">): ConditionEffects {
+  const rules = ctx.rules ?? RULES_VERSION;
+  return conditionEffects(rules >= 6 ? ctx.conditions : undefined, rules >= 7);
+}
+
+/** The calls on this play, if the duel is on (rules 4 and later), with the offense's edge from the matchup. */
+export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null {
+  if (!ctx.concepts || (ctx.rules ?? RULES_VERSION) < 4) return null;
+  // The matchup, plus how well each side's coordinator draws his call up.
+  const design =
+    playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90, ctx.rules ?? RULES_VERSION) +
+    // The week's practice: installed plays, and tired legs late after a hard week.
+    practiceEdge(ctx.practice, ctx.offense.abbr, ctx.defense.abbr, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.quarter);
+  // The game's flow (rules 9): halftime adjustments and momentum.
+  const swing = (ctx.rules ?? RULES_VERSION) >= 9 ? (ctx.swing ?? 0) : 0;
+  // No-huddle (rules 10): the defense isn't set.
+  const hurry = (ctx.rules ?? RULES_VERSION) >= 10 && ctx.tempo?.hurry ? TEMPO.hurryEdge : 0;
+  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design + swing + hurry };
 }
 
 /**

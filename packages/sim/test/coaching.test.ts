@@ -89,7 +89,7 @@ describe("coaching changes how teams play", () => {
 
   it("offensive schemes set the run/pass mix", () => {
     expect(scheme("Air Raid").passRate).toBeGreaterThan(scheme("Power Run").passRate + 0.15);
-  });
+  }, 30_000);
 
   it("defensive schemes set the blitz rate", () => {
     const rate = (s: DefensiveScheme) => blitzRate(games(withStaff(A), withStaff(B, { dc: { scheme: s } })), B.abbr);

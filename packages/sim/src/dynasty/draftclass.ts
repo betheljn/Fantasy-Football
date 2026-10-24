@@ -107,6 +107,7 @@ export function generateDraftClass(league: League, season = league.season + 1, s
         position: pos,
         talentMean: 0, // unused: talent is given
         talent: potential - gap,
+        ceiling: potential,
         age,
         jersey: 0, // assigned when drafted
       });

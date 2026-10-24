@@ -1,4 +1,6 @@
 import { BASE_STARTERS, POSITIONS, type Position } from "./positions.ts";
+import type { Roof, Stands, Surface } from "../business/stadium.ts";
+import type { PracticeLog, PracticePlan } from "../game/practice.ts";
 import { playerOverall, type Player, type PlayerId } from "./player.ts";
 import type { TeamStaff } from "./staff.ts";
 
@@ -13,7 +15,18 @@ export interface Team {
   /** Fictional team, one per US state, e.g. "Ohio Ironclads". */
   readonly state: string;
   readonly nickname: string;
+  /** State postal code: the team's key everywhere, never changes. */
   readonly abbr: string;
+  /** Shown in place of the state name ("Twin Cities"); absent = the region (a program), else the state. */
+  readonly city?: string;
+  /** A regional program (yours): it represents its region, not a state. */
+  readonly region?: string;
+  /** Shown in place of the abbr ("TWC"); absent = the abbr. */
+  readonly tag?: string;
+  /** Logo library id; absent = the logo that goes with the nickname. */
+  readonly logo?: string;
+  /** Chosen colors (#RRGGBB); absent = the team's designed pair. */
+  readonly colors?: TeamColorChoice;
   readonly roster: Player[];
   depthChart: DepthChart;
   /** Coaches and front office. Optional: without staff, the team plays with neutral, average-staff behavior. */
@@ -24,7 +37,18 @@ export interface Team {
   cap?: TeamCap;
   /** Staff buyouts still being paid: each remaining season of a fired staff member's deal, $K. */
   staffDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number; readonly name: string }>;
+  /** The owner's upgrades (a team people play): tiers bought in each track. Off the field only: never in a play. */
+  upgrades?: Partial<Record<UpgradeTrack, number>>;
+  /** The home stadium as games see it: under a dome or not, and how loud its crowd gets (0-1). Synced from the business. */
+  venue?: { dome: boolean; noise: number; roof?: Roof; surface?: Surface; stands?: Stands };
+  /** The week's practice a person set (standing until changed; absent: the AI's plan for each opponent). */
+  practice?: PracticePlan;
+  /** This season's practice so far (hard and light weeks), for growth in the offseason. */
+  practiceLog?: PracticeLog;
 }
+
+/** Owner upgrade tracks (see dynasty/progression.ts). */
+export type UpgradeTrack = "facilities" | "recruiting" | "analytics" | "clinic";
 
 export interface TeamCap {
   /** Unused cap carried in from last season, $K. */
@@ -39,8 +63,23 @@ export interface TeamCap {
   readonly pendingDeadMoney?: ReadonlyArray<{ readonly season: number; readonly amount: number }>;
 }
 
+export interface TeamColorChoice {
+  readonly primary: string;
+  readonly trim: string;
+}
+
 export function teamName(team: Team): string {
-  return `${team.state} ${team.nickname}`;
+  return `${teamPlace(team)} ${team.nickname}`;
+}
+
+/** Where the team is from, as shown: its city name if it has one, else its region (a program) or state. */
+export function teamPlace(team: Team): string {
+  return team.city ?? team.region ?? team.state;
+}
+
+/** The short label shown for the team (its tag, else its abbr). */
+export function teamTag(team: Team): string {
+  return team.tag ?? team.abbr;
 }
 
 /** Depth chart by position overall, best first. Ties broken by id so it is deterministic. */

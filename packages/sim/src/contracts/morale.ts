@@ -16,7 +16,7 @@ const OFFENSE: Position[] = ["QB", "RB", "WR", "TE", "OL"];
 const DEFENSE: Position[] = ["DL", "LB", "CB", "S"];
 
 /** Morale points for being a captain, for a strong captain in the room, and per game of recent form. */
-export const MORALE = { captain: 6, leader: 2, perStreak: 2, maxForm: 8, lateGames: 5 };
+export const MORALE = { captain: 6, leader: 2, perStreak: 2, maxForm: 8, lateGames: 5, recruit: 5 };
 
 /** How much his teammates follow him: talent, years in the league and football sense. */
 export function leadership(p: Player): number {
@@ -87,6 +87,11 @@ export function playerMorale(player: Player, team: Team, results: readonly GameS
   value += formPts;
   if (form.streak >= 3) reasons.push([formPts, `${form.streak} straight wins`]);
   if (form.streak <= -3) reasons.push([formPts, `${-form.streak} straight losses`]);
+  // A recruit who landed with the program he chose.
+  if (player.recruitedBy === team.abbr) {
+    value += MORALE.recruit;
+    reasons.push([MORALE.recruit, "chose this program"]);
+  }
   if (isCaptain(captains, player.id)) {
     value += MORALE.captain;
     reasons.push([MORALE.captain, "team captain"]);
@@ -123,7 +128,7 @@ export function seasonEndMorale(teams: readonly Team[], results: readonly GameSu
     const finish = late.reduce((s, g) => s + (g.winner === t.abbr ? 1 : g.winner === null ? 0 : -1), 0);
     const c = teamCaptains(t);
     for (const p of t.roster) {
-      const d = finish * 1.5 + (isCaptain(c, p.id) ? MORALE.captain : 0);
+      const d = finish * 1.5 + (isCaptain(c, p.id) ? MORALE.captain : 0) + (p.recruitedBy === t.abbr ? MORALE.recruit : 0);
       if (d) out.set(p.id, d);
     }
   }

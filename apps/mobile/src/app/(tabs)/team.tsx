@@ -1,7 +1,7 @@
 // Your team: everything about running it, each with a line on what's there now.
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { TRADE_DEADLINE_WEEK, formatRecord, teamName } from "@dynasty/sim";
+import { formatRecord, teamName, tradeDeadline } from "@dynasty/sim";
 import { NavGroup, NavRow, Swatch } from "../../components/ui";
 import { useDynasty, useLeague } from "../../league/LeagueProvider";
 import { useOffers } from "../../online/offers";
@@ -33,6 +33,9 @@ export default function TeamTab() {
       <NavGroup title="Roster">
         <NavRow icon="people-outline" title="Roster and schedule" detail="Players, staff, payroll and every game" onPress={() => router.push(`/team/${userTeam}`)} />
         <NavRow icon="git-network-outline" title="Depth chart" detail={d.canEditDepthChart ? "Set your starters" : "Locked until the regular season"} onPress={() => router.push("/depth")} />
+        {d.canMakeMoves ? (
+          <NavRow icon="barbell-outline" title="Practice" detail={d.practice ? `${d.practice.installs.length} installed · ${d.practice.intensity} week` : "Your staff is running it"} onPress={() => router.push("/practice")} />
+        ) : null}
         <NavRow icon="medkit-outline" title="Injuries" detail={hurt ? `${hurt} hurt or on injured reserve` : "Everyone's healthy"} badge={hurt ? String(hurt) : undefined} onPress={() => router.push("/injuries")} last={!d.canMakeMoves} />
         {d.canMakeMoves ? (
           <NavRow icon="person-add-outline" title="Free agents" detail={`${(league.freeAgents ?? []).length} available to sign`} onPress={() => router.push("/freeagents")} last />
@@ -43,16 +46,23 @@ export default function TeamTab() {
         <NavRow
           icon="swap-horizontal-outline"
           title="Trades"
-          detail={d.canTrade ? (d.tradeWindow?.week === 0 ? "Draft week: trades open" : `Open through week ${TRADE_DEADLINE_WEEK}`) : "Trading is closed right now"}
+          detail={d.canTrade ? (d.tradeWindow?.week === 0 ? "Draft week: trades open" : `Open through week ${tradeDeadline(league)}`) : "Trading is closed right now"}
           onPress={() => router.push("/trade")}
           last={solo}
         />
         {!solo ? <NavRow icon="mail-outline" title="Trade offers" detail="Offers between friends" badge={waiting ? String(waiting) : undefined} onPress={() => router.push("/offers")} last /> : null}
       </NavGroup>
 
-      {solo && d.scouting ? (
+      {(solo && d.scouting) || (!solo && d.canMakeMoves) ? (
         <NavGroup title="Next year's draft">
-          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} last />
+          <NavRow icon="search-outline" title="Scouting" detail={weeksPlayed > 0 ? "Your board and this week's points" : "Spend your scouting points each week"} onPress={() => router.push("/scouting")} />
+          <NavRow
+            icon="megaphone-outline"
+            title="Recruiting"
+            detail={d.recruitPlan.length ? `${d.recruitPlan.length} recruit${d.recruitPlan.length === 1 ? "" : "s"} · ${d.recruitPoints} points a week` : "Build prospects' interest in your program"}
+            onPress={() => router.push("/recruiting")}
+            last
+          />
         </NavGroup>
       ) : null}
     </ScrollView>

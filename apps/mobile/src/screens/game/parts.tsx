@@ -6,9 +6,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Canvas, Line, Rect, Path, Skia, vec } from "@shopify/react-native-skia";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { BASE_STARTERS, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
+import { describeConditions, teamName, BASE_STARTERS, type GameConditions, type PracticePlan, displayName, periodLabel, playerOverall, teamRatings, type BoxScore, type CoachingReport, type DuelRecap, type DuelSide, type GameResult, type PlayLine, type PlayerLookup, type PlayerStats, type Team } from "@dynasty/sim";
 import { Card, Swatch } from "../../components/ui";
-import { teamColors } from "../../field/colors";
+import { teamColors, teamShort } from "../../field/colors";
 import type { FeedRow } from "../../game/feed";
 import { useTheme } from "../../theme";
 
@@ -17,6 +17,8 @@ export interface GameContext {
   title?: string;
   records?: Record<string, string>;
   neutralSite?: boolean;
+  /** Your team, if it's playing (for the play duel's recap). */
+  mine?: string;
 }
 
 /** Both teams' colors edge to edge, the score big, and the clock and situation between them. */
@@ -28,7 +30,7 @@ export function Scoreboard({ game, score, possession, status, sub }: { game: Gam
         <Swatch abbr={abbr} size={34} />
         <View style={{ alignItems: right ? "flex-end" : "flex-start" }}>
           <View style={{ flexDirection: right ? "row-reverse" : "row", alignItems: "center", gap: 4 }}>
-            <Text style={{ color: c.onPrimary, fontWeight: "800", fontSize: 13 }}>{abbr}</Text>
+            <Text style={{ color: c.onPrimary, fontWeight: "800", fontSize: 13 }}>{teamShort(abbr)}</Text>
             {possession === abbr ? <Ionicons name="american-football" size={12} color={c.onPrimary} /> : null}
           </View>
           <Text style={{ color: c.onPrimary, fontSize: 30, fontWeight: "900", fontVariant: ["tabular-nums"], lineHeight: 34 }}>{score[abbr] ?? 0}</Text>
@@ -62,11 +64,25 @@ export function WinBar({ game, home }: { game: GameResult; home: number }) {
         <View style={{ width: 2, backgroundColor: t.bg }} />
         <View style={{ flex: Math.max(1, pct), backgroundColor: teamColors(game.home).primary }} />
       </View>
-      <Text style={{ color: t.muted, fontSize: 11, marginTop: 3, textAlign: "center" }}>
+      <Text style={{ color: t.muted, fontSize: 11, marginTop: 3, textAlign: "center" }} numberOfLines={1}>
         Win chance: {lead} {Math.max(pct, 100 - pct)}%
+        {/* The weather and crowd, on the same line. */}
+        {game.conditions ? ` · ${describeConditions(game.conditions)}` : ""}
       </Text>
     </View>
   );
+}
+
+/** What the weather means for the game, in a line (null in fair weather). */
+function weatherNote(c: GameConditions): string | null {
+  if (c.dome) return null;
+  const notes = [
+    c.precip === "snow" ? "Snow: a slippery ball and tough throwing" : c.precip === "rain" ? "Rain: watch the ball security and the passing game" : null,
+    c.wind >= 16 ? `Wind ${c.wind} mph: deep balls and long kicks suffer` : null,
+    c.temp < 32 ? "Bitter cold: kicks come up short" : null,
+    c.noise >= 0.75 ? "A deafening crowd: the visitors will struggle with the snap count" : null,
+  ].filter(Boolean);
+  return notes.length ? notes.join(". ") + "." : null;
 }
 
 /** The home team's win chance play by play: up is the home team, down the road team. */
@@ -94,7 +110,7 @@ export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: 
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
         <Text style={{ color: t.muted, fontSize: 10 }}>Kickoff</Text>
         <Text style={{ color: t.muted, fontSize: 10 }}>
-          ▲ {game.home} · ▼ {game.away}
+          ▲ {teamShort(game.home)} · ▼ {teamShort(game.away)}
         </Text>
         <Text style={{ color: t.muted, fontSize: 10 }}>Final</Text>
       </View>
@@ -103,7 +119,7 @@ export function FlowChart({ game, chances, pregame, upto, width, height = 90 }: 
 }
 
 /** Before kickoff: the two teams side by side, and the players to watch. */
-export function Pregame({ home, away, context, chance }: { home: Team; away: Team; context?: GameContext; chance: number }) {
+export function Pregame({ home, away, context, chance, conditions, practice }: { home: Team; away: Team; context?: GameContext; chance: number; conditions?: GameConditions; practice?: Record<string, PracticePlan> }) {
   const t = useTheme();
   const rh = teamRatings(home);
   const ra = teamRatings(away);
@@ -116,6 +132,22 @@ export function Pregame({ home, away, context, chance }: { home: Team; away: Tea
   const fav = chance >= 0.5 ? home : away;
   return (
     <View style={{ padding: 12, gap: 10 }}>
+      {conditions ? (
+        <Card style={{ gap: 4 }}>
+          <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Game day</Text>
+          <Text style={{ color: t.text }}>{describeConditions(conditions)}</Text>
+          {weatherNote(conditions) ? <Text style={{ color: t.muted, fontSize: 12 }}>{weatherNote(conditions)}</Text> : null}
+          {practice
+            ? [away, home].map((tm) =>
+                practice[tm.abbr] ? (
+                  <Text key={tm.abbr} style={{ color: t.muted, fontSize: 12 }}>
+                    {`${tm.abbr} practiced ${practice[tm.abbr]!.intensity === "normal" ? "as usual" : practice[tm.abbr]!.intensity === "hard" ? "hard" : "light"}`}
+                  </Text>
+                ) : null,
+              )
+            : null}
+        </Card>
+      ) : null}
       <Card style={{ gap: 6 }}>
         <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Tale of the tape</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
@@ -137,7 +169,7 @@ export function Pregame({ home, away, context, chance }: { home: Team; away: Tea
           </View>
         ))}
         <Text style={{ color: t.muted, fontSize: 12, marginTop: 4, textAlign: "center" }}>
-          {Math.abs(chance - 0.5) < 0.04 ? "A coin flip on paper." : `${fav.state} ${fav.nickname} favored (${Math.round(Math.max(chance, 1 - chance) * 100)}%).`}
+          {Math.abs(chance - 0.5) < 0.04 ? "A coin flip on paper." : `${teamName(fav)} favored (${Math.round(Math.max(chance, 1 - chance) * 100)}%).`}
         </Text>
       </Card>
       <Card style={{ gap: 6 }}>
@@ -237,6 +269,7 @@ export function Recap({
   onPlayer,
   finish,
   report,
+  duel,
 }: {
   game: GameResult;
   box: BoxScore;
@@ -250,6 +283,8 @@ export function Recap({
   finish?: { label: string; onPress: () => void };
   /** A game you coached: how your calls went. */
   report?: CoachingReport | null;
+  /** Your team's play duel. */
+  duel?: DuelRecap | null;
 }) {
   const t = useTheme();
   const winner = game.winner;
@@ -283,7 +318,7 @@ export function Recap({
       <Card style={{ gap: 8 }}>
         <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Final{game.overtime ? " (OT)" : ""}</Text>
         <Text style={{ color: t.text, fontSize: 18, fontWeight: "800" }}>
-          {winner ? `${winner} beat ${loser}, ${game.score[winner]}-${game.score[loser]}` : `${game.away} and ${game.home} tie, ${game.score[game.home]}-${game.score[game.away]}`}
+          {winner ? `${teamShort(winner)} beat ${teamShort(loser)}, ${game.score[winner]}-${game.score[loser]}` : `${teamShort(game.away)} and ${teamShort(game.home)} tie, ${game.score[game.home]}-${game.score[game.away]}`}
         </Text>
         {star ? (
           <Pressable onPress={() => onPlayer(star.p.id)} accessibilityRole="link">
@@ -294,6 +329,7 @@ export function Recap({
         ) : null}
         <FlowChart game={game} chances={chances} pregame={pregame} upto={chances.length - 1} width={width - 48} />
       </Card>
+      {duel ? <DuelCard recap={duel} onPlay={onPlay} /> : null}
       {report ? <CallsCard report={report} /> : null}
       {swings.length ? (
         <Card style={{ gap: 6 }}>
@@ -302,7 +338,7 @@ export function Recap({
             row.kind === "play" ? (
               <Pressable key={i} onPress={() => onPlay(i)} accessibilityRole="button" style={{ paddingVertical: 4 }}>
                 <Text style={{ color: t.muted, fontSize: 12 }}>
-                  {game.plays[i]!.quarter <= 4 ? `Q${periodLabel(game.plays[i]!.quarter)}` : periodLabel(game.plays[i]!.quarter)} {row.clock} · {row.team} · win chance swung {Math.round(d * 100)} points
+                  {game.plays[i]!.quarter <= 4 ? `Q${periodLabel(game.plays[i]!.quarter)}` : periodLabel(game.plays[i]!.quarter)} {row.clock} · {teamShort(row.team)} · win chance swung {Math.round(d * 100)} points
                 </Text>
                 <Text style={{ color: t.text }}>{row.text}</Text>
               </Pressable>
@@ -311,6 +347,48 @@ export function Recap({
         </Card>
       ) : null}
     </View>
+  );
+}
+
+/** The play duel: calls won and lost, how the plays went by the call, and what each side read. */
+function DuelCard({ recap: r, onPlay }: { recap: DuelRecap; onPlay: (index: number) => void }) {
+  const t = useTheme();
+  const ypp = (s: DuelSide, k: "won" | "lost") => (s.byCall[k].plays ? (s.byCall[k].yards / s.byCall[k].plays).toFixed(1) : "-");
+  const side = (title: string, s: DuelSide, offense: boolean) => (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: t.text }}>
+        <Text style={{ fontWeight: "800" }}>{title}: </Text>
+        won {s.won} call{s.won === 1 ? "" : "s"}, lost {s.lost}, even {s.even}
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>
+        {offense ? "You gained" : "They gained"} {ypp(s, "won")} yds a play when you won the call, {ypp(s, "lost")} when you lost it
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>{s.concepts.slice(0, 3).map((c) => `${c.label} ${c.plays}×`).join(" · ")}</Text>
+    </View>
+  );
+  const moment = (label: string, m: DuelRecap["best"], color: string) =>
+    m ? (
+      <Pressable onPress={() => onPlay(m.seq)} accessibilityRole="button" accessibilityHint="Replay this play on the field">
+        <Text style={{ color: t.text }}>
+          <Text style={{ color, fontWeight: "800" }}>{label}: </Text>
+          {m.text}
+        </Text>
+      </Pressable>
+    ) : null;
+  return (
+    <Card style={{ gap: 8 }}>
+      <Text style={{ color: t.accent, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>The duel</Text>
+      <Text style={{ color: t.text, fontWeight: "700" }}>{r.headline}</Text>
+      {side("Offense", r.offense, true)}
+      {side("Defense", r.defense, false)}
+      {r.reads.map((line) => (
+        <Text key={line} style={{ color: t.text, fontSize: 13 }}>
+          {line}
+        </Text>
+      ))}
+      {moment("Best call", r.best, "#2e9d57")}
+      {moment("Worst call", r.worst, "#d1453b")}
+    </Card>
   );
 }
 

@@ -92,3 +92,48 @@ describe("your levers", () => {
     }
   }, 30_000);
 });
+
+import { CAREER_KEEP_GAMES, HOF_RULES, closeSeasonBooks, computeRecords, economy, keptCareers, priceLimits, type CareerLine } from "../src/index.ts";
+
+describe("over many seasons", () => {
+  it("prices carry into next season at the same real value (everything else grows with the economy)", () => {
+    const league = DYNASTY.league;
+    const all = startLeagueBusiness(league);
+    const mine = { ...all.CA!, ticketPrice: 120, concessionPrice: 40 };
+    const { business } = closeSeasonBooks(league, { ...all, CA: mine }, league.season, [], computeRecords(league, []), new Map(), new Set(["CA"]));
+    const grow = economy(league.seed, league.season + 1) / economy(league.seed, league.season);
+    expect(grow).toBeGreaterThan(1);
+    expect(business.CA!.ticketPrice).toBe(Math.round(120 * grow));
+    expect(business.CA!.concessionPrice).toBe(Math.round(40 * grow));
+    // What you may charge grows the same way.
+    const later = priceLimits(league.seed, league.season + 10);
+    expect(later.ticket[1]).toBeGreaterThan(priceLimits(league.seed, league.season).ticket[1]);
+  });
+
+  it("keeps the careers still in the league or long enough to matter; drops short ones that are over", () => {
+    const line = (id: string, seasons: number, games: number) => [id, { id, name: id, position: "WR", teams: [], seasons, games, stats: {} } as unknown as CareerLine] as const;
+    const someone = DYNASTY.league.teams.CA!.roster[0]!.id;
+    const careers = new Map([line(someone, 1, 2), line("gone-short", 2, CAREER_KEEP_GAMES - 1), line("gone-long", HOF_RULES.minSeasons, 10), line("gone-busy", 3, CAREER_KEEP_GAMES)]);
+    expect([...keptCareers(careers, DYNASTY.league).keys()].sort()).toEqual([someone, "gone-busy", "gone-long"].sort());
+  });
+});
+
+import { BUSINESS_RULES, sharingChecks } from "../src/index.ts";
+
+describe("revenue sharing", () => {
+  it("splits the pooled money with more to small markets and less to large ones, the pool unchanged", () => {
+    const league = DYNASTY.league;
+    const business = startLeagueBusiness(league);
+    const checks = sharingChecks(league, business, league.season, [], computeRecords(league, []), new Map());
+    expect(checks.get("WY")! / checks.get("CA")!).toBeCloseTo(BUSINESS_RULES.sharingWeight.small / BUSINESS_RULES.sharingWeight.large);
+    const even = { ...BUSINESS_RULES.sharingWeight };
+    try {
+      BUSINESS_RULES.sharingWeight = { small: 1, mid: 1, large: 1 };
+      const flat = sharingChecks(league, business, league.season, [], computeRecords(league, []), new Map());
+      const sum = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+      expect(sum(checks)).toBeCloseTo(sum(flat));
+    } finally {
+      BUSINESS_RULES.sharingWeight = even;
+    }
+  });
+});

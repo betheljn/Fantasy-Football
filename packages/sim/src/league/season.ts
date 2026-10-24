@@ -1,5 +1,9 @@
 // Playing a season: simulate each scheduled game and keep a compact summary.
-import { advanceInjuries, gameDayTeam } from "../game/injuries.ts";
+import { practiceFor, practiceWeek, type PracticePlan } from "../game/practice.ts";
+import { gameConditions, type GameConditions } from "../game/conditions.ts";
+import { kickoffAbilities } from "../dynasty/coaches.ts";
+import { callTally } from "../game/duelrecap.ts";
+import { advanceInjuries, gameDayTeam, type Injury } from "../game/injuries.ts";
 import { simulateGame, startCoachedGame, type CoachedGame, type GameResult } from "../game/game.ts";
 import type { League } from "./league.ts";
 import { generateSchedule, type Schedule, type ScheduledGame } from "./schedule.ts";
@@ -31,11 +35,15 @@ export function gameSeed(league: League, game: ScheduledGame): string {
  * played with their calls (any calls not made are the coaches').
  */
 export function playGame(league: League, game: ScheduledGame, coached?: CoachedCalls): { summary: GameSummary; result: GameResult } {
+  // Week 1: coaches' open ability slots fill as it kicks off.
+  if (game.week === 1) league = kickoffAbilities(league);
   const seed = gameSeed(league, game);
   // Injured players sit.
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  const result = simulateGame(home.team, away.team, seed, coached ? { coach: coached.team, calls: coached.calls } : {});
+  const conditions = gameConditions(league, game);
+  const practice = practiceFor(league, game);
+  const result = simulateGame(home.team, away.team, seed, { conditions, practice, ...(coached ? { coach: coached.team, calls: coached.calls, ...(coached.rival ? { rival: coached.rival } : {}) } : {}) });
   const out = home.out.length + away.out.length > 0 ? { out: { [game.home]: home.out, [game.away]: away.out } } : {};
   const summary: GameSummary = {
     id: game.id,
@@ -49,18 +57,27 @@ export function playGame(league: League, game: ScheduledGame, coached?: CoachedC
     winner: result.winner,
     seed,
     rules: result.rules ?? 1,
+    conditions,
+    practice,
     ...out,
+    ...callTally(result),
     // The calls as played (any that no longer fit became the coaches').
-    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)] } } : {}),
+    ...(coached ? { coached: { team: coached.team, calls: [...(result.coached?.calls ?? coached.calls)], ...(coached.rival ? { rival: coached.rival, ...(result.coached?.by ? { by: result.coached.by } : {}) } : {}) } } : {}),
   };
   return { summary, result };
 }
 
+/** How to replay a played game exactly: its rules, and the weather, crowd and practice it was played with. */
+export function replayOptions(s: Pick<GameSummary, "rules" | "conditions" | "practice">): { rules: number; conditions?: GameConditions; practice?: Record<string, PracticePlan> } {
+  return { rules: s.rules ?? 1, ...(s.conditions ? { conditions: s.conditions } : {}), ...(s.practice ? { practice: s.practice } : {}) };
+}
+
 /** Coach `team` in a scheduled game: the same teams and seed the week will play it with (picked up from `calls` so far). */
 export function coachScheduledGame(league: League, game: ScheduledGame, team: string, calls: CoachedCalls["calls"] = []): CoachedGame {
+  if (game.week === 1) league = kickoffAbilities(league);
   const home = gameDayTeam(league.teams[game.home]!);
   const away = gameDayTeam(league.teams[game.away]!);
-  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, {}, calls);
+  return startCoachedGame(home.team, away.team, gameSeed(league, game), team, { conditions: gameConditions(league, game), practice: practiceFor(league, game) }, calls);
 }
 
 /**
@@ -75,14 +92,18 @@ export function playWeek(
   onGame?: (game: GameResult, scheduled: ScheduledGame) => void,
   /** Games people coached this week (by game id), played with their calls. */
   coached?: ({ game: string } & CoachedCalls) | ReadonlyArray<{ game: string } & CoachedCalls>,
-): { league: League; games: Array<{ summary: GameSummary; result: GameResult }> } {
+): { league: League; games: Array<{ summary: GameSummary; result: GameResult }>; practiceInjuries: Injury[] } {
+  if (week === 1) league = kickoffAbilities(league);
   const byGame = new Map((coached === undefined ? [] : Array.isArray(coached) ? coached : [coached as { game: string } & CoachedCalls]).map((c) => [c.game, c]));
   const games = schedule.games.filter((g) => g.week === week).map((g) => {
     const played = playGame(league, g, byGame.get(g.id));
     onGame?.(played.result, g);
     return played;
   });
-  return { league: advanceInjuries(league, games.flatMap((g) => g.result.injuries)), games };
+  // Then the week's practice for the next games: logs for growth, and the odd practice injury.
+  const plans = Object.assign({}, ...games.map((g) => g.summary.practice ?? {})) as Record<string, PracticePlan>;
+  const practiced = practiceWeek(league, week, plans);
+  return { league: advanceInjuries(practiced.league, [...games.flatMap((g) => g.result.injuries), ...practiced.injuries]), games, practiceInjuries: practiced.injuries };
 }
 
 export function simulateSeason(league: League, opts: SeasonOptions = {}): SeasonResult {

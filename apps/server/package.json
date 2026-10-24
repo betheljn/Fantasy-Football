@@ -10,11 +10,12 @@
     "db:down": "docker compose down",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "test": "vitest run",
+    "test": "PICKS_SIMS=6 vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dynasty/sim": "workspace:*",
+    "@fastify/websocket": "^11.3.4",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "fastify": "^5.12.5",

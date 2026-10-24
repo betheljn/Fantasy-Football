@@ -1,7 +1,10 @@
 // The league as the server holds it: the dynasty (in the sim's compact save
 // format) and who runs which team. Built and changed only by the sim.
-import { allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamRatings, toSaveJson, type Dynasty, type OffseasonStage, type StagedChoices, type CoachCall } from "@dynasty/sim";
+import { CURRENT_FORMAT, allTeams, computeRecords, conferenceOf, divisionOf, fromSaveJson, startDynasty, teamLogo, teamName, teamRatings, teamTag, toSaveJson, type CoachBuild, type Dynasty, type SkillGroup, type OffseasonStage, type StagedChoices, type CoachCall, type TeamIdentityChoice, type StadiumDesign } from "@dynasty/sim";
 import { emptyProgress, type SeasonProgress } from "./season.ts";
+import type { DuelEntry } from "./duels.ts";
+import type { LeaguePicks } from "./picks.ts";
+import type { FriendGame } from "@dynasty/sim";
 
 export const STATE_VERSION = 1;
 
@@ -18,10 +21,35 @@ export interface LeagueState {
   offseason?: { stage: OffseasonStage; choices: StagedChoices };
   /** Friends coaching their game this week: their calls so far, by team (private until the week is played). */
   coaching?: Record<string, { game: string; calls: Array<CoachCall | null> }>;
+  /** Friends' scouting points for the coming week (spent when it's played, then cleared), by team: private. */
+  scoutPlans?: Record<string, Array<{ prospect: string; points: number }>>;
+  /** Friends' standing recruiting plans (points a week per prospect), by team: private to each friend. */
+  recruiting?: Record<string, Array<{ prospect: string; points: number }>>;
+  /** This week's games between friends: both coaches' calls, by game id (private: each sees only their duelView). */
+  duels?: Record<string, DuelEntry>;
+  /** In the lobby: each friend's look and coach for the team they claimed (by member id), made when the league starts. */
+  setups?: Record<string, TeamSetupChoice>;
+  /** In the lobby: each friend's top three skill groups (by member id); their program is built when the league starts. */
+  programs?: Record<string, { groups: SkillGroup[]; region?: string }>;
+  /** Picks and the radio show: the coming week's board and show, the hosts' records, each friend's points (open slates private). */
+  picks?: LeaguePicks;
+  /** Every game between two friends' teams, every season (the head-to-head series). */
+  friendGames?: FriendGame[];
+}
+
+/** A friend's team made theirs: its identity and the head coach they built. */
+export interface TeamSetupChoice {
+  team: string;
+  identity: TeamIdentityChoice;
+  coach: CoachBuild;
+  /** Their stadium's design (absent: the one the team came with). */
+  stadium?: StadiumDesign;
 }
 
 export function newLeagueState(seed: string): LeagueState {
-  return { version: STATE_VERSION, seed, dynasty: startDynasty(seed), humans: {}, weeksPlayed: 0, progress: emptyProgress() };
+  // New leagues play the current season shape (older leagues keep theirs).
+  const dynasty = startDynasty(seed);
+  return { version: STATE_VERSION, seed, dynasty: { ...dynasty, league: { ...dynasty.league, format: CURRENT_FORMAT } }, humans: {}, weeksPlayed: 0, progress: emptyProgress() };
 }
 
 export const encodeState = (s: LeagueState): string => toSaveJson(s);
@@ -33,7 +61,11 @@ export function teamList(s: LeagueState) {
   const records = computeRecords(league, s.progress.results);
   return allTeams(league).map((t) => ({
     abbr: t.abbr,
-    name: `${t.state} ${t.nickname}`,
+    name: teamName(t),
+    nickname: t.nickname,
+    tag: teamTag(t),
+    logo: teamLogo(t).id,
+    ...(t.colors ? { colors: t.colors } : {}),
     conference: conferenceOf(league, t.abbr).name,
     division: divisionOf(league, t.abbr).name,
     overall: Math.round(teamRatings(t).overall * 10) / 10,

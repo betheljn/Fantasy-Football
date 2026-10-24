@@ -1,3 +1,4 @@
+import type { PlayConcepts } from "./concepts.ts";
 import type { SpecialUnits } from "./special.ts";
 import type { PlayerId } from "../model/player.ts";
 import type { Coverage, DefensePackage, OffenseSet, Personnel } from "./formation.ts";
@@ -102,6 +103,8 @@ interface PlayEventBase {
   /** Live-ball foul on the play, if any (accepted or declined). */
   penalty: Penalty | null;
   formation: FormationInfo;
+  /** The play duel's calls (rules 4): the offense's concept and the defense's. */
+  calls?: PlayConcepts;
 }
 
 export interface RunPlayEvent extends PlayEventBase {

@@ -1,14 +1,18 @@
 // The business: your market, your fans, your stadium, this season's home
 // crowds, and last season's books. (The salary cap is the same for every
 // team; market size only changes the business.)
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
-  BOND,
   BUSINESS_RULES,
   POPULATION,
-  PROJECTS,
+  ROOF_NAMES,
+  STANDS_NAMES,
+  SURFACE_NAMES,
+  roofOf,
+  standsOf,
+  surfaceOf,
   attendance,
   economy,
   formatMoney,
@@ -17,10 +21,7 @@ import {
   marketSize,
   namingAvailable,
   namingOffers,
-  projectCost,
-  projectProblems,
   startBusiness,
-  type ProjectKind,
   type SeasonFinances,
   type TeamBusiness,
 } from "@dynasty/sim";
@@ -40,6 +41,7 @@ export default function BusinessScreen() {
   const d = useDynasty();
   const { league, userTeam, results } = useLeague();
   const team = league.teams[userTeam]!;
+  const router = useRouter();
   const dynasty = d.save!.dynasty;
   const b = dynasty.business?.[userTeam] ?? startBusiness(team, league.seed);
   const last = dynasty.finances?.[userTeam]?.at(-1) ?? null;
@@ -58,7 +60,7 @@ export default function BusinessScreen() {
     <>
       <Stack.Screen options={{ title: "Business" }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <TeamBanner abbr={userTeam} title={`${size.charAt(0).toUpperCase()}${size.slice(1)} market`} subtitle={`${team.state} · ${POPULATION[userTeam]}M people. ${SIZE_NOTE[size]}`}>
+        <TeamBanner abbr={userTeam} title={`${size.charAt(0).toUpperCase()}${size.slice(1)} market`} subtitle={`${team.region ? `${team.region} region` : team.state} · ${POPULATION[userTeam]}M people. ${SIZE_NOTE[size]}`}>
           <StatRow>
             <Stat label="Cash" value={formatMoney(b.cash)} onDark={teamColors(userTeam).onPrimary} />
             <Stat label="Die-hards" value={`${b.fans.dieHard.toLocaleString()}k`} onDark={teamColors(userTeam).onPrimary} />
@@ -76,7 +78,9 @@ export default function BusinessScreen() {
           <SectionTitle>{b.stadium.name}</SectionTitle>
           <Row label="Capacity" value={b.stadium.capacity.toLocaleString()} theme={t} />
           <Row label="Amenities" value={`${b.stadium.quality} / 100`} theme={t} />
-          <Row label="Roof" value={b.stadium.dome ? "Dome" : "Open air"} theme={t} />
+          <Row label="Roof" value={ROOF_NAMES[roofOf(b.stadium)]} theme={t} />
+          <Row label="Field" value={SURFACE_NAMES[surfaceOf(b.stadium)]} theme={t} />
+          <Row label="Stands" value={STANDS_NAMES[standsOf(b.stadium)]} theme={t} />
           {b.stadium.debt > 0 ? <Row label="Stadium debt" value={formatMoney(b.stadium.debt)} theme={t} /> : null}
           <Row label="Ticket price" value={`$${b.ticketPrice}`} theme={t} />
           <Row label="Concessions per fan" value={`$${b.concessionPrice}`} theme={t} />
@@ -102,36 +106,10 @@ export default function BusinessScreen() {
 
         <Prices b={b} keen={keen} econ={econ} locked={gates.length > 0} onSave={(tk, cn) => say(d.setPrices(tk, cn), `Prices set: $${tk} a ticket, $${cn} at the concession stands.`)} theme={t} />
 
-        <Card>
-          <SectionTitle>Stadium projects</SectionTitle>
-          <Text style={{ color: t.muted, marginBottom: 6 }}>
-            Work starts now and opens next season. Bonds cost {Math.round(BOND.interest * 100)}% interest a year and pay down {Math.round(BOND.principal * 100)}% of the debt each season.
-          </Text>
-          {(b.pending ?? []).map((p) => (
-            <Text key={p.kind} style={{ color: t.accent, fontWeight: "700", paddingVertical: 2 }}>
-              Under way: {PROJECTS[p.kind].name} ({formatMoney(p.cost)}, {p.financing}), opens next season
-            </Text>
-          ))}
-          {(Object.keys(PROJECTS) as ProjectKind[]).map((kind) => {
-            const cost = projectCost(kind, userTeam);
-            const blocked = projectProblems(b, kind, userTeam, "bonds").length > 0 && projectProblems(b, kind, userTeam, "cash").length > 0;
-            return (
-              <View key={kind} style={{ paddingVertical: 6, borderTopWidth: 1, borderColor: t.border }}>
-                <Text style={{ color: t.text, fontWeight: "700" }}>
-                  {PROJECTS[kind].name} · {formatMoney(cost)}
-                </Text>
-                <Text style={{ color: t.muted, fontSize: 13 }}>{PROJECTS[kind].does}</Text>
-                {!blocked ? (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                    <Small label="Pay cash" onPress={() => say(d.startStadiumProject(kind, "cash"), `${PROJECTS[kind].name}: under way, paid in cash.`)} disabled={projectProblems(b, kind, userTeam, "cash").length > 0} theme={t} />
-                    <Small label="Use bonds" onPress={() => say(d.startStadiumProject(kind, "bonds"), `${PROJECTS[kind].name}: under way, paid with bonds.`)} disabled={projectProblems(b, kind, userTeam, "bonds").length > 0} theme={t} />
-                  </View>
-                ) : (
-                  <Text style={{ color: t.muted, fontSize: 12 }}>{projectProblems(b, kind, userTeam, "bonds")[0]}</Text>
-                )}
-              </View>
-            );
-          })}
+        <Card style={{ gap: 6 }}>
+          <SectionTitle>Stadium</SectionTitle>
+          <Text style={{ color: t.muted }}>Design and build it (roof, field, stands, seats, boards, the name) on the stadium screen.</Text>
+          <Small label="Open the stadium" onPress={() => router.push("/stadium")} disabled={false} theme={t} />
         </Card>
 
         <Card>
@@ -157,7 +135,7 @@ export default function BusinessScreen() {
 
         {last ? <Books f={last} theme={t} /> : <Text style={{ color: t.muted }}>Your first books close at the end of this season.</Text>}
         <Text style={{ color: t.muted, fontSize: 12 }}>
-          Every team gets the same national TV money ({Math.round(BUSINESS_RULES.nationalMedia * 100)}% of the salary cap) and {Math.round(BUSINESS_RULES.sharing * 100)}% of local revenue is shared evenly. The salary cap is the same for every team.
+          Every team gets the same national TV money ({Math.round(BUSINESS_RULES.nationalMedia * 100)}% of the salary cap) and {Math.round(BUSINESS_RULES.sharing * 100)}% of local revenue is pooled and shared, with bigger checks to small markets ({BUSINESS_RULES.sharingWeight.small}x an even share) and smaller ones to large markets ({BUSINESS_RULES.sharingWeight.large}x). The salary cap is the same for every team.
         </Text>
       </ScrollView>
     </>

@@ -1,8 +1,9 @@
 import type { Player } from "../model/player.ts";
+import type { ConditionEffects } from "../game/conditions.ts";
 import { passRushing } from "../model/ratings.ts";
 import { starters, type Team } from "../model/team.ts";
 import type { Rng } from "../rng.ts";
-import { RULES_VERSION, clamp, edge, exponential, weightedPick, type PlayContext } from "./common.ts";
+import { RULES_VERSION, clamp, edge, exponential, weightedPick, type PlayContext, weather } from "./common.ts";
 import type { FieldGoalEvent, Fumble, PuntEvent } from "./events.ts";
 import { blockChance, pickBlocker, specialUnits } from "./special.ts";
 
@@ -12,10 +13,11 @@ export function fieldGoalDistance(yardline: number): number {
 }
 
 /** Probability a kicker makes a kick of `distance` yards (block chance not included). */
-export function fieldGoalProbability(kicker: Player, distance: number): number {
+export function fieldGoalProbability(kicker: Player, distance: number, wx?: Pick<ConditionEffects, "kickYards" | "kickAccuracy">): number {
   const range = 56 + 6 * edge(kicker.ratings.kickPower);
-  const ceiling = clamp(0.97 + 0.02 * edge(kicker.ratings.kickAccuracy), 0.9, 0.995);
-  return ceiling / (1 + Math.exp((distance - range) / 5));
+  const ceiling = clamp(0.97 + 0.02 * edge(kicker.ratings.kickAccuracy), 0.9, 0.995) - (wx?.kickAccuracy ?? 0);
+  // Wind and cold play the kick longer than it is.
+  return ceiling / (1 + Math.exp((distance + (wx?.kickYards ?? 0) - range) / 5));
 }
 
 export function kickerOf(team: Team): Player {
@@ -28,7 +30,7 @@ export function simulateFieldGoal(rng: Rng, ctx: PlayContext): FieldGoalEvent {
   const units = specialUnits(ctx.offense, ctx.defense, "field_goal");
   const blocked = rng.chance(blockChance("field_goal", ctx.offense, ctx.defense, units, distance));
   const blockedBy = blocked ? pickBlocker(rng, ctx.defense, units).id : null;
-  const made = !blocked && rng.chance(fieldGoalProbability(kicker, distance));
+  const made = !blocked && rng.chance(fieldGoalProbability(kicker, distance, weather(ctx)));
   // A miss gives the defense the ball at the spot of the kick, or their 20 if that's better.
   const spotOfKick = ctx.situation.yardline - 7;
   if (blocked && (ctx.rules ?? RULES_VERSION) >= 3) {
@@ -159,7 +161,7 @@ export function simulatePunt(rng: Rng, ctx: PlayContext): PuntEvent {
     return { ...base, grossYards: 0, blocked: true, blockedBy: blocker.id, returnYards: end - (100 - spot), touchdown: end >= 100, nextYardline: end, duration: 5 };
   }
 
-  const gross = Math.round(clamp(rng.normal(46 + 3 * edge(punter.ratings.kickPower), 5.5), 25, 70));
+  const gross = Math.round(clamp(rng.normal(46 + 3 * edge(punter.ratings.kickPower) - weather(ctx).puntYards, 5.5), 25, 70));
   const landing = sit.yardline + gross; // punting team's perspective
 
   // Into the end zone, or rolls in: touchback.

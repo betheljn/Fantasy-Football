@@ -1,4 +1,8 @@
+import { FatigueTracker } from "./fatigue.ts";
+import { GameFlow, aiHalftime, halfFilm, type HalftimePlan } from "./flow.ts";
 import { InjuryTracker, type Injury } from "./injuries.ts";
+import type { PracticePlan } from "./practice.ts";
+import { conditionEffects, type GameConditions } from "./conditions.ts";
 import type { Team } from "../model/team.ts";
 import { Rng } from "../rng.ts";
 import type { PlayEvent } from "../play/events.ts";
@@ -7,6 +11,7 @@ import { QUARTER_SECONDS, TIMEOUTS_PER_HALF } from "../drive/clock.ts";
 import { checkAnswer, driveSteps, simulateConversion, tryAnswer, tryPrompt, type CoachCall, type DrivePlay, type DriveResult, type NextPossession, type SnapPrompt } from "../drive/drive.ts";
 import { pointsForEvent } from "../play/scoring.ts";
 import { RULES_VERSION } from "../play/common.ts";
+import { newDuelBook } from "../drive/duelcall.ts";
 
 export const OVERTIME_SECONDS = 10 * 60;
 export const OVERTIME_TIMEOUTS = 2;
@@ -47,8 +52,12 @@ export interface GameResult {
   injuries: Injury[];
   /** The rules it was played under. */
   rules?: number;
+  /** The weather and crowd it was played in (from rules 6). */
+  conditions?: GameConditions;
+  /** Both teams' practice for it, by team. */
+  practice?: Record<string, PracticePlan>;
   /** A coached game: the team a person coached and every answer, in order (null = took the coaches' call). */
-  coached?: { team: string; calls: Array<CoachCall | null> };
+  coached?: { team: string; calls: Array<CoachCall | null>; rival?: string; by?: string };
 }
 
 export interface GameOptions {
@@ -58,10 +67,16 @@ export interface GameOptions {
   playoff?: boolean;
   /** A team whose calls a person makes (see gameSteps). */
   coach?: string;
+  /** The other team, also coached by a person (a duel between friends): its answers are in `calls` too, in the order the game asked. */
+  rival?: string;
   /** The coached team's answers, in order, to replay a coached game (missing ones take the coaches' call). */
   calls?: ReadonlyArray<CoachCall | null>;
   /** The rules to play under (default: the current ones); replays pass the game's own. */
   rules?: number;
+  /** The weather and crowd (gameConditions); replays pass the game's own. */
+  conditions?: GameConditions;
+  /** Both teams' practice (practiceFor); replays pass the game's own. */
+  practice?: Record<string, PracticePlan>;
 }
 
 /**
@@ -160,7 +175,17 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
 
   const rng = new Rng(seed);
   const answers: Array<CoachCall | null> = [];
-  const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away });
+  /** In a duel, whose each call was: "c" the coached team, "r" its rival (one letter per answer). */
+  let by = "";
+  // From rules 7 the field changes how often players get hurt.
+  const rules = options.rules ?? RULES_VERSION;
+  const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away }, conditionEffects(rules >= 6 ? options.conditions : undefined, rules >= 7).injury);
+  // Fatigue (rules 8): players tire with snaps and the coaches rotate them.
+  const fatigue = rules >= 8 ? new FatigueTracker({ [home.abbr]: home, [away.abbr]: away }) : undefined;
+  // The game's flow (rules 9): halftime adjustments and momentum.
+  const flow = rules >= 9 ? new GameFlow() : undefined;
+  // The play duel: what each side has called so far, for the other to read.
+  const book = (options.rules ?? RULES_VERSION) >= 4 ? newDuelBook() : undefined;
   // The teams as they stand now (injured players leave the field).
   const teams = injuries.teams;
   const other = (abbr: string) => teams[abbr === home.abbr ? away.abbr : home.abbr]!;
@@ -214,6 +239,9 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       winner: null,
       final: { quarter: last?.quarter ?? quarter, clock: last?.clockAfter ?? clock },
       injuries: [...injuries.all],
+      rules: options.rules ?? RULES_VERSION,
+      ...(options.conditions ? { conditions: options.conditions } : {}),
+      ...(options.practice ? { practice: options.practice } : {}),
     };
   };
 
@@ -239,6 +267,35 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
         clock = QUARTER_SECONDS;
         timeouts = { [home.abbr]: TIMEOUTS_PER_HALF, [away.abbr]: TIMEOUTS_PER_HALF };
         pending = { kind: "kickoff", kickingTeam: openingReceiver };
+        // Halftime adjustments (rules 9): each side leans against the first half's film (home first).
+        if (flow) {
+          for (const t of [home.abbr, away.abbr]) {
+            const opponent = t === home.abbr ? away.abbr : home.abbr;
+            const film = halfFilm(book, opponent);
+            let plan = aiHalftime(film, margin(opponent));
+            if (options.coach === t || (options.rival !== undefined && options.rival === t)) {
+              const prompt: SnapPrompt = {
+                kind: "halftime",
+                team: t,
+                opponent,
+                situation: { quarter: 3, clock, down: 1, distance: 10, yardline: 25 },
+                margin: margin(t),
+                clockRunning: false,
+                timeouts: { own: timeouts[t] ?? 0, opponent: timeouts[opponent] ?? 0 },
+                film,
+                suggestion: plan,
+              };
+              const answer = yield { ...prompt, drive: drives.length, sofar: snapshot() };
+              answers.push(answer ?? null);
+              by += t === options.coach ? "c" : "r";
+              if (answer) {
+                checkAnswer(prompt, answer);
+                plan = (answer as { halftime: HalftimePlan }).halftime;
+              }
+            }
+            flow.setPlan(t, plan);
+          }
+        }
       } else if (score[home.abbr] === score[away.abbr] && (quarter === 4 || (quarter >= 5 && options.playoff))) {
         // Overtime; in the playoffs, another period after a tied one.
         const firstPeriod = quarter === 4;
@@ -269,16 +326,20 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       const ko = simulateKickoff(rng, { kicking, receiving, quarter, clock, onside, freeKick: pending.kind === "free_kick" });
       clock = Math.max(0, clock - ko.duration);
       record(ko, quarter, clock, injuries.check(ko));
+      fatigue?.play(ko, quarter);
+      flow?.play(ko);
 
       if (ko.touchdown) {
         let two: boolean | undefined;
-        if (options.coach === receiving.abbr) {
+        if (options.coach === receiving.abbr || (options.rival !== undefined && options.rival === receiving.abbr)) {
           const answer = yield { ...tryPrompt(receiving, kicking.abbr, quarter, clock, margin(receiving.abbr), timeouts), drive: drives.length, sofar: snapshot() };
           answers.push(answer ?? null);
+          by += receiving.abbr === options.coach ? "c" : "r";
           two = tryAnswer(answer);
         }
-        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules);
+        const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules, options.conditions);
         record(conv, quarter, clock);
+        fatigue?.play(conv, quarter);
         pending = { kind: "kickoff", kickingTeam: receiving.abbr };
         if (quarter >= 5) otPossessed.add(receiving.abbr); // a return TD counts as a possession
       } else if (ko.recoveredByKickingTeam) {
@@ -310,13 +371,20 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       timeouts,
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
+      ...(fatigue ? { fatigue } : {}),
+      ...(flow ? { flow } : {}),
       ...(options.coach ? { coach: options.coach, log: live } : {}),
+      ...(options.coach && options.rival ? { rival: options.rival } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),
+      ...(book ? { book } : {}),
+      ...(options.conditions ? { conditions: options.conditions } : {}),
+      ...(options.practice ? { practice: options.practice } : {}),
     });
     let step = steps.next();
     while (!step.done) {
       const answer = yield { ...step.value, drive: drives.length, sofar: snapshot(live) };
       answers.push(answer ?? null);
+      by += step.value.team === options.coach ? "c" : "r";
       step = steps.next(answer);
     }
     const drive = step.value;
@@ -347,6 +415,8 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
     final: { quarter, clock },
     injuries: injuries.all,
     rules: options.rules ?? RULES_VERSION,
-    ...(options.coach ? { coached: { team: options.coach, calls: answers } } : {}),
+    ...(options.conditions ? { conditions: options.conditions } : {}),
+    ...(options.practice ? { practice: options.practice } : {}),
+    ...(options.coach ? { coached: { team: options.coach, calls: answers, ...(options.rival ? { rival: options.rival, by } : {}) } } : {}),
   };
 }
