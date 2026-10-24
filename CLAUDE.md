@@ -508,8 +508,11 @@ commissioner can delete anyone's (shown as removed).
 ### Milestone 29: game day depth
 More to play in your own games; the sim still decides every play, and new
 effects come in under a new rules version so past games replay unchanged.
-To decide: whether fatigue and substitutions are automatic with an override,
-or a call you make; how much of a two-minute drill you run yourself.
+Decided: fatigue and rotation are automatic (players tire with snaps,
+stamina matters, the coaches rotate by the depth chart) with your override
+between snaps (keep a starter in, or rest someone); in the two-minute drill
+you get a hurry-up toggle and clock calls (spike, a sideline throw) on top of
+your call sheet and timeouts.
 1. Sim: player fatigue through a game (stamina and snaps), automatic rotation
    by the depth chart, and your override (keep a starter in, rest a player)
 2. Sim: halftime adjustments (lean against what they've been calling, from

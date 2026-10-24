@@ -101,3 +101,4 @@ export * from "./collect/halloffame.ts";
 export * from "./business/business.ts";
 export * from "./business/owner.ts";
 export * from "./spring/spring.ts";
+export * from "./game/fatigue.ts";

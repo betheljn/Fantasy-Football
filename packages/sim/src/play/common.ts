@@ -19,9 +19,11 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * the calls it doesn't believe in worse; 6 = game-day conditions: weather
  * (wind, rain, snow, cold) and the home crowd's noise; 7 = the stadium: a
  * retractable roof closes against the weather, and turf is faster and harder
- * on bodies than grass.
+ * on bodies than grass; 8 = fatigue: players tire with snaps (stamina
+ * matters), a tired player is a step slower, and the coaches rotate the tired
+ * out by the depth chart.
  */
-export const RULES_VERSION = 7;
+export const RULES_VERSION = 8;
 
 export interface PlayContext {
   offense: Team;

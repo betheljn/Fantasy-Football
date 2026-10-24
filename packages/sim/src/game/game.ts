@@ -1,3 +1,4 @@
+import { FatigueTracker } from "./fatigue.ts";
 import { InjuryTracker, type Injury } from "./injuries.ts";
 import type { PracticePlan } from "./practice.ts";
 import { conditionEffects, type GameConditions } from "./conditions.ts";
@@ -178,6 +179,8 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
   // From rules 7 the field changes how often players get hurt.
   const rules = options.rules ?? RULES_VERSION;
   const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away }, conditionEffects(rules >= 6 ? options.conditions : undefined, rules >= 7).injury);
+  // Fatigue (rules 8): players tire with snaps and the coaches rotate them.
+  const fatigue = rules >= 8 ? new FatigueTracker({ [home.abbr]: home, [away.abbr]: away }) : undefined;
   // The play duel: what each side has called so far, for the other to read.
   const book = (options.rules ?? RULES_VERSION) >= 4 ? newDuelBook() : undefined;
   // The teams as they stand now (injured players leave the field).
@@ -291,6 +294,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       const ko = simulateKickoff(rng, { kicking, receiving, quarter, clock, onside, freeKick: pending.kind === "free_kick" });
       clock = Math.max(0, clock - ko.duration);
       record(ko, quarter, clock, injuries.check(ko));
+      fatigue?.play(ko, quarter);
 
       if (ko.touchdown) {
         let two: boolean | undefined;
@@ -302,6 +306,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
         }
         const conv = simulateConversion(rng, receiving, kicking, quarter, clock, margin(receiving.abbr), two, options.rules, options.conditions);
         record(conv, quarter, clock);
+        fatigue?.play(conv, quarter);
         pending = { kind: "kickoff", kickingTeam: receiving.abbr };
         if (quarter >= 5) otPossessed.add(receiving.abbr); // a return TD counts as a possession
       } else if (ko.recoveredByKickingTeam) {
@@ -333,6 +338,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       timeouts,
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
+      ...(fatigue ? { fatigue } : {}),
       ...(options.coach ? { coach: options.coach, log: live } : {}),
       ...(options.coach && options.rival ? { rival: options.rival } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),

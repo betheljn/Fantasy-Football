@@ -180,7 +180,8 @@ describe("scheme choices", () => {
     }
     expect(counts["11"]! / snaps).toBeGreaterThan(0.5);
     expect(counts["11"]! / snaps).toBeLessThan(0.75);
-    expect(blitzes / dropbacks).toBeGreaterThan(0.15);
+    // (About 15% since the play duel; fatigue in rules 8 moved it a little lower.)
+    expect(blitzes / dropbacks).toBeGreaterThan(0.13);
     expect(blitzes / dropbacks).toBeLessThan(0.4);
   });
 });
