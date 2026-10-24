@@ -13,7 +13,9 @@ const echo = (p: GamePrompt): CoachCall | undefined =>
         ? { timeout: p.suggestion }
         : p.kind === "halftime"
           ? { halftime: p.suggestion }
-          : { try: p.suggestion };
+          : p.kind === "injury"
+            ? { replace: p.suggestion }
+            : { try: p.suggestion };
 
 describe("a duel between two coaches", () => {
   it("asks both teams, each only for its own calls", () => {

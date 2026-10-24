@@ -141,6 +141,9 @@ export class InjuryTracker {
   /** Multiplies every injury chance (the field: turf is harder on bodies). */
   private readonly rate: number;
 
+  /** Injuries not yet answered (rules 10: a coach picks who goes in): where each hurt player stood on the depth chart. */
+  private fresh: Array<{ injury: Injury; position: Position; slot: number }> = [];
+
   constructor(seed: string, teams: Record<string, Team>, rate = 1) {
     this.rate = rate;
     this.rng = new Rng(`${seed}:injuries`);
@@ -163,10 +166,28 @@ export class InjuryTracker {
       const injury: Injury = { player: id, team: abbr, type: s.type, weeks: s.weeks };
       hurt.push(injury);
       this.all.push(injury);
+      const slot = team.depthChart[p.position].indexOf(id);
+      if (slot >= 0) this.fresh.push({ injury, position: p.position, slot });
       this.teams[abbr] = sideline(team, id);
       this.players.delete(id);
     }
     return hurt;
+  }
+
+  /** A team's injuries since it was last asked (and forgets them). */
+  takeFresh(team: string): Array<{ injury: Injury; position: Position; slot: number }> {
+    const mine = this.fresh.filter((f) => f.injury.team === team);
+    this.fresh = this.fresh.filter((f) => f.injury.team !== team);
+    return mine;
+  }
+
+  /** Put `id` in the depth-chart slot a hurt player left (the rest move down). */
+  replace(team: string, position: Position, slot: number, id: PlayerId): void {
+    const t = this.teams[team]!;
+    const list = t.depthChart[position].filter((x) => x !== id);
+    if (!t.depthChart[position].includes(id)) return;
+    list.splice(Math.min(slot, list.length), 0, id);
+    this.teams[team] = { ...t, depthChart: { ...t.depthChart, [position]: list } };
   }
 }
 

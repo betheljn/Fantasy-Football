@@ -23,9 +23,12 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * matters), a tired player is a step slower, and the coaches rotate the tired
  * out by the depth chart; 9 = the game's flow: halftime adjustments (each
  * side leans its second half against the first half's film) and momentum (a
- * big play swings the next few snaps a little).
+ * big play swings the next few snaps a little); 10 = clock calls and
+ * injuries you answer: no-huddle (no substitutions, a small edge, faster
+ * tiring), a throw to the sideline (stops the clock more often, completes a
+ * little less), and choosing who replaces a hurt player.
  */
-export const RULES_VERSION = 9;
+export const RULES_VERSION = 10;
 
 export interface PlayContext {
   offense: Team;
@@ -45,7 +48,21 @@ export interface PlayContext {
   practice?: Readonly<Record<string, PracticePlan>>;
   /** The game's flow (rules 9): the offense's edge from the halftime plans and momentum. */
   swing?: number;
+  /** Clock calls (rules 10): no-huddle (the defense isn't set), and a throw to the sideline. */
+  tempo?: { hurry?: boolean; sideline?: boolean };
 }
+
+/** Clock calls (rules 10): what no-huddle gives the offense, and what a sideline throw trades for stopping the clock. */
+export const TEMPO = {
+  /** The defense can't change its call or its players: a small edge to the offense. */
+  hurryEdge: 0.05,
+  /** No breathers between snaps: everyone on the field tires this much faster. */
+  hurryFatigue: 1.15,
+  /** A sideline throw: a little harder to complete, most catches end out of bounds, and little after the catch. */
+  sidelineCompletion: 0.05,
+  sidelineOut: 0.7,
+  sidelineYac: 0.4,
+} as const;
 
 /** What the conditions do to this play (neutral before rules 6, or without conditions). */
 export function weather(ctx: Pick<PlayContext, "conditions" | "rules">): ConditionEffects {
@@ -63,7 +80,9 @@ export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null
     practiceEdge(ctx.practice, ctx.offense.abbr, ctx.defense.abbr, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.quarter);
   // The game's flow (rules 9): halftime adjustments and momentum.
   const swing = (ctx.rules ?? RULES_VERSION) >= 9 ? (ctx.swing ?? 0) : 0;
-  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design + swing };
+  // No-huddle (rules 10): the defense isn't set.
+  const hurry = (ctx.rules ?? RULES_VERSION) >= 10 && ctx.tempo?.hurry ? TEMPO.hurryEdge : 0;
+  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design + swing + hurry };
 }
 
 /**

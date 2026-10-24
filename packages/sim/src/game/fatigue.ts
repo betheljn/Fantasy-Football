@@ -10,6 +10,7 @@ import type { Position } from "../model/positions.ts";
 import type { RatingKey } from "../model/ratings.ts";
 import type { Team } from "../model/team.ts";
 import type { PlayEvent } from "../play/events.ts";
+import { TEMPO } from "../play/common.ts";
 
 export const FATIGUE = {
   /** Energy a snap on the field costs an average-stamina player (out of 100). */
@@ -143,7 +144,7 @@ export class FatigueTracker {
   }
 
   /** The play happened: those on the field tire, everyone else rests; quarter breaks and halftime give energy back. */
-  play(e: PlayEvent, quarter: number): void {
+  play(e: PlayEvent, quarter: number, hurry = false): void {
     let back = 0;
     if (quarter > this.quarter) {
       back = this.quarter <= 2 && quarter >= 3 ? FATIGUE.halftime : FATIGUE.quarterBreak;
@@ -168,7 +169,8 @@ export class FatigueTracker {
     const still: number[] = [];
     for (const i of this.active) {
       const en = Math.min(100, this.energy[i]! + back);
-      const next = this.onField[i] ? en - (FATIGUE.drain * this.work[i]! + (i === carrier ? FATIGUE.carrier : 0)) * this.tire[i]! : en + FATIGUE.recover;
+      // (No-huddle: no breathers between snaps, so everyone on the field tires faster.)
+      const next = this.onField[i] ? en - (FATIGUE.drain * this.work[i]! + (i === carrier ? FATIGUE.carrier : 0)) * this.tire[i]! * (hurry ? TEMPO.hurryFatigue : 1) : en + FATIGUE.recover;
       const e2 = next < 0 ? 0 : next > 100 ? 100 : next;
       this.energy[i] = e2;
       // The coaches sit him when he's tired, and play him again once he's rested.

@@ -72,6 +72,8 @@ describe("coached games", () => {
     const { prompts } = coach("pause", HOME.abbr, () => undefined);
     for (const p of prompts) expect(p.team).toBe(HOME.abbr);
     const kinds = new Set(prompts.map((p) => p.kind));
+    // (An injury call comes up only when one of your starters gets hurt.)
+    kinds.delete("injury");
     expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try", "halftime"]));
     for (const p of prompts) if (p.kind === "offense") expect(p.options).toContain(p.suggestion);
     // Timeouts come up only late in a half (or when the head coach would call one), with the clock running and one to spend.

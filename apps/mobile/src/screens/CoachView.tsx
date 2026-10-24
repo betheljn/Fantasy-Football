@@ -77,6 +77,11 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
   const [, setTick] = useState(0);
   const [camera, setCamera] = useState<"top" | "tv">("top");
   const who = useMemo(() => lookupFor(home, away), [home, away]);
+  // Short names for the call bar (an injury's replacements).
+  const nameOf = useMemo(() => {
+    const m = new Map([...home.roster, ...away.roster].map((pl) => [pl.id, `${pl.firstName.charAt(0)}. ${pl.lastName}`]));
+    return (id: string) => m.get(id) ?? id;
+  }, [home, away]);
   const cache = useRef(new Map<number, PreparedPlay | null>());
   const sofar = game.sofar;
   const plays = useMemo(() => prepareGame(sofar, who, cache.current), [sofar, who]);
@@ -202,7 +207,7 @@ export function CoachView({ game, home, away, title, onCall, finish, team, waiti
         ) : p ? (
           <>
             <FilmLines prompt={p} home={home} away={away} theme={t} />
-            <CallBar key={`${p.sofar.plays.length}:${game.calls.length}`} prompt={p} onAnswer={answer} theme={t} />
+            <CallBar key={`${p.sofar.plays.length}:${game.calls.length}`} prompt={p} onAnswer={answer} nameOf={nameOf} theme={t} />
             <View style={s.handoff}>
               <Small label="Coaches: this drive" onPress={() => hand("drive")} theme={t} />
               <Small label="This half" onPress={() => hand("half")} theme={t} />
@@ -306,10 +311,11 @@ function downLine(p: GamePrompt): string {
 }
 
 /** The call waiting on you, with the coaches' call picked to start. */
-function CallBar({ prompt: p, onAnswer, theme: t }: { prompt: GamePrompt; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+function CallBar({ prompt: p, onAnswer, nameOf, theme: t }: { prompt: GamePrompt; onAnswer: (call?: CoachCall) => void; nameOf: (id: string) => string; theme: Theme }) {
   const s = styles(t);
   const where = `${clockLine(p)} · ${p.kind === "defense" ? formatDownDistance(p.situation, p.opponent, p.team) : p.kind === "offense" ? formatDownDistance(p.situation, p.team, p.opponent) : ""}`;
   if (p.kind === "halftime") return <HalftimeBar prompt={p} onAnswer={onAnswer} theme={t} />;
+  if (p.kind === "injury") return <InjuryBar prompt={p} onAnswer={onAnswer} name={nameOf} theme={t} />;
   if (p.kind === "offense") return <OffenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "defense") return <DefenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "timeout") {
@@ -592,6 +598,27 @@ function HalftimeBar({ prompt: p, onAnswer, theme: t }: { prompt: Extract<GamePr
         ))}
       </View>
       <Choice label="Start the second half" on onPress={() => onAnswer(defense === p.suggestion.defense && offense === p.suggestion.offense ? undefined : { halftime: { defense, offense } })} theme={t} />
+    </View>
+  );
+}
+
+/** One of your players was hurt (rules 10): who goes in (the next man up picked to start). */
+function InjuryBar({ prompt: p, onAnswer, name, theme: t }: { prompt: Extract<GamePrompt, { kind: "injury" }>; onAnswer: (call?: CoachCall) => void; name: (id: string) => string; theme: Theme }) {
+  const s = styles(t);
+  const [pick, setPick] = useState(p.suggestion);
+  const out = p.injury.weeks === 0 ? "out for the game" : p.injury.weeks >= 18 ? "out for the season" : `out about ${p.injury.weeks} week${p.injury.weeks === 1 ? "" : "s"}`;
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>
+        Injury: {p.position} {name(p.player)} ({p.injury.type}), {out}. Who goes in?
+      </Text>
+      <Text style={s.coach}>Next man up: {name(p.suggestion)}</Text>
+      <View style={s.row}>
+        {p.options.slice(0, 5).map((id) => (
+          <Choice key={id} label={name(id)} on={pick === id} onPress={() => setPick(id)} theme={t} />
+        ))}
+      </View>
+      <Choice label="Back to the game" on onPress={() => onAnswer(pick === p.suggestion ? undefined : { replace: pick })} theme={t} />
     </View>
   );
 }

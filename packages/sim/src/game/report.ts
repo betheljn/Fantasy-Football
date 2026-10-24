@@ -55,7 +55,10 @@ export function changedCall(p: SnapPrompt, a: CoachCall | null): boolean {
           (a.personnel ?? p.formation.personnel) !== p.formation.personnel ||
           (a.set ?? p.formation.set) !== p.formation.set ||
           // The play duel: a different concept for the same run or pass.
-          (a.concept !== undefined && (a.call === "run" || a.call === "pass") && a.concept !== p.concepts?.[a.call]))
+          (a.concept !== undefined && (a.call === "run" || a.call === "pass") && a.concept !== p.concepts?.[a.call]) ||
+          // Clock calls (rules 10).
+          a.hurry !== undefined ||
+          !!a.sideline)
       );
     case "defense": {
       const d = a as { concept?: string; package?: string; coverage?: string; blitz?: number };
@@ -68,6 +71,8 @@ export function changedCall(p: SnapPrompt, a: CoachCall | null): boolean {
       return "try" in a && a.try !== p.suggestion;
     case "halftime":
       return "halftime" in a && (a.halftime.defense !== p.suggestion.defense || a.halftime.offense !== p.suggestion.offense);
+    case "injury":
+      return "replace" in a && a.replace !== p.suggestion;
   }
 }
 
