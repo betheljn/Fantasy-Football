@@ -66,6 +66,8 @@ export function changedCall(p: SnapPrompt, a: CoachCall | null): boolean {
       return "timeout" in a && a.timeout !== p.suggestion;
     case "try":
       return "try" in a && a.try !== p.suggestion;
+    case "halftime":
+      return "halftime" in a && (a.halftime.defense !== p.suggestion.defense || a.halftime.offense !== p.suggestion.offense);
   }
 }
 

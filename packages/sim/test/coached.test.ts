@@ -72,7 +72,7 @@ describe("coached games", () => {
     const { prompts } = coach("pause", HOME.abbr, () => undefined);
     for (const p of prompts) expect(p.team).toBe(HOME.abbr);
     const kinds = new Set(prompts.map((p) => p.kind));
-    expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try"]));
+    expect(kinds).toEqual(new Set(["offense", "defense", "timeout", "try", "halftime"]));
     for (const p of prompts) if (p.kind === "offense") expect(p.options).toContain(p.suggestion);
     // Timeouts come up only late in a half (or when the head coach would call one), with the clock running and one to spend.
     for (const p of prompts.filter((x) => x.kind === "timeout")) {

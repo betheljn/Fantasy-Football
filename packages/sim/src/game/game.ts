@@ -1,4 +1,5 @@
 import { FatigueTracker } from "./fatigue.ts";
+import { GameFlow, aiHalftime, halfFilm, type HalftimePlan } from "./flow.ts";
 import { InjuryTracker, type Injury } from "./injuries.ts";
 import type { PracticePlan } from "./practice.ts";
 import { conditionEffects, type GameConditions } from "./conditions.ts";
@@ -181,6 +182,8 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
   const injuries = new InjuryTracker(String(seed), { [home.abbr]: home, [away.abbr]: away }, conditionEffects(rules >= 6 ? options.conditions : undefined, rules >= 7).injury);
   // Fatigue (rules 8): players tire with snaps and the coaches rotate them.
   const fatigue = rules >= 8 ? new FatigueTracker({ [home.abbr]: home, [away.abbr]: away }) : undefined;
+  // The game's flow (rules 9): halftime adjustments and momentum.
+  const flow = rules >= 9 ? new GameFlow() : undefined;
   // The play duel: what each side has called so far, for the other to read.
   const book = (options.rules ?? RULES_VERSION) >= 4 ? newDuelBook() : undefined;
   // The teams as they stand now (injured players leave the field).
@@ -264,6 +267,35 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
         clock = QUARTER_SECONDS;
         timeouts = { [home.abbr]: TIMEOUTS_PER_HALF, [away.abbr]: TIMEOUTS_PER_HALF };
         pending = { kind: "kickoff", kickingTeam: openingReceiver };
+        // Halftime adjustments (rules 9): each side leans against the first half's film (home first).
+        if (flow) {
+          for (const t of [home.abbr, away.abbr]) {
+            const opponent = t === home.abbr ? away.abbr : home.abbr;
+            const film = halfFilm(book, opponent);
+            let plan = aiHalftime(film, margin(opponent));
+            if (options.coach === t || (options.rival !== undefined && options.rival === t)) {
+              const prompt: SnapPrompt = {
+                kind: "halftime",
+                team: t,
+                opponent,
+                situation: { quarter: 3, clock, down: 1, distance: 10, yardline: 25 },
+                margin: margin(t),
+                clockRunning: false,
+                timeouts: { own: timeouts[t] ?? 0, opponent: timeouts[opponent] ?? 0 },
+                film,
+                suggestion: plan,
+              };
+              const answer = yield { ...prompt, drive: drives.length, sofar: snapshot() };
+              answers.push(answer ?? null);
+              by += t === options.coach ? "c" : "r";
+              if (answer) {
+                checkAnswer(prompt, answer);
+                plan = (answer as { halftime: HalftimePlan }).halftime;
+              }
+            }
+            flow.setPlan(t, plan);
+          }
+        }
       } else if (score[home.abbr] === score[away.abbr] && (quarter === 4 || (quarter >= 5 && options.playoff))) {
         // Overtime; in the playoffs, another period after a tied one.
         const firstPeriod = quarter === 4;
@@ -295,6 +327,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       clock = Math.max(0, clock - ko.duration);
       record(ko, quarter, clock, injuries.check(ko));
       fatigue?.play(ko, quarter);
+      flow?.play(ko);
 
       if (ko.touchdown) {
         let two: boolean | undefined;
@@ -339,6 +372,7 @@ export function* gameSteps(home: Team, away: Team, seed: number | string, option
       ...(options.neutralSite ? {} : { homeTeam: home.abbr }),
       injuries,
       ...(fatigue ? { fatigue } : {}),
+      ...(flow ? { flow } : {}),
       ...(options.coach ? { coach: options.coach, log: live } : {}),
       ...(options.coach && options.rival ? { rival: options.rival } : {}),
       ...(options.rules !== undefined ? { rules: options.rules } : {}),

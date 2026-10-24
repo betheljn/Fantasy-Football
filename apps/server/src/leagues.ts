@@ -470,7 +470,7 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
   const callSchema = {
     type: "object",
     additionalProperties: false,
-    maxProperties: 4,
+    maxProperties: 6,
     properties: {
       call: { enum: ["run", "pass", "punt", "field_goal", "kneel", "spike"] },
       // The play duel: a concept on either side of the ball (the sim checks it fits the call).
@@ -482,6 +482,10 @@ export function leagueRoutes(app: FastifyInstance, db: Db) {
       blitz: { type: "integer", minimum: 0, maximum: 2 },
       timeout: { type: "boolean" },
       try: { enum: ["kick", "two_point"] },
+      // Fatigue (rules 8): players to keep in or rest.
+      lineup: { type: "object", additionalProperties: false, properties: { keep: { type: "array", maxItems: 30, items: idSchema }, rest: { type: "array", maxItems: 30, items: idSchema } } },
+      // Halftime (rules 9): where to lean the second half.
+      halftime: { type: "object", required: ["defense", "offense"], additionalProperties: false, properties: { defense: { enum: ["run", "pass", "balanced"] }, offense: { enum: ["man", "zone", "balanced"] } } },
     },
   } as const;
   const moveSchema = {

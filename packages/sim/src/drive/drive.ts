@@ -1,5 +1,6 @@
 import type { Injury, InjuryTracker } from "../game/injuries.ts";
 import type { FatigueTracker, LineupOverride } from "../game/fatigue.ts";
+import type { GameFlow, HalfFilm, HalftimePlan } from "../game/flow.ts";
 import type { PlayerId } from "../model/player.ts";
 import type { PracticePlan } from "../game/practice.ts";
 import { starters, type Team } from "../model/team.ts";
@@ -95,6 +96,8 @@ export interface DriveInput {
   practice?: Readonly<Record<string, PracticePlan>>;
   /** Fatigue through the game (rules 8): the teams as they take the field each snap. */
   fatigue?: FatigueTracker;
+  /** The game's flow (rules 9): halftime plans and momentum. */
+  flow?: GameFlow;
 }
 
 /** What every pause shows: whose call it is and the state of the game. */
@@ -163,8 +166,17 @@ export interface TryPrompt extends PromptBase {
 
 export type TryChoice = "kick" | "two_point";
 
+/** At halftime (rules 9): lean the second half against the first half's film. */
+export interface HalftimePrompt extends PromptBase {
+  kind: "halftime";
+  /** What the first half showed of the other side. */
+  film: HalfFilm;
+  /** The coaches' plan from it (answering nothing takes it). */
+  suggestion: HalftimePlan;
+}
+
 /** A pause in a coached game, waiting on a call. */
-export type SnapPrompt = OffensePrompt | DefensePrompt | TimeoutPrompt | TryPrompt;
+export type SnapPrompt = OffensePrompt | DefensePrompt | TimeoutPrompt | TryPrompt | HalftimePrompt;
 
 /** Answer to an OffensePrompt: the play, and optionally a different personnel group or alignment. */
 export interface OffenseCall {
@@ -193,8 +205,11 @@ export interface TimeoutCall {
 export interface TryCall {
   try: TryChoice;
 }
+export interface HalftimeCall {
+  halftime: HalftimePlan;
+}
 /** A person's answer to a prompt (undefined anywhere = the coaches' call). */
-export type CoachCall = OffenseCall | DefenseCall | TimeoutCall | TryCall;
+export type CoachCall = OffenseCall | DefenseCall | TimeoutCall | TryCall | HalftimeCall;
 
 /** Timeouts are put to the coach in the last this-many seconds of a half (and whenever the head coach would call one). */
 export const TIMEOUT_WINDOW = 120;
@@ -219,7 +234,7 @@ export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): 
       return;
     }
     case "defense": {
-      if ("call" in answer || "timeout" in answer || "try" in answer) wrongAnswer("defense");
+      if ("call" in answer || "timeout" in answer || "try" in answer || "halftime" in answer) wrongAnswer("defense");
       checkLineup((answer as DefenseCall).lineup);
       const d = answer as DefenseCall;
       if (d.package && d.package !== prompt.formation.package && !prompt.packageOptions.includes(d.package)) throw new Error(`Can't line up in ${d.package}`);
@@ -234,6 +249,12 @@ export function checkAnswer(prompt: SnapPrompt, answer: CoachCall | undefined): 
     case "try":
       if (!("try" in answer) || (answer.try !== "kick" && answer.try !== "two_point")) wrongAnswer("try");
       return;
+    case "halftime": {
+      if (!("halftime" in answer)) wrongAnswer("halftime");
+      const h = answer.halftime;
+      if (!h || !["run", "pass", "balanced"].includes(h.defense) || !["man", "zone", "balanced"].includes(h.offense)) throw new Error("A halftime plan is a defensive focus (run, pass, balanced) and an offensive one (man, zone, balanced)");
+      return;
+    }
   }
 }
 
@@ -384,6 +405,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       fatigue.play(event, quarter);
       onField();
     }
+    input.flow?.play(event);
     for (const [team, pts] of Object.entries(pointsForEvent(event))) points[team]! += pts;
   };
 
@@ -546,6 +568,7 @@ export function* driveSteps(rng: Rng, input: DriveInput): Generator<SnapPrompt, 
       ...(input.practice ? { practice: input.practice } : {}),
       ...(defenseFormation ? { formations: { offense: offenseFormation, defense: defenseFormation } } : {}),
       ...(offenseConcept && defenseConcept ? { concepts: { offense: offenseConcept, defense: defenseConcept } } : {}),
+      ...(input.flow ? { swing: input.flow.swing(offense, defense, offenseConcept, defenseConcept) } : {}),
     };
 
     // Pre-snap foul: no play, walk it off, snap again. The clock is left alone.

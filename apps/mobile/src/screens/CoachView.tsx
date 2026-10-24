@@ -24,6 +24,8 @@ import {
   pregameEdge,
   winChances,
   type CoachCall,
+  type DefenseFocus,
+  type OffenseFocus,
   type CoachedGame,
   type Coverage,
   type DefensePackage,
@@ -307,6 +309,7 @@ function downLine(p: GamePrompt): string {
 function CallBar({ prompt: p, onAnswer, theme: t }: { prompt: GamePrompt; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
   const s = styles(t);
   const where = `${clockLine(p)} · ${p.kind === "defense" ? formatDownDistance(p.situation, p.opponent, p.team) : p.kind === "offense" ? formatDownDistance(p.situation, p.team, p.opponent) : ""}`;
+  if (p.kind === "halftime") return <HalftimeBar prompt={p} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "offense") return <OffenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "defense") return <DefenseBar prompt={p} where={where} onAnswer={onAnswer} theme={t} />;
   if (p.kind === "timeout") {
@@ -550,3 +553,45 @@ const styles = (t: Theme) =>
     handoff: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", paddingTop: 4 },
     final: { color: t.text, fontWeight: "800", fontSize: 16, textAlign: "center" },
   });
+
+const DEFENSE_FOCUS: Array<{ key: DefenseFocus; label: string }> = [
+  { key: "run", label: "Stop the run" },
+  { key: "balanced", label: "Balanced" },
+  { key: "pass", label: "Stop the pass" },
+];
+const OFFENSE_FOCUS: Array<{ key: OffenseFocus; label: string }> = [
+  { key: "man", label: "Attack man" },
+  { key: "balanced", label: "Balanced" },
+  { key: "zone", label: "Attack zone" },
+];
+
+/** Halftime (rules 9): the first half's film on them, and where to lean the second half (the coaches' plan picked to start). */
+function HalftimeBar({ prompt: p, onAnswer, theme: t }: { prompt: Extract<GamePrompt, { kind: "halftime" }>; onAnswer: (call?: CoachCall) => void; theme: Theme }) {
+  const s = styles(t);
+  const [defense, setDefense] = useState<DefenseFocus>(p.suggestion.defense);
+  const [offense, setOffense] = useState<OffenseFocus>(p.suggestion.offense);
+  const pct = (x: number | null) => (x === null ? "no film" : `${Math.round(x * 100)}%`);
+  const lead = p.margin === 0 ? "tied" : `${p.margin > 0 ? "up" : "down"} ${Math.abs(p.margin)}`;
+  const theirs = { run: "focus on stopping the run", pass: "focus on stopping the pass", balanced: "stay balanced on defense" }[p.suggestion.defense];
+  const attack = { man: "attack man coverage", zone: "attack zone coverage", balanced: "stay balanced on offense" }[p.suggestion.offense];
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={s.head}>Halftime, {lead}. The first half&apos;s film on them:</Text>
+      <Text style={s.coach}>
+        Their offense ran {pct(p.film.runShare)} of the time; their defense played man on {pct(p.film.manShare)} of snaps. The coaches would {theirs} and {attack}.
+      </Text>
+      <Text style={{ color: t.muted, fontSize: 12 }}>A focus helps against what it&apos;s aimed at and costs a little against the rest.</Text>
+      <View style={s.row}>
+        {DEFENSE_FOCUS.map((f) => (
+          <Choice key={f.key} label={f.label} on={defense === f.key} onPress={() => setDefense(f.key)} theme={t} />
+        ))}
+      </View>
+      <View style={s.row}>
+        {OFFENSE_FOCUS.map((f) => (
+          <Choice key={f.key} label={f.label} on={offense === f.key} onPress={() => setOffense(f.key)} theme={t} />
+        ))}
+      </View>
+      <Choice label="Start the second half" on onPress={() => onAnswer(defense === p.suggestion.defense && offense === p.suggestion.offense ? undefined : { halftime: { defense, offense } })} theme={t} />
+    </View>
+  );
+}

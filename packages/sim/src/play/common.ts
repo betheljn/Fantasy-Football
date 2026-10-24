@@ -21,9 +21,11 @@ import { playDesignEdge } from "../dynasty/coaches.ts";
  * retractable roof closes against the weather, and turf is faster and harder
  * on bodies than grass; 8 = fatigue: players tire with snaps (stamina
  * matters), a tired player is a step slower, and the coaches rotate the tired
- * out by the depth chart.
+ * out by the depth chart; 9 = the game's flow: halftime adjustments (each
+ * side leans its second half against the first half's film) and momentum (a
+ * big play swings the next few snaps a little).
  */
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 9;
 
 export interface PlayContext {
   offense: Team;
@@ -41,6 +43,8 @@ export interface PlayContext {
   conditions?: GameConditions;
   /** Both teams' practice for this game (installs, intensity), by team. */
   practice?: Readonly<Record<string, PracticePlan>>;
+  /** The game's flow (rules 9): the offense's edge from the halftime plans and momentum. */
+  swing?: number;
 }
 
 /** What the conditions do to this play (neutral before rules 6, or without conditions). */
@@ -57,7 +61,9 @@ export function duel(ctx: PlayContext): (PlayConcepts & { edge: number }) | null
     playDesignEdge(ctx.offense, ctx.defense, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.yardline >= 90, ctx.rules ?? RULES_VERSION) +
     // The week's practice: installed plays, and tired legs late after a hard week.
     practiceEdge(ctx.practice, ctx.offense.abbr, ctx.defense.abbr, ctx.concepts.offense, ctx.concepts.defense, ctx.situation.quarter);
-  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design };
+  // The game's flow (rules 9): halftime adjustments and momentum.
+  const swing = (ctx.rules ?? RULES_VERSION) >= 9 ? (ctx.swing ?? 0) : 0;
+  return { ...ctx.concepts, edge: conceptMatchup(ctx.concepts.offense, ctx.concepts.defense).edge + design + swing };
 }
 
 /**
